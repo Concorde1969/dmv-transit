@@ -73,7 +73,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     anthropic_model: str = Field(default="claude-sonnet-5", alias="ANTHROPIC_MODEL")
     chat_max_tokens: int = Field(default=2048, alias="CHAT_MAX_TOKENS")
-    chat_max_tool_iterations: int = Field(default=6, alias="CHAT_MAX_TOOL_ITERATIONS")
+    chat_max_tool_iterations: int = Field(default=10, alias="CHAT_MAX_TOOL_ITERATIONS")
     chat_host: str = Field(default="127.0.0.1", alias="CHAT_HOST")
     chat_port: int = Field(default=8765, alias="CHAT_PORT")
 

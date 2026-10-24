@@ -1,5 +1,16 @@
 # Data sources, licensing, and scraping etiquette
 
+## No affiliation
+
+This software and any site running it (such as dmvtransit.com) are **unofficial**. They
+are not affiliated with, endorsed by, sponsored by, or operated by the Washington
+Metropolitan Area Transit Authority (WMATA), Virginia Railway Express, Fairfax County,
+Arlington County, the Alexandria Transit Company (DASH), the City of Fairfax (CUE),
+Loudoun County, the Potomac and Rappahannock Transportation Commission (OmniRide),
+Virginia DRPT / Virginia Breeze, or any other transit agency. Agency names and service
+names are used only to identify the services described. The public site states this
+in its header, welcome message, and footer.
+
 ## WMATA Developer API
 
 Data retrieved from `api.wmata.com` is provided by the Washington Metropolitan Area

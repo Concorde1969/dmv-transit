@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from datetime import datetime, timedelta
 
@@ -41,18 +42,63 @@ def is_stale(retrieved_at: str | None) -> bool:
 # ---------------------------------------------------------------------------
 # Stations
 # ---------------------------------------------------------------------------
+_WORD_RE = re.compile(r"[a-z0-9']+")
+_STATION_SUFFIXES = (" metro station", " station", " metro")
+
+
+def _words(text: str) -> list[str]:
+    return _WORD_RE.findall(text.lower().replace("’", "'"))
+
+
+def lookup_alias(db: Database, text: str, feed_id: str | None = None) -> sqlite3.Row | None:
+    """An alias from an agency definition, e.g. "DCA" -> WMATA station C10."""
+    sql = "SELECT * FROM place_aliases WHERE alias = ?"
+    params: list = [text.strip().lower()]
+    if feed_id:
+        sql += " AND feed_id = ?"
+        params.append(feed_id)
+    try:
+        return db.conn.execute(sql, params).fetchone()
+    except sqlite3.OperationalError:  # table not created yet on an old database
+        return None
+
+
 def resolve_station(db: Database, name_or_code: str) -> sqlite3.Row | None:
+    """Find a Metrorail station by code, alias, or name.
+
+    Order: station code → alias ("DCA", "Reagan") → exact name → every word of the
+    query appearing as a whole word in the name (so "National Airport" never
+    matches "Washington Dulles *Inter*national Airport") → plain substring.
+    """
     token = name_or_code.strip()
-    row = db.conn.execute(
-        "SELECT * FROM stations WHERE code = ?", (token.upper(),)
-    ).fetchone()
+    for suffix in _STATION_SUFFIXES:
+        if token.lower().endswith(suffix) and len(token) > len(suffix):
+            token = token[: -len(suffix)].strip()
+            break
+    if not token:
+        return None
+    row = db.conn.execute("SELECT * FROM stations WHERE code = ?", (token.upper(),)).fetchone()
     if row:
         return row
-    rows = db.conn.execute(
-        "SELECT * FROM stations WHERE name LIKE ? ORDER BY LENGTH(name) LIMIT 1",
-        (f"%{token}%",),
-    ).fetchall()
-    return rows[0] if rows else None
+    alias = lookup_alias(db, token, "wmata")
+    if alias:
+        row = db.conn.execute(
+            "SELECT * FROM stations WHERE code = ?", (alias["stop_id"],)
+        ).fetchone()
+        if row:
+            return row
+
+    stations = db.conn.execute("SELECT * FROM stations").fetchall()
+    exact = [s for s in stations if s["name"].lower() == token.lower()]
+    if exact:
+        return exact[0]
+    want = _words(token)
+    if want:
+        whole = [s for s in stations if all(w in _words(s["name"]) for w in want)]
+        if whole:
+            return min(whole, key=lambda s: len(s["name"]))
+    sub = [s for s in stations if token.lower() in s["name"].lower()]
+    return min(sub, key=lambda s: len(s["name"])) if sub else None
 
 
 def get_station_info(db: Database, name_or_code: str) -> dict | None:

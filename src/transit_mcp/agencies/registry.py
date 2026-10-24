@@ -176,4 +176,14 @@ def seed_curated_tables(db: Database, agencies: list[AgencyConfig]) -> None:
         marks = ",".join("?" for _ in slugs)
         db.conn.execute(f"DELETE FROM agency_profiles WHERE feed_id NOT IN ({marks})", slugs)
         db.conn.execute(f"DELETE FROM fare_vending WHERE feed_id NOT IN ({marks})", slugs)
+    db.conn.execute("DELETE FROM place_aliases")
+    db.conn.executemany(
+        "INSERT OR REPLACE INTO place_aliases (alias, feed_id, stop_id) VALUES (?, ?, ?)",
+        [
+            (alias.strip().lower(), a.slug, stop_id)
+            for a in agencies
+            for alias, stop_id in a.aliases.items()
+            if alias.strip()
+        ],
+    )
     db.commit()

@@ -13,7 +13,7 @@ import math
 
 from transit_mcp.config import get_settings
 from transit_mcp.db.database import Database
-from transit_mcp.retrieval.queries import is_stale, resolve_station
+from transit_mcp.retrieval.queries import is_stale, lookup_alias, resolve_station
 
 _DAY_ALIASES = {
     "mon": "mon", "monday": "mon", "tue": "tue", "tues": "tue", "tuesday": "tue",
@@ -61,6 +61,19 @@ def resolve_point(db: Database, place: str) -> dict | None:
                         "kind": "point", "feed": None, "id": None}
         except ValueError:
             pass
+
+    # An alias for a non-WMATA stop ("Mason" -> a CUE stop, etc.)
+    alias = lookup_alias(db, p)
+    if alias and alias["feed_id"] != "wmata":
+        row = db.conn.execute(
+            "SELECT feed_id, stop_id, name, lat, lon FROM gtfs_stops "
+            "WHERE feed_id = ? AND stop_id = ?",
+            (alias["feed_id"], alias["stop_id"]),
+        ).fetchone()
+        if row and row["lat"] is not None:
+            return {"lat": row["lat"], "lon": row["lon"],
+                    "label": f"{row['name']} ({row['feed_id']})",
+                    "kind": "gtfs", "feed": row["feed_id"], "id": row["stop_id"]}
 
     st = resolve_station(db, p)
     if st and st["lat"] is not None:

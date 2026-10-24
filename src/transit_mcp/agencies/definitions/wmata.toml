@@ -51,10 +51,34 @@ notes = """\
   peak). Metrobus is a $2.00 flat fare. Fares change; confirm the current amount at \
   the fare page before you travel."""
 
-# Real-time incidents, stations, lines, parking, entrances, station-to-station fares.
+# What riders call stations when it isn't the official name. Matching is
+# case-insensitive. (Without these, "National Airport" would match "Washington
+# Dulles International Airport".)
+[aliases]
+"DCA" = "C10"
+"Reagan" = "C10"
+"Reagan Airport" = "C10"
+"Reagan National" = "C10"
+"Reagan National Airport" = "C10"
+"National Airport" = "C10"
+"Washington National Airport" = "C10"
+"IAD" = "N10"
+"Dulles" = "N10"
+"Dulles Airport" = "N10"
+"Dulles International" = "N10"
+"Dulles International Airport" = "N10"
+# Neighbourhood names riders use for the station that serves them.
+"Old Town" = "C13"
+"Old Town Alexandria" = "C13"
+"Tysons Corner" = "N02"
+"Nationals Park" = "F05"
+
+# Real-time incidents, stations, lines, parking, entrances, station-to-station fares,
+# and the order of stations along each Metrorail line (from WMATA's rail GTFS).
 [[sources]]
 type = "wmata_api"
 include_fares = true
+rail_line_order = true
 
 # Rider-guidance pages on wmata.com. A curated allow-list, not an open crawl: hub
 # pages (follow_children = true) fan out one hop to child pages under child_prefixes.

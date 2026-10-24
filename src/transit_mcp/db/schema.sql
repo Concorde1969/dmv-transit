@@ -124,6 +124,24 @@ CREATE TABLE IF NOT EXISTS stations (
 );
 CREATE INDEX IF NOT EXISTS idx_stations_latlon ON stations(lat, lon);
 
+-- Station order along each Metrorail line (from WMATA's rail GTFS; WMATA's jPath
+-- endpoint omits shared stations on some lines, so it can't be used for transfers).
+CREATE TABLE IF NOT EXISTS rail_line_stops (
+    line_code    TEXT NOT NULL,
+    seq          INTEGER NOT NULL,
+    station_code TEXT NOT NULL,
+    PRIMARY KEY (line_code, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_rail_line_stops_station ON rail_line_stops(station_code);
+
+-- Alternate names riders use for a stop or station ("DCA", "Reagan", "IAD").
+-- Seeded from each agency definition's [aliases] table.
+CREATE TABLE IF NOT EXISTS place_aliases (
+    alias   TEXT PRIMARY KEY,     -- lowercase
+    feed_id TEXT NOT NULL,
+    stop_id TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS lines (
     code               TEXT PRIMARY KEY,
     display_name       TEXT NOT NULL,

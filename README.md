@@ -8,6 +8,17 @@ Loudoun, OmniRide**), and focuses on what trips actually hinge on: which systems
 connect where, **on which days and at what times** a connection works, and **how to
 pay** each leg.
 
+> **Unofficial.** This is an independent project. It is **not affiliated with,
+> endorsed by, sponsored by, or operated by** WMATA or any other transit agency.
+> Agency names identify their services only. For official information, contact the
+> agency directly.
+
+Answers are grounded in the stored data: the assistant must call its tools before it
+answers, is instructed never to fill gaps from the model's general knowledge, and says
+"I don't have that information" rather than guess. (The Claude API no longer accepts a
+`temperature` setting, so accuracy is enforced through the data, the tools and the
+prompt instead — see `chat/agent.py`.)
+
 ## Quick start (Windows)
 
 1. Install [Python 3.11+](https://www.python.org/downloads/) (tick *Add python.exe to PATH*).

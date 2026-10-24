@@ -11,6 +11,10 @@ small AWS Lightsail server running three containers:
 
 Plan on **about an hour** the first time, most of it waiting for DNS.
 
+> The site is an **unofficial** tool, not affiliated with WMATA or any transit agency.
+> The page says so in its header, welcome message and footer — keep those notices if
+> you customise the page, and don't use agency logos.
+
 ## What it costs
 
 | Item | Cost |

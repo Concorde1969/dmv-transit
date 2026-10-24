@@ -9,7 +9,12 @@ API reference: https://developer.wmata.com/docs/services/
 
 from __future__ import annotations
 
+import csv
+import io
 import json
+import re
+import zipfile
+from collections import defaultdict
 from datetime import datetime
 from typing import Any
 
@@ -30,6 +35,8 @@ ENDPOINTS = {
     "station_entrances": "/Rail.svc/json/jStationEntrances",
     "station_to_station": "/Rail.svc/json/jSrcStationToDstStationInfo",
 }
+# Metrorail GTFS (same API key). Used only for the order of stations on each line.
+RAIL_GTFS_URL = "https://api.wmata.com/gtfs/rail-gtfs-static.zip"
 
 
 def _parse_dt(value: str | None) -> datetime | None:
@@ -85,6 +92,11 @@ class WmataApiClient:
 
     def station_entrances(self):
         return self._get("station_entrances")
+
+    def rail_gtfs(self) -> bytes:
+        self._http._client.headers["api_key"] = self._key
+        _status, content, _headers = self._http.get_bytes(RAIL_GTFS_URL)
+        return content
 
     def station_to_station(self, from_code: str, to_code: str | None = None):
         params = {"FromStationCode": from_code}
@@ -302,3 +314,78 @@ def normalize_entrances(data: dict) -> dict[str, list[dict]]:
                     }
                 )
     return by_station
+
+
+# ---------------------------------------------------------------------------
+# Station order along each line, from the Metrorail GTFS feed
+# ---------------------------------------------------------------------------
+_ROUTE_TO_LINE = {"RED": "RD", "BLUE": "BL", "GREEN": "GR", "YELLOW": "YL",
+                  "ORANGE": "OR", "SILVER": "SV"}
+_CODE_RE = re.compile(r"[A-Z]\d\d")
+
+
+def _gtfs_rows(zf: zipfile.ZipFile, member: str):
+    with zf.open(member) as raw:
+        yield from csv.DictReader(io.TextIOWrapper(raw, encoding="utf-8-sig", newline=""))
+
+
+def rail_line_order_from_gtfs(
+    content: bytes, station_lines: dict[str, set[str]]
+) -> dict[str, list[str]]:
+    """Ordered WMATA station codes for each line, taken from the longest trip on
+    each route in the rail GTFS feed.
+
+    ``station_lines`` maps station code -> line codes (from the API ``stations``
+    table); it picks the right code at two-level transfer stations such as Metro
+    Center (A01 for Red, C01 for Blue/Orange/Silver).
+    """
+    zf = zipfile.ZipFile(io.BytesIO(content))
+
+    route_line = {}
+    for r in _gtfs_rows(zf, "routes.txt"):
+        key = (r.get("route_id") or "").strip().upper()
+        line = _ROUTE_TO_LINE.get(key) or _ROUTE_TO_LINE.get(
+            (r.get("route_long_name") or "").strip().upper()
+        )
+        if line:
+            route_line[r["route_id"]] = line
+
+    trip_line = {t["trip_id"]: route_line[t["route_id"]]
+                 for t in _gtfs_rows(zf, "trips.txt") if t.get("route_id") in route_line}
+
+    parent = {}
+    for st in _gtfs_rows(zf, "stops.txt"):
+        sid = st["stop_id"]
+        anchor = st.get("parent_station") or (sid if sid.startswith("STN_") else "")
+        if anchor:
+            parent[sid] = _CODE_RE.findall(anchor)
+
+    # Pass 1: stops per trip -> the longest trip for each line.
+    counts: dict[str, int] = defaultdict(int)
+    for row in _gtfs_rows(zf, "stop_times.txt"):
+        if row["trip_id"] in trip_line:
+            counts[row["trip_id"]] += 1
+    best: dict[str, str] = {}
+    for trip, n in counts.items():
+        line = trip_line[trip]
+        if n > counts.get(best.get(line, ""), 0):
+            best[line] = trip
+    wanted = {trip: line for line, trip in best.items()}
+
+    # Pass 2: the stop sequence of just those trips.
+    seqs: dict[str, list[tuple[int, str]]] = defaultdict(list)
+    for row in _gtfs_rows(zf, "stop_times.txt"):
+        if row["trip_id"] in wanted:
+            seqs[row["trip_id"]].append((int(row["stop_sequence"]), row["stop_id"]))
+
+    order: dict[str, list[str]] = {}
+    for trip, line in wanted.items():
+        codes: list[str] = []
+        for _, stop_id in sorted(seqs[trip]):
+            candidates = parent.get(stop_id) or []
+            code = next((c for c in candidates if line in station_lines.get(c, ())),
+                        candidates[0] if candidates else None)
+            if code and (not codes or codes[-1] != code):
+                codes.append(code)
+        order[line] = codes
+    return order

@@ -12,7 +12,7 @@ from mcp.server.fastmcp import FastMCP
 
 from transit_mcp.config import get_settings
 from transit_mcp.db.database import Database
-from transit_mcp.retrieval import connect, queries, regional
+from transit_mcp.retrieval import connect, metro, queries, regional
 from transit_mcp.retrieval.search import search
 
 _INSTRUCTIONS = """\
@@ -21,11 +21,21 @@ WMATA (Metrorail + Metrobus) plus the complementary systems — VRE commuter rai
 Virginia Breeze intercity coach, and the Fairfax Connector, ART, DASH, CUE, Loudoun,
 and OmniRide bus networks. WMATA data comes from wmata.com + the WMATA API; the other
 agencies come from their GTFS feeds plus scraped fare pages. All data is cached locally.
+This is an independent, UNOFFICIAL tool — it is not affiliated with, endorsed by, or
+operated by WMATA or any other transit agency.
 
-For WMATA specifics use get_fare / get_service_alerts / get_elevator_escalator_status /
-get_station_info. For anything spanning agencies use list_agencies, find_stops_near,
-get_route, transfers_at, how_to_pay, plan_connection, and estimate_trip_cost. Use
-search_transit_info for "how do I..." questions.
+GROUNDING: answer transit questions ONLY from these tools' results. Never fill gaps from
+general knowledge or memory — lines, routes, transfers, fares, hours and stations change.
+If the tools don't return it, say the information isn't available here and point to the
+agency's official website.
+
+For any Metrorail trip between two stations call get_metro_route — it says which line(s)
+to ride, where to change trains, and which direction. Never describe a Metrorail trip as
+direct / one seat / no transfer unless get_metro_route returns "transfers": 0.
+For other WMATA specifics use get_fare / get_service_alerts /
+get_elevator_escalator_status / get_station_info. For anything spanning agencies use
+list_agencies, find_stops_near, get_route, transfers_at, how_to_pay, plan_connection,
+and estimate_trip_cost. Use search_transit_info for "how do I..." questions.
 
 When advising on trips: use Metrorail or VRE for fast line-haul and local/express bus
 for coverage and the first/last mile. ALWAYS tell the rider which days and times a
@@ -98,6 +108,20 @@ def get_fare(origin: str, destination: str, rider_type: str = "regular") -> dict
     """
     with _db() as db:
         return queries.get_fare(db, origin, destination, rider_type=rider_type)
+
+
+@mcp.tool()
+def get_metro_route(origin: str, destination: str) -> dict:
+    """How to ride Metrorail between two stations: which line(s), where to change
+    trains, which direction ("toward ..."), number of stops, and the fare. Use this for
+    EVERY Metrorail trip — never assume two stations share a line.
+
+    Args:
+        origin: Station name, code (e.g. "C10"), or airport name/code ("DCA", "Dulles").
+        destination: Station name, code, or airport name/code.
+    """
+    with _db() as db:
+        return metro.metro_route(db, origin, destination)
 
 
 @mcp.tool()

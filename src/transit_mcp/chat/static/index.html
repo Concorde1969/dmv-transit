@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>DMV Regional Transportation Assistant</title>
+<title>DMV Regional Transportation Assistant (Unofficial)</title>
+<meta name="description" content="An independent, unofficial guide to riding buses, trains, and Metro around DC, Maryland, and Virginia. Not affiliated with WMATA or any transit agency." />
 <style>
   :root {
     /* Warm "wayfinding" palette — cream paper, friendly teal, terracotta accents */
@@ -90,6 +91,26 @@
   header .tagline {
     margin: 6px 0 0;
     font-size: 1rem;
+    color: var(--ink-soft);
+  }
+  .unofficial {
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 10px;
+    padding: 3px 10px;
+    border: 2px solid var(--clay);
+    border-radius: 999px;
+    color: var(--clay);
+    font-family: var(--sans, inherit);
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  header .affiliation {
+    margin: 4px 0 0;
+    font-size: 0.92rem;
     color: var(--ink-soft);
   }
   /* dotted "route line" motif */
@@ -268,6 +289,16 @@
     margin: 0 0 10px; color: var(--ink);
   }
   .welcome p { font-size: 1.08rem; color: var(--ink-soft); margin: 0 auto; max-width: 34rem; }
+  .disclaimer {
+    margin: 22px auto 0; max-width: 34rem; text-align: left;
+    background: var(--paper-deep); border: 1px solid var(--line);
+    border-left: 5px solid var(--clay); border-radius: 12px;
+    padding: 14px 16px; font-size: 1rem; color: var(--ink);
+  }
+  .disclaimer strong { color: var(--ink); }
+  .about { margin: 10px auto 0; max-width: 34rem; text-align: left; font-size: 0.98rem; }
+  .about summary { cursor: pointer; color: var(--teal-deep); font-weight: 600; padding: 6px 0; }
+  .about p { text-align: left; font-size: 0.98rem; margin: 8px 0 0; max-width: none; }
   .prompt-label {
     margin: 30px 0 12px; font-weight: 700; color: var(--ink); font-size: 1rem;
   }
@@ -355,8 +386,9 @@
 <body>
 <header>
   <div class="brand">
-    <h1>DMV Regional Transportation Assistant</h1>
+    <h1>DMV Regional Transportation Assistant <span class="unofficial">Unofficial</span></h1>
     <p class="tagline">Buses, trains, and Metro across DC, Maryland &amp; Virginia</p>
+    <p class="affiliation">An independent guide — not affiliated with WMATA or any transit agency.</p>
     <div class="route" aria-hidden="true"></div>
   </div>
   <button class="btn btn-quiet" id="resetBtn">Start a new question</button>
@@ -373,6 +405,27 @@
         in the Washington DC, Maryland, and Virginia area. New to public transit?
         That's exactly who this is for.
       </p>
+      <div class="disclaimer" role="note">
+        <strong>Please note: this is an unofficial tool.</strong> It is not affiliated
+        with, endorsed by, or operated by WMATA (Metro) or any other transit agency.
+        For official information, refunds, or complaints, contact the agency directly —
+        for Metro, visit <a href="https://www.wmata.com" target="_blank" rel="noopener">wmata.com</a>.
+      </div>
+      <details class="about">
+        <summary>About this site</summary>
+        <p>
+          This assistant is an independent project. It answers from public information
+          published by the region's transit agencies — schedules, maps, fare pages, and
+          WMATA's public data feeds — which it collects and stores regularly. It does not
+          make things up from memory: if the information isn't in its data, it will say so.
+        </p>
+        <p>
+          Transit agencies change routes, schedules, and fares from time to time, and
+          this site's copy can lag behind. Always confirm departure times and prices with
+          the agency before you travel. Agency names are used only to identify their
+          services.
+        </p>
+      </details>
       <div class="prompt-label">Try one of these to get started:</div>
       <div class="chips" id="chips"></div>
     </div>
@@ -391,9 +444,11 @@
   </div>
   <div class="hint">
     Press <strong>Send</strong> (or the Enter key) to ask. Use Shift+Enter for a new
-    line. This assistant offers helpful guidance — always double-check departure
-    times and prices with the transit agency before you travel.
-    <br>Please don't include personal information. Conversations are not saved.
+    line. Always double-check departure times and prices with the transit agency
+    before you travel.
+    <br><strong>Unofficial tool</strong> — not affiliated with, endorsed by, or operated
+    by WMATA or any transit agency. Please don't include personal information.
+    Conversations are not saved.
   </div>
 </footer>
 

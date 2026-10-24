@@ -142,7 +142,9 @@ MESSAGES = {
     "day": "You've reached today's limit of questions from this device. Please come back "
            "tomorrow — thank you for understanding.",
     "site_busy": "The assistant has answered as many questions as it can for today. "
-                 "Please try again tomorrow, or visit wmata.com or call 202-637-7000.",
+                 "Please try again tomorrow. For official information, visit the "
+                 "transit agency's own website (for Metro, wmata.com) — this site is "
+                 "an unofficial tool and is not affiliated with any agency.",
     "busy_session": "I'm still working on your last question. Please wait for that "
                     "answer first.",
     "max_turns": "This conversation has gotten long. Please press \"Start a new "

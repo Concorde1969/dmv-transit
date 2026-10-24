@@ -77,6 +77,9 @@ class AgencyConfig(BaseModel):
     profile: ProfileConfig = Field(default_factory=ProfileConfig)
     fares: FareConfig = Field(default_factory=FareConfig)
     sources: list[SourceConfig] = Field(default_factory=list)
+    # Names riders use for a stop/station that its official name doesn't match,
+    # e.g. {"DCA" = "C10"}. Values are GTFS stop_ids (or WMATA station codes).
+    aliases: dict[str, str] = Field(default_factory=dict)
 
     # Set by the registry: where this definition was loaded from.
     origin: str | None = Field(default=None, exclude=True)
