@@ -44,6 +44,8 @@ notes = """\
 
 # fairfaxva.gov returns an HTML block page to scripts. Download the CUE GTFS zip in a
 # browser and save it as feeds/cue/google_transit.zip.
+# Not listed in Transitland and not published for scripted download: save the
+# GTFS zip as feeds/cue/google_transit.zip.
 [[sources]]
 type = "gtfs"
 manual = true

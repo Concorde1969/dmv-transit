@@ -25,8 +25,13 @@ def _ingest_summary(result: dict) -> str:
                 continue
             if stats.get("status") == "error":
                 parts.append(f"{stype}: FAILED ({stats.get('error')})")
+            elif stype.startswith("gtfs_rt_alerts"):
+                parts.append(f"{stats.get('alerts', 0)} live alerts"
+                             if "alerts" in stats else f"alerts: {stats.get('skipped')}")
             elif stype.startswith("gtfs"):
-                parts.append(f"schedules {stats.get('status', 'done')}")
+                via = stats.get("fetched_via")
+                parts.append(f"schedules {stats.get('status', 'done')}"
+                             + (f" (via {via})" if via else ""))
             elif stype.startswith("web_pages"):
                 parts.append(f"{stats.get('fetched', 0)} web pages")
             elif stype.startswith("wmata_api"):

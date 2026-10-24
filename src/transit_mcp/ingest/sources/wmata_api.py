@@ -36,7 +36,6 @@ from transit_mcp.ingest.wmata_api import (
     normalize_station_to_station,
     normalize_stations,
     parking_station_codes,
-    rail_line_order_from_gtfs,
 )
 from transit_mcp.models import Document
 
@@ -44,8 +43,6 @@ from transit_mcp.models import Document
 class WmataApiOptions(BaseModel):
     model_config = ConfigDict(extra="forbid")
     include_fares: bool = True
-    # Station order per line from WMATA's rail GTFS (needed for transfer routing).
-    rail_line_order: bool = True
 
 
 def _hash(text: str) -> str:
@@ -200,19 +197,6 @@ class WmataApiSource:
         stats["stations"] = len(stations_data.get("Stations", []) or [])
         stats["station_docs"] = _station_docs(db, fid, stations_data, entrances, parking)
         db.commit()
-
-        # --- station order along each line (full runs, or when missing) ---
-        have_order = db.conn.execute("SELECT COUNT(*) FROM rail_line_stops").fetchone()[0]
-        if opts.rail_line_order and (ctx.options.include_fares or not have_order):
-            try:
-                station_lines = {
-                    r["code"]: set(json.loads(r["line_codes"] or "[]"))
-                    for r in db.conn.execute("SELECT code, line_codes FROM stations")
-                }
-                order = rail_line_order_from_gtfs(client.rail_gtfs(), station_lines)
-                stats["rail_line_order"] = store_rail_line_order(db, order)
-            except Exception as exc:  # noqa: BLE001
-                stats["errors"].append(f"rail_line_order: {exc}")
 
         # --- incidents: rail, bus, elevator/escalator ---
         def incidents(name, fetch, normalize, mode):

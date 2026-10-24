@@ -92,6 +92,8 @@ class Leg(BaseModel):
     agency: str | None = None
     system: str | None = Field(None, description="Display name, e.g. 'DASH'.")
     route: str | None = None
+    route_id: str | None = Field(
+        None, description="GTFS route_id (Metrorail: line code) — used to match alerts.")
     headsign: str | None = None
     board: str | None = None
     alight: str | None = None

@@ -43,11 +43,18 @@ Developer License Agreement yourself — terms may have changed.
   used only to ground a language model's answers — not republished as a stand-alone
   copy of WMATA's website.
 
-## Regional GTFS feeds
+## GTFS feeds and Transitland
 
-GTFS static feeds for VRE, Fairfax Connector, ART, DASH, CUE, Loudoun County Transit,
-OmniRide, and Virginia Breeze are published by those agencies (or their sponsors, e.g.
-Virginia DRPT) for redistribution under the GTFS specification. This project:
+Routes, stops and schedules come only from GTFS static feeds. WMATA's rail and bus feeds
+are used under the WMATA Developer License Agreement (above); the feeds for VRE,
+Fairfax Connector, ART, DASH, CUE, Loudoun County Transit, OmniRide, and Virginia Breeze
+are published by those agencies (or their sponsors, e.g. Virginia DRPT) under the GTFS
+specification. Feeds are located through [Transitland](https://www.transit.land/) (its
+public `transitland-atlas` registry, or its API when `TRANSITLAND_API_KEY` is set); a
+feed is downloaded from Transitland's own copy only when Transitland's license data
+allows redistribution, otherwise from the official URL Transitland lists. Fairfax
+Connector's GTFS-realtime service alerts are read from the URL Transitland lists. This
+project:
 
 - caches each feed locally and records its `feed_publisher_name` / `feed_publisher_url`
   from `feed_info.txt` for attribution;

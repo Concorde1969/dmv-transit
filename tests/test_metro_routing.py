@@ -132,3 +132,70 @@ def test_planner_never_calls_a_line_change_direct(metro_db, isolated_settings):
     assert "no transfer" not in best["summary"].lower()
     # one Metro fare covers the whole trip
     assert rides[1]["fare"] == 0.0
+
+
+# --- schedules from the Metrorail GTFS -------------------------------------------
+def _rail_gtfs(db):
+    """A tiny rail GTFS: Blue runs every day; Silver Rosslyn->Dulles only Mon-Sat.
+    Platforms hang off parent stations named the WMATA way (STN_<code>)."""
+    db.conn.execute(
+        "INSERT INTO gtfs_feeds (feed_id, agency_name, status, transitland_id, "
+        "feed_start_date, feed_end_date, fetched_at, index_stops) VALUES "
+        "('wmata', 'Metrorail (WMATA)', 'loaded', 'f-dqc-wmata~rail', '20261022', "
+        "'20261030', datetime('now'), 0)"
+    )
+    for code in ("C10", "C05", "N10", "C04"):
+        db.conn.execute(
+            "INSERT INTO gtfs_stops (feed_id, stop_id, name, parent_station) "
+            "VALUES ('wmata', ?, ?, ?)", (f"PF_{code}_1", code, f"STN_{code}"))
+    db.conn.executemany(
+        "INSERT INTO gtfs_calendar (feed_id, service_id, monday, tuesday, wednesday, "
+        "thursday, friday, saturday, sunday) VALUES ('wmata', ?, ?, ?, ?, ?, ?, ?, ?)",
+        [("WK", 1, 1, 1, 1, 1, 0, 0), ("SAT", 0, 0, 0, 0, 0, 1, 0),
+         ("SUN", 0, 0, 0, 0, 0, 0, 1)],
+    )
+    trips = [  # trip, route, service, [(stop, time), ...]
+        ("b-wk", "BLUE", "WK", [("C10", "05:21:00"), ("C05", "05:35:00"), ("C04", "05:38:00")]),
+        ("b-late", "BLUE", "WK", [("C10", "23:44:00"), ("C05", "23:58:00")]),
+        ("b-sun", "BLUE", "SUN", [("C10", "07:00:00"), ("C05", "07:14:00")]),
+        ("s-wk", "SILVER", "WK", [("C05", "05:40:00"), ("N10", "06:20:00")]),
+        ("s-sat", "SILVER", "SAT", [("C05", "06:36:00"), ("N10", "07:16:00")]),
+        ("s-back", "SILVER", "WK", [("N10", "05:00:00"), ("C05", "05:40:00")]),
+    ]
+    for trip, route, service, calls in trips:
+        db.conn.execute("INSERT INTO gtfs_trips (feed_id, trip_id, route_id, service_id) "
+                        "VALUES ('wmata', ?, ?, ?)", (trip, route, service))
+        db.conn.executemany(
+            "INSERT INTO gtfs_stop_times (feed_id, trip_id, stop_id, stop_sequence, "
+            "departure_time) VALUES ('wmata', ?, ?, ?, ?)",
+            [(trip, f"PF_{code}_1", i + 1, t) for i, (code, t) in enumerate(calls)],
+        )
+    db.commit()
+
+
+def test_metro_route_reports_service_days_and_first_last_trains(metro_db):
+    _rail_gtfs(metro_db)
+    r = metro.metro_route(metro_db, "DCA", "IAD")
+    blue, silver = r["legs"]
+    assert blue["service"]["days"] == ["mon", "tue", "wed", "thu", "fri", "sun"]
+    assert blue["service"]["first_and_last_trains"][0] == {
+        "days": "Mon–Fri", "first_departure": "5:21 am", "last_departure": "11:44 pm"}
+    # Silver Rosslyn -> Dulles: no Sunday train (the reverse-direction trip doesn't count)
+    assert silver["service"]["days"] == ["mon", "tue", "wed", "thu", "fri", "sat"]
+    assert r["service_note"] is None
+    assert r["url"] == "https://www.transit.land/feeds/f-dqc-wmata~rail"
+    assert "Transitland" in r["source"]
+
+
+def test_planner_uses_gtfs_days_for_metro(metro_db, isolated_settings):
+    _rail_gtfs(metro_db)
+    plan = connect.plan_connection(metro_db, "DCA", "IAD", "sunday")
+    best = plan["options"][0]
+    assert best["feasible"] is False  # Blue runs Sunday, Silver doesn't
+    assert "Sunday" in best["feasibility"]
+
+
+def test_without_rail_gtfs_service_is_not_claimed(metro_db):
+    r = metro.metro_route(metro_db, "DCA", "IAD")
+    assert all(leg["service"] is None for leg in r["legs"])
+    assert "isn't loaded" in r["service_note"]

@@ -21,7 +21,8 @@ from datetime import datetime
 
 from transit_mcp.db.database import Database
 from transit_mcp.planning.models import Leg, TripOption, TripPlan, TripRequest
-from transit_mcp.retrieval.metro import route_between_codes
+from transit_mcp.retrieval.metro import _network as metro_network
+from transit_mcp.retrieval.metro import leg_service, route_between_codes
 from transit_mcp.retrieval.queries import get_fare, is_stale
 from transit_mcp.retrieval.regional import _DAY_FULL, _day_filter, _haversine_m
 
@@ -93,6 +94,9 @@ class _Planner:
             for r in db.conn.execute(f"SELECT * FROM {table}"):
                 self.meta.setdefault(r["feed_id"], {})[key] = dict(r)
         self._masks: dict[str, dict[str, set[str]]] = {}
+        self._complex: dict | None = None
+        self._visits: dict[str, dict[str, dict[str, int]]] = {}  # feed -> stop -> {trip: seq}
+        self._meta: dict[str, dict[str, tuple[str, str]]] = {}
         self._routes: dict[tuple[str, str], str] = {}
 
     # -- agency metadata -------------------------------------------------------
@@ -119,10 +123,15 @@ class _Planner:
                 "WHERE feed_id = ?", (feed,),
             ):
                 masks[r["service_id"]] = {d for d, c in zip(_ORDER, _CAL_COLS) if r[c]}
+            # Dated additions only define the days of services with no weekly pattern
+            # (holiday swaps would otherwise mark e.g. a Sunday schedule as Monday).
+            weekly = {sid for sid, days in masks.items() if days}
             for r in self.db.conn.execute(
                 "SELECT service_id, date FROM gtfs_calendar_dates "
                 "WHERE feed_id = ? AND exception_type = 1", (feed,),
             ):
+                if r["service_id"] in weekly:
+                    continue
                 try:
                     dow = _ORDER[datetime.strptime(r["date"], "%Y%m%d").weekday()]
                 except ValueError:
@@ -152,33 +161,70 @@ class _Planner:
         return r["name"] if r else stop_id
 
     # -- verified GTFS connections -------------------------------------------------
+    def _trip_meta(self, feed: str, trips: set[str]) -> dict[str, tuple[str, str]]:
+        """trip_id -> (route_id, service_id), cached for the whole plan."""
+        known = self._meta.setdefault(feed, {})
+        todo = [t for t in trips if t not in known]
+        cur = self.db.conn.cursor()
+        cur.row_factory = None
+        for i in range(0, len(todo), 900):
+            chunk = todo[i:i + 900]
+            for trip, route, service in cur.execute(
+                f"SELECT trip_id, route_id, service_id FROM gtfs_trips WHERE feed_id = ? "
+                f"AND trip_id IN ({','.join('?' * len(chunk))})", (feed, *chunk),
+            ):
+                known[trip] = (route, service)
+        return known
+
     def _trips(self, feed: str, from_ids: list[str], to_ids: list[str],
                group_by: str) -> dict[str, dict]:
         """Scheduled trips that serve a ``from`` stop before a ``to`` stop, best per
         ``group_by`` stop ('to' = per reachable destination, 'from' = per origin)."""
         if not from_ids or not to_ids:
             return {}
-        fm, tm = ",".join("?" * len(from_ids)), ",".join("?" * len(to_ids))
-        rows = self.db.conn.execute(
-            f"""
-            SELECT a.stop_id AS a_stop, b.stop_id AS b_stop, t.route_id,
-                   COUNT(*) AS n, GROUP_CONCAT(DISTINCT t.service_id) AS services
-              FROM gtfs_stop_times a
-              JOIN gtfs_stop_times b
-                ON b.feed_id = a.feed_id AND b.trip_id = a.trip_id
-               AND b.stop_sequence > a.stop_sequence
-              JOIN gtfs_trips t ON t.feed_id = a.feed_id AND t.trip_id = a.trip_id
-             WHERE a.feed_id = ? AND a.stop_id IN ({fm}) AND b.stop_id IN ({tm})
-             GROUP BY a.stop_id, b.stop_id, t.route_id
-            """,
-            (feed, *from_ids, *to_ids),
-        ).fetchall()
+        # Per stop, the trips that call there ({trip: sequence}, one indexed lookup and
+        # cached for the whole plan); a trip connects two stops if it calls at both, in
+        # order. Set intersections keep this fast even at hubs with thousands of trips,
+        # where a SQL self-join would walk every stop of every trip.
+        cache = self._visits.setdefault(feed, {})
+        missing = [s for s in {*from_ids, *to_ids} if s not in cache]
+        if missing:
+            cur = self.db.conn.cursor()
+            cur.row_factory = None  # plain tuples: much faster for many rows
+            for s in missing:
+                cache[s] = {}
+            for i in range(0, len(missing), 900):
+                chunk = missing[i:i + 900]
+                for trip, stop, seq in cur.execute(
+                    f"SELECT trip_id, stop_id, stop_sequence FROM gtfs_stop_times "
+                    f"WHERE feed_id = ? AND stop_id IN ({','.join('?' * len(chunk))})",
+                    (feed, *chunk),
+                ):
+                    cache[stop][trip] = seq
+
+        found: list[tuple[str, str, str]] = []  # (a_stop, b_stop, trip)
+        for a_stop in set(from_ids):
+            a_trips = cache[a_stop]
+            for b_stop in set(to_ids):
+                b_trips = cache[b_stop]
+                found.extend((a_stop, b_stop, t) for t in a_trips.keys() & b_trips.keys()
+                             if b_trips[t] > a_trips[t])
+        if not found:
+            return {}
+        meta = self._trip_meta(feed, {t for _, _, t in found})
+
+        pairs: dict[tuple[str, str, str], dict] = {}
+        for a_stop, b_stop, trip in found:
+            route_id, service_id = meta.get(trip, (None, None))
+            p = pairs.setdefault((a_stop, b_stop, route_id), {"n": 0, "services": set()})
+            p["n"] += 1
+            p["services"].add(service_id)
         best: dict[str, dict] = {}
-        for r in rows:
-            key = r["b_stop"] if group_by == "to" else r["a_stop"]
-            if key not in best or r["n"] > best[key]["n"]:
-                best[key] = {"from": r["a_stop"], "to": r["b_stop"], "route_id": r["route_id"],
-                             "n": r["n"], "services": set((r["services"] or "").split(","))}
+        for (a_stop, b_stop, route_id), p in pairs.items():
+            key = b_stop if group_by == "to" else a_stop
+            if key not in best or p["n"] > best[key]["n"]:
+                best[key] = {"from": a_stop, "to": b_stop, "route_id": route_id,
+                             "n": p["n"], "services": p["services"]}
         return best
 
     def gtfs_leg(self, feed: str, hit: dict, role: str) -> tuple[Leg, set[str]]:
@@ -186,7 +232,7 @@ class _Planner:
         methods = json.loads(fare.get("payment_methods") or "[]")
         leg = Leg(
             mode="ride", agency=feed, system=self.name(feed),
-            route=self.route_label(feed, hit["route_id"]),
+            route=self.route_label(feed, hit["route_id"]), route_id=hit["route_id"],
             board=self.stop_name(feed, hit["from"]), alight=self.stop_name(feed, hit["to"]),
             board_stop_id=hit["from"], alight_stop_id=hit["to"], role=role,
             fare=fare.get("base_fare"), pay_with=methods[0] if methods else "see fare page",
@@ -194,10 +240,28 @@ class _Planner:
         )
         return leg, self.service_days(feed, hit["services"])
 
-    def metro_legs(self, from_code: str, to_code: str, role: str) -> list[Leg] | None:
+    def metro_legs(self, from_code: str, to_code: str,
+                   role: str) -> tuple[list[Leg], set[str]] | None:
+        """Metrorail legs between two stations plus the days scheduled trains make the
+        whole trip (from the rail GTFS). None if there is no route or no train."""
         route = route_between_codes(self.db, from_code, to_code)
         if not route or not route["legs"]:
             return None
+        if self._complex is None:
+            self._complex = metro_network(self.db)[3]
+        days, hours, confirmed = set(_ALL_DAYS), [], True
+        for seg in route["legs"]:
+            svc = leg_service(self.db, seg, self._complex)
+            if svc is None:
+                confirmed = False  # rail GTFS not loaded
+                hours.append("")
+                continue
+            days &= set(svc["days"])
+            hours.append("; ".join(
+                f"{t['days']} {t['first_departure']}–{t['last_departure']}"
+                for t in svc["first_and_last_trains"]))
+        if not days:
+            return None  # no scheduled train makes this trip
         fare = self.fare("wmata")
         methods = json.loads(fare.get("payment_methods") or "[]")
         price = get_fare(self.db, from_code, to_code)
@@ -213,7 +277,7 @@ class _Planner:
         for n, seg in enumerate(route["legs"]):
             legs.append(Leg(
                 mode="ride", agency="wmata", system=self.name("wmata"),
-                route=seg["line_name"], headsign=seg["toward"],
+                route=seg["line_name"], route_id=seg["line"], headsign=seg["toward"],
                 board=seg["board"], alight=seg["alight"],
                 board_stop_id=seg["board_code"], alight_stop_id=seg["alight_code"],
                 role=role,
@@ -226,9 +290,13 @@ class _Planner:
                       f"{seg['stops']} stops toward {seg['toward']}. One fare covers the "
                       f"whole Metrorail trip: ${amount:.2f} ({fare_label})."
                       if isinstance(amount, (int, float)) else
-                      f"{seg['stops']} stops toward {seg['toward']}."),
+                      f"{seg['stops']} stops toward {seg['toward']}.")
+                     + (f" Scheduled trains (first–last departure): {hours[n]}."
+                        if hours[n] else "")
+                     + ("" if confirmed else
+                        " Service days not confirmed: Metrorail schedule data not loaded."),
             ))
-        return legs
+        return legs, days
 
     # -- planning ---------------------------------------------------------------------
     def _option(self, summary, legs, day_sets, walk, rank_extra) -> tuple[tuple, TripOption]:
@@ -277,10 +345,11 @@ class _Planner:
         for ag in set(o_by) & set(d_by):
             if ag == "wmata":
                 b, a = o_by[ag][0], d_by[ag][0]
-                legs = self.metro_legs(b["stop_id"], a["stop_id"], self.role(ag))
-                if not legs:
+                found = self.metro_legs(b["stop_id"], a["stop_id"], self.role(ag))
+                if not found:
                     continue
-                days, walk = [set(_ALL_DAYS)], b["walk_min"] + a["walk_min"]
+                legs, metro_days = found
+                days, walk = [metro_days], b["walk_min"] + a["walk_min"]
                 lines = " → ".join(lg.route for lg in legs)
                 changes = (f"change trains at {', '.join(lg.alight for lg in legs[:-1])}"
                            if len(legs) > 1 else "no change of train")
@@ -341,9 +410,10 @@ class _Planner:
             for lk, near_id, hub_ag, hub_id in links:
                 # leg 1: origin system to the stop next to the hub
                 if o_ag == "wmata":
-                    legs1 = self.metro_legs(o_stops[0]["stop_id"], near_id,
+                    found = self.metro_legs(o_stops[0]["stop_id"], near_id,
                                             f"{self.role(o_ag)} — get to the hub")
-                    days1, walk1 = set(_ALL_DAYS), o_stops[0]["walk_min"]
+                    legs1, days1 = found or (None, set())
+                    walk1 = o_stops[0]["walk_min"]
                 elif near_id in hits1 and hits1[near_id]["from"] != near_id:
                     hit1 = hits1[near_id]
                     leg, days1 = self.gtfs_leg(o_ag, hit1, f"{self.role(o_ag)} — get to the hub")
@@ -357,9 +427,10 @@ class _Planner:
                 # leg 2: hub system to the destination
                 d_stops = d_by[hub_ag]
                 if hub_ag == "wmata":
-                    legs2 = self.metro_legs(hub_id, d_stops[0]["stop_id"],
+                    found = self.metro_legs(hub_id, d_stops[0]["stop_id"],
                                             f"{self.role(hub_ag)} — line-haul / final leg")
-                    days2, walk2 = set(_ALL_DAYS), d_stops[0]["walk_min"]
+                    legs2, days2 = found or (None, set())
+                    walk2 = d_stops[0]["walk_min"]
                 elif hub_id in hits2.get(hub_ag, {}):
                     hit2 = hits2[hub_ag][hub_id]
                     leg, days2 = self.gtfs_leg(hub_ag, hit2, f"{self.role(hub_ag)} — final leg")

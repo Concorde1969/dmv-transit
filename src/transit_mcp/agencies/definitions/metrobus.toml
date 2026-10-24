@@ -1,0 +1,57 @@
+slug = "metrobus"
+name = "Metrobus (WMATA)"
+mode = "bus"
+
+[profile]
+role = """\
+  WMATA's regional bus network: local and limited-stop routes across DC, Arlington, \
+  Alexandria, and inner Fairfax, Montgomery, and Prince George's counties, feeding \
+  the Metrorail stations."""
+strengths = """\
+  Dense coverage in DC and the inner suburbs; many routes run all day, every day; \
+  one SmarTrip card or contactless tap works on Metrobus, Metrorail, and most local \
+  bus partners."""
+weaknesses = """\
+  Slower than rail in traffic; frequency varies a lot by route and time of day; \
+  does not reach the outer suburbs."""
+service_area = """\
+  Washington DC; Arlington, Alexandria, Fairfax, Falls Church, Montgomery MD, \
+  Prince George's MD."""
+connects_to = ["Metrorail stations across the region", "ART, DASH, Fairfax Connector"]
+frequency_tier = "frequent"
+park_and_ride = false
+
+# Hand-written summary of wmata.com/pay.html; the tools also return the fare page's
+# own text, which wins if they differ.
+[fares]
+base_fare = 2.25
+reduced_fare = 1.10
+payment_methods = [
+  "SmarTrip card or SmarTrip in Apple/Google Wallet",
+  "Contactless bank card or phone (tap when you board)",
+  "Exact-change cash in the farebox",
+]
+where_to_buy = [
+  "No ticket needed — tap a SmarTrip or contactless card, or pay exact cash, when boarding",
+  "Buy a SmarTrip at any Metrorail station machine, in the SmarTrip app, or at retail",
+]
+mobile_app_name = "SmarTrip"
+accepts_smartrip = true
+accepts_contactless = true
+cash_onboard = true
+exact_change_required = true
+transfer_policy = """\
+  Bus-to-bus transfers within 2 hours are free, and bus-to-rail transfers get a \
+  discount, when paying with SmarTrip or contactless — see the fare page."""
+fare_page_url = "https://www.wmata.com/pay.html"
+notes = """\
+  One flat fare on regular and limited-stop routes; a few express routes cost more. \
+  Confirm the current amounts on the fare page."""
+
+# Routes, stops and schedules: WMATA's bus GTFS via Transitland. (Fare and alert
+# pages are scraped once, under the "wmata" agency.)
+[[sources]]
+type = "gtfs"
+transitland_id = "f-dqc-wmata~bus"
+url = "https://api.wmata.com/gtfs/bus-gtfs-static.zip"
+auth_env = "WMATA_API_KEY"

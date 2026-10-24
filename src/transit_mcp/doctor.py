@@ -36,6 +36,10 @@ def _db_facts(db_path: Path) -> dict | None:
             "stations": one("SELECT COUNT(*) FROM stations") or 0,
             "feeds_loaded": one("SELECT COUNT(*) FROM gtfs_feeds WHERE status='loaded'") or 0,
             "documents": one("SELECT COUNT(*) FROM documents") or 0,
+            "via_transitland": one(
+                "SELECT COUNT(*) FROM gtfs_feeds WHERE status='loaded' "
+                "AND fetched_via LIKE 'transitland%'"
+            ) or 0,
             "last_ingest": one(
                 "SELECT MAX(finished_at) FROM ingest_runs WHERE status IN ('ok','partial')"
             ),
@@ -149,7 +153,8 @@ def run_checks(settings: Settings | None = None, *, check_planner: bool = True) 
                 pass
         checks.append(Check(
             "Transit data", status,
-            f"{facts['stations']} Metro stations, {facts['feeds_loaded']} agency feeds, "
+            f"{facts['stations']} Metro stations, {facts['feeds_loaded']} schedule feeds "
+            f"({facts['via_transitland']} via Transitland), "
             f"{facts['documents']} documents{age_note}",
             "Run refresh-data.bat to get current alerts and schedules."
             if status == WARN else None,

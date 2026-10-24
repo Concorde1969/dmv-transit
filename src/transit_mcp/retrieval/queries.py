@@ -39,6 +39,72 @@ def is_stale(retrieved_at: str | None) -> bool:
     return datetime.now() - ts > timedelta(hours=get_settings().stale_after_hours)
 
 
+WMATA_FARE_PAGE = "https://www.wmata.com/pay.html"
+_RANGE_RE = re.compile(r"^\|\s*([^|$]*?)\s*\$(\d+\.\d\d)\s*-\s*\$(\d+\.\d\d)")
+
+
+def wmata_rail_fare_ranges(db: Database) -> dict | None:
+    """The Metrorail fare ranges as published on wmata.com/pay.html (stored page
+    text): ``{"regular": (lo, hi), "reduced": (lo, hi), "retrieved_at": ...}``."""
+    row = db.conn.execute(
+        "SELECT body_markdown, retrieved_at FROM documents WHERE url = ?", (WMATA_FARE_PAGE,)
+    ).fetchone()
+    if not row:
+        return None
+    body = row["body_markdown"] or ""
+    rail = body.split("### Metro Bus", 1)[0]  # only the Metro Rail fare table
+    ranges: dict[str, list[float]] = {"regular": [], "reduced": []}
+    for line in rail.splitlines():
+        m = _RANGE_RE.match(line.strip())
+        if m:
+            kind = "reduced" if "reduced" in m.group(1).lower() else "regular"
+            ranges[kind] += [float(m.group(2)), float(m.group(3))]
+    if not ranges["regular"]:
+        return None
+    return {k: (min(v), max(v)) for k, v in ranges.items() if v} | {
+        "retrieved_at": row["retrieved_at"]}
+
+
+def wmata_fare_check(db: Database, peak, offpeak, reduced) -> str | None:
+    """A warning if WMATA's API fare falls outside the ranges on WMATA's fare page."""
+    ranges = wmata_rail_fare_ranges(db)
+    if not ranges:
+        return None
+    problems = []
+    lo, hi = ranges["regular"]
+    for label, v in (("peak", peak), ("off-peak", offpeak)):
+        if isinstance(v, (int, float)) and not lo <= v <= hi:
+            problems.append(f"{label} ${v:.2f}")
+    if "reduced" in ranges and isinstance(reduced, (int, float)):
+        rlo, rhi = ranges["reduced"]
+        if not rlo <= reduced <= rhi:
+            problems.append(f"reduced ${reduced:.2f}")
+    if not problems:
+        return None
+    return (f"WMATA's fare data gives {', '.join(problems)}, outside the range on "
+            f"WMATA's fare page (${lo:.2f}–${hi:.2f}). The fare page may have changed "
+            f"since the fare data was loaded — tell the rider to confirm at {WMATA_FARE_PAGE}.")
+
+
+def feed_provenance(db: Database, feed_id: str) -> dict:
+    """Where an agency's GTFS schedule came from, for citing in tool results. Cites
+    the Transitland feed page when the feed is listed there."""
+    row = db.conn.execute("SELECT * FROM gtfs_feeds WHERE feed_id = ?", (feed_id,)).fetchone()
+    if not row:
+        return {"source": f"{feed_id}: no GTFS schedule data loaded", "url": None,
+                "retrieved_at": None, "stale": True}
+    tl = row["transitland_id"]
+    start, end = row["feed_start_date"], row["feed_end_date"]
+    return {
+        "source": f"{row['agency_name']} GTFS schedule data"
+                  + (f" (Transitland feed {tl})" if tl else " (agency's own GTFS feed)"),
+        "url": f"https://www.transit.land/feeds/{tl}" if tl else row["source_url"],
+        "schedule_valid": f"{start} to {end}" if start and end else None,
+        "retrieved_at": row["fetched_at"],
+        "stale": is_stale(row["fetched_at"]),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Stations
 # ---------------------------------------------------------------------------
@@ -139,9 +205,16 @@ def get_service_alerts(
     line: str | None = None,
     station: str | None = None,
     mode: str | None = None,
+    agency: str | None = None,
 ) -> list[dict]:
     sql = "SELECT * FROM alerts WHERE resolved_at IS NULL"
     params: list[object] = []
+    if agency:
+        slug = agency.strip().lower()
+        if slug == "metrobus":  # Metrobus incidents come from the WMATA API
+            slug, mode = "wmata", "bus"
+        sql += " AND feed_id = ?"
+        params.append(slug)
     if mode:
         sql += " AND mode = ?"
         params.append(mode)
@@ -156,18 +229,23 @@ def get_service_alerts(
     for r in rows:
         lines = json.loads(r["affected_lines"] or "[]")
         stations = json.loads(r["affected_stations"] or "[]")
-        if line and line.upper() not in [x.upper() for x in lines]:
+        routes = json.loads(r["affected_routes"] or "[]")
+        if line and line.upper() not in [x.upper() for x in lines + routes]:
             continue
         if station_code and station_code not in stations:
             continue
         out.append(
             {
                 "id": r["provider_alert_id"],
+                "agency": r["feed_id"],
                 "mode": r["mode"],
                 "headline": r["headline"],
                 "description": r["description"],
                 "affected_lines": lines,
                 "affected_stations": stations,
+                "affected_routes": routes,
+                "affected_stops": json.loads(r["affected_stops"] or "[]"),
+                "url": r["url"],
                 "severity": r["severity"],
                 "updated_at": r["updated_at"],
                 "stale": is_stale(r["seen_at"]),
@@ -261,6 +339,8 @@ def get_fare(
             "fare": row[_RIDER_COLUMN.get(rider_type.lower(), "peak_fare")],
         },
         "est_rail_time_min": row["rail_time_min"],
+        "fare_check": wmata_fare_check(db, row["peak_fare"], row["offpeak_fare"],
+                                       row["senior_disabled_fare"]),
         "retrieved_at": row["retrieved_at"],
         "stale": is_stale(row["retrieved_at"]),
         "context": context,

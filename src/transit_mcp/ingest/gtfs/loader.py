@@ -11,12 +11,14 @@ import hashlib
 import io
 import json
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
 from transit_mcp.db.database import Database
 from transit_mcp.ingest.http import HttpClient
+from transit_mcp.ingest.transitland import FetchResult
 
 BATCH = 5000
 ARCHIVE_MANIFEST = "manifest.json"
@@ -125,19 +127,19 @@ _STOP_TIMES = "stop_times.txt"
 GTFS_TABLES = sorted({tbl for tbl, _ in FILE_MAP.values()})
 
 
-def _feed_bytes(feed: GtfsFeed, feeds_dir: Path, http: HttpClient) -> tuple[bytes, bool]:
-    """Return (zip_bytes, is_local). Prefers a local override file."""
+def _feed_bytes(feed: GtfsFeed, feeds_dir: Path, http: HttpClient) -> FetchResult:
+    """Simple fetch without Transitland: a local override file, else ``feed.url``."""
     for name in ("google_transit.zip", f"{feed.slug}.zip", "gtfs.zip"):
         local = feeds_dir / feed.slug / name
         if local.is_file():
-            return local.read_bytes(), True
+            return FetchResult(local.read_bytes(), "local file", str(local), None)
     if not feed.url:
         raise FileNotFoundError(
             f"No feed URL for '{feed.slug}' and no local file at "
             f"{feeds_dir / feed.slug / 'google_transit.zip'}"
         )
     _status, content, _headers = http.get_bytes(feed.url)
-    return content, False
+    return FetchResult(content, "agency-url", feed.url, None)
 
 
 def _iter_rows(zf: zipfile.ZipFile, member: str):
@@ -194,6 +196,7 @@ def archive_feed(
     *,
     is_local: bool,
     info: dict[str, str] | None = None,
+    source: str | None = None,
 ) -> Path:
     """Keep a copy of the raw GTFS zip at ``<archive_dir>/<slug>.zip`` and record it
     in ``manifest.json`` — the hand-off point for external scheduling engines."""
@@ -218,7 +221,7 @@ def archive_feed(
         "file": target.name,
         "sha256": sha,
         "bytes": len(content),
-        "source": "local file" if is_local else feed.url,
+        "source": "local file" if is_local else (source or feed.url),
         "fetched_at": now,
         "feed_start_date": info.get("feed_start_date"),
         "feed_end_date": info.get("feed_end_date"),
@@ -240,17 +243,20 @@ def load_feed(
     feeds_dir: Path,
     load_stop_times: bool = True,
     archive_dir: Path | None = None,
+    fetcher: Callable[[], FetchResult] | None = None,
+    index_stops: bool = True,
 ) -> dict:
     """Download/read a GTFS zip and load it into ``gtfs_*``. Idempotent per feed.
 
     If ``archive_dir`` is given, the raw zip is also kept there (see
-    :func:`archive_feed`) whether or not its contents changed.
+    :func:`archive_feed`) whether or not its contents changed. ``fetcher`` replaces
+    the plain URL download (the GTFS source passes the Transitland resolver).
     """
     now = datetime.now().isoformat(sep=" ", timespec="seconds")
     stats: dict = {"feed_id": feed.slug, "rows": {}}
 
     try:
-        content, is_local = _feed_bytes(feed, feeds_dir, http)
+        fetched = fetcher() if fetcher else _feed_bytes(feed, feeds_dir, http)
     except Exception as exc:  # noqa: BLE001
         db.conn.execute(
             """
@@ -268,18 +274,26 @@ def load_feed(
         stats["error"] = str(exc)
         return stats
 
+    content, is_local = fetched.content, fetched.via == "local file"
+    stats.update(fetched_via=fetched.via, source_url=fetched.url)
+    if fetched.transitland_id:
+        stats["transitland_id"] = fetched.transitland_id
+    provenance = (fetched.url, fetched.via, fetched.transitland_id, int(index_stops))
     feed_hash = hashlib.sha256(content).hexdigest()
     existing = db.conn.execute(
         "SELECT feed_hash, status FROM gtfs_feeds WHERE feed_id = ?", (feed.slug,)
     ).fetchone()
     if existing and existing["feed_hash"] == feed_hash and existing["status"] == "loaded":
         db.conn.execute(
-            "UPDATE gtfs_feeds SET fetched_at = ? WHERE feed_id = ?", (now, feed.slug)
+            "UPDATE gtfs_feeds SET fetched_at = ?, source_url = ?, fetched_via = ?, "
+            "transitland_id = ?, index_stops = ? WHERE feed_id = ?",
+            (now, *provenance, feed.slug),
         )
         db.commit()
         if archive_dir is not None:
             stats["archived"] = str(
-                archive_feed(archive_dir, feed, content, is_local=is_local)
+                archive_feed(archive_dir, feed, content, is_local=is_local,
+                             source=fetched.url)
             )
         stats["status"] = "unchanged"
         return stats
@@ -299,8 +313,9 @@ def load_feed(
         INSERT INTO gtfs_feeds
             (feed_id, agency_name, mode, source_url, is_local, feed_hash,
              feed_start_date, feed_end_date, publisher_name, publisher_url,
-             status, error_text, fetched_at, last_changed_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'loaded', NULL, ?, ?)
+             status, error_text, fetched_at, last_changed_at,
+             fetched_via, transitland_id, index_stops)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'loaded', NULL, ?, ?, ?, ?, ?)
         ON CONFLICT(feed_id) DO UPDATE SET
             agency_name = excluded.agency_name,
             mode = excluded.mode,
@@ -314,20 +329,24 @@ def load_feed(
             status = 'loaded',
             error_text = NULL,
             fetched_at = excluded.fetched_at,
-            last_changed_at = excluded.fetched_at
+            last_changed_at = excluded.fetched_at,
+            fetched_via = excluded.fetched_via,
+            transitland_id = excluded.transitland_id,
+            index_stops = excluded.index_stops
         """,
         (
-            feed.slug, feed.agency_name, feed.mode, feed.url, int(is_local),
+            feed.slug, feed.agency_name, feed.mode, provenance[0], int(is_local),
             feed_hash,
             info.get("feed_start_date"), info.get("feed_end_date"),
             info.get("feed_publisher_name"), info.get("feed_publisher_url"),
-            now, now,
+            now, now, *provenance[1:],
         ),
     )
     db.commit()
     if archive_dir is not None:
         stats["archived"] = str(
-            archive_feed(archive_dir, feed, content, is_local=is_local, info=info)
+            archive_feed(archive_dir, feed, content, is_local=is_local, info=info,
+                         source=fetched.url)
         )
     stats["status"] = "loaded"
     stats["is_local"] = is_local

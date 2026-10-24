@@ -12,10 +12,11 @@ from pathlib import Path
 from transit_mcp.config import Settings, get_settings
 from transit_mcp.db.database import Database
 from transit_mcp.planning import UnresolvedPlace, build_request, get_planner
+from transit_mcp.retrieval.disruptions import TripScope, for_trip
 
 _SEPARATE_PAYMENTS = (
-    "Each leg is a separate payment unless a pass or a transfer credit applies "
-    "(e.g. SmarTrip bus↔rail discount, or a VRE ticket's free connecting ride)."
+    "Each leg is a separate payment unless a pass or a transfer discount applies — "
+    "check each agency's fare page (fare_page) for its transfer rules."
 )
 
 
@@ -41,7 +42,15 @@ def plan_connection(
             "destination_resolved": exc.destination_label,
         }
     plan = get_planner(settings).plan(request)
-    return plan.model_dump(mode="json", exclude_none=True)
+    out = plan.model_dump(mode="json", exclude_none=True)
+    scope = TripScope()
+    for opt in out.get("options", []):
+        for lg in opt.get("legs", []):
+            if lg.get("mode", "ride") == "ride":
+                scope.add(lg.get("agency"), lg.get("route_id"),
+                          (lg.get("board_stop_id"), lg.get("alight_stop_id")))
+    out.update(for_trip(db, scope))
+    return out
 
 
 def estimate_trip_cost(

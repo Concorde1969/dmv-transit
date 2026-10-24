@@ -22,8 +22,11 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # WMATA Developer API. Only needed for `ingest api`.
+    # WMATA Developer API: alerts, stations, fares, and WMATA's GTFS feeds.
     wmata_api_key: str | None = Field(default=None, alias="WMATA_API_KEY")
+    # Optional (free at transit.land): lets GTFS feeds come from Transitland's own
+    # copies and API. Without it, Transitland's public feed registry is used.
+    transitland_api_key: str | None = Field(default=None, alias="TRANSITLAND_API_KEY")
 
     # Storage
     db_path: Path = Field(default=Path("./transit.db"), alias="TRANSIT_MCP_DB")

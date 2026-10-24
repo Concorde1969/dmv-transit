@@ -36,7 +36,6 @@ ENDPOINTS = {
     "station_to_station": "/Rail.svc/json/jSrcStationToDstStationInfo",
 }
 # Metrorail GTFS (same API key). Used only for the order of stations on each line.
-RAIL_GTFS_URL = "https://api.wmata.com/gtfs/rail-gtfs-static.zip"
 
 
 def _parse_dt(value: str | None) -> datetime | None:
@@ -65,9 +64,10 @@ class WmataApiClient:
 
     def _get(self, endpoint_key: str, params: dict[str, str] | None = None):
         url = API_BASE + ENDPOINTS[endpoint_key]
-        # api_key travels as a header, never in the URL/query string.
-        self._http._client.headers["api_key"] = self._key
-        raw = self._http.get(url, params=params, conditional=False)
+        # api_key travels as a per-request header (never in the URL, and never set
+        # on the shared client, which also downloads other agencies' feeds).
+        raw = self._http.get(url, params=params, conditional=False,
+                             headers={"api_key": self._key})
         return raw, json.loads(raw.text)
 
     # -- raw endpoint calls -------------------------------------------------
@@ -92,11 +92,6 @@ class WmataApiClient:
 
     def station_entrances(self):
         return self._get("station_entrances")
-
-    def rail_gtfs(self) -> bytes:
-        self._http._client.headers["api_key"] = self._key
-        _status, content, _headers = self._http.get_bytes(RAIL_GTFS_URL)
-        return content
 
     def station_to_station(self, from_code: str, to_code: str | None = None):
         params = {"FromStationCode": from_code}

@@ -44,13 +44,17 @@ notes = """\
   Local routes are much cheaper ($1–$2). SmarTrip is required on the commuter buses. \
   Fares change; confirm the current amount at the fare page before you travel."""
 
+# Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]
 type = "gtfs"
+transitland_id = "f-loudouncounty~va~us"
 url = "https://www.loudoun.gov/loudountransitgtfs"
 
+# Fares, how to pay, and service alerts / detours (never routes or schedules).
 [[sources]]
 type = "web_pages"
 pages = [
+  { url = "https://www.loudoun.gov/CivicAlerts.aspx?CID=29", category = "alerts" },
   { url = "https://www.loudoun.gov/2472/Fares", category = "fares" },
   { url = "https://www.loudoun.gov/6335/Smart-Trip-Card-Information", category = "payment" },
 ]

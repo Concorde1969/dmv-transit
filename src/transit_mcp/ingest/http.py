@@ -129,15 +129,17 @@ class HttpClient:
         *,
         params: dict[str, str] | None = None,
         conditional: bool = True,
+        headers: dict[str, str] | None = None,
     ) -> RawResponse:
         """GET ``url`` with rate limiting, retry, and conditional-GET support.
 
         On HTTP 304 the body is served from the disk cache and
         ``not_modified=True``. Raises ``httpx.HTTPStatusError`` for non-retryable
-        4xx responses.
+        4xx responses. ``headers`` apply to this request only (use them for API
+        keys, so a key is never sent to another host).
         """
         cached = self.load_cache(url) if conditional else None
-        req_headers: dict[str, str] = {}
+        req_headers: dict[str, str] = dict(headers or {})
         if cached:
             etag = cached.get("headers", {}).get("etag")
             last_mod = cached.get("headers", {}).get("last-modified")
@@ -185,13 +187,15 @@ class HttpClient:
             raise RetryableHTTPStatus(f"{resp.status_code} for {url}")
         return resp
 
-    def get_bytes(self, url: str) -> tuple[int, bytes, dict[str, str]]:
+    def get_bytes(
+        self, url: str, *, headers: dict[str, str] | None = None
+    ) -> tuple[int, bytes, dict[str, str]]:
         """Fetch a binary resource (e.g. a GTFS zip). No text cache / conditional GET.
 
         Returns ``(status_code, content, headers)``; raises ``httpx.HTTPStatusError``
-        for a non-retryable 4xx.
+        for a non-retryable 4xx. ``headers`` apply to this request only.
         """
-        resp = self._get_with_retry(url, None, {})
+        resp = self._get_with_retry(url, None, dict(headers or {}))
         if not (200 <= resp.status_code < 300):
             resp.raise_for_status()
         return (

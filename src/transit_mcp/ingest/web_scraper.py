@@ -188,4 +188,10 @@ def scrape_pages(
 
         db.commit()
 
+    # Drop pages this crawl no longer reaches (e.g. an expired service-change notice,
+    # or a page removed from the config) — but only after a clean, complete crawl,
+    # so a failed hub page never wipes its children.
+    if not queue and stats["errors"] == 0:
+        stats["pruned"] = db.prune_web_documents(feed_id=feed_id, keep_urls=queued)
+        db.commit()
     return stats

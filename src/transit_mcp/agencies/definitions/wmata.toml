@@ -1,9 +1,9 @@
 slug = "wmata"
-name = "Metro (WMATA)"
-mode = "rail+bus"
+name = "Metrorail (WMATA)"
+mode = "rail"
 
 [profile]
-display_name = "Metro (WMATA) — Metrorail & Metrobus"
+display_name = "Metrorail (WMATA)"
 role = """\
   The regional rapid-transit backbone: six grade-separated rail lines plus a dense \
   bus network across DC, Arlington, Alexandria, and inner \
@@ -28,8 +28,8 @@ reduced_fare = 1.10
 payment_methods = [
   "SmarTrip card",
   "SmarTrip in Apple Wallet / Google Wallet",
-  "Contactless bank card or phone (tap to pay, treated as SmarTrip)",
-  "Metrobus: exact-change cash accepted; Metrorail: no cash",
+  "Contactless bank card or phone (tap to pay)",
+  "No cash at the faregates — buy or load a SmarTrip at a station machine",
 ]
 where_to_buy = [
   "Fare vending machines in every Metrorail station",
@@ -39,17 +39,18 @@ where_to_buy = [
 mobile_app_name = "SmarTrip"
 accepts_smartrip = true
 accepts_contactless = true
-cash_onboard = true
-exact_change_required = true
+cash_onboard = false
+exact_change_required = false
+# Hand-written summary of wmata.com/pay.html; the tools also return the fare page's
+# own text, which wins if they differ.
 transfer_policy = """\
-  Rail-to-rail transfers are free (one continuous trip). Bus-to-bus and bus-rail \
-  transfers get a discount (about $0.50 off the second boarding) when you pay with \
-  SmarTrip or contactless within 2 hours."""
+  Changing trains is free (one continuous trip). Bus-to-rail and rail-to-bus \
+  transfers within 2 hours get a discount when paying with SmarTrip or contactless \
+  — see the fare page for the amount."""
 fare_page_url = "https://www.wmata.com/pay.html"
 notes = """\
-  Metrorail fare is distance- and time-of-day based ($2.25 off-peak up to ~$6.75 \
-  peak). Metrobus is a $2.00 flat fare. Fares change; confirm the current amount at \
-  the fare page before you travel."""
+  Metrorail fares depend on distance and on the day and time of travel; the exact \
+  station-to-station fare comes from WMATA's fare data. Confirm on the fare page."""
 
 # What riders call stations when it isn't the official name. Matching is
 # case-insensitive. (Without these, "National Airport" would match "Washington
@@ -75,10 +76,22 @@ notes = """\
 
 # Real-time incidents, stations, lines, parking, entrances, station-to-station fares,
 # and the order of stations along each Metrorail line (from WMATA's rail GTFS).
+# Metrorail routes, station order and schedules: WMATA's rail GTFS via Transitland.
+# Stations are matched by WMATA station code (GTFS parent stations STN_<code>), so
+# the GTFS stops themselves are not indexed for place search.
+[[sources]]
+type = "gtfs"
+transitland_id = "f-dqc-wmata~rail"
+url = "https://api.wmata.com/gtfs/rail-gtfs-static.zip"
+auth_env = "WMATA_API_KEY"
+index_stops = false
+metrorail_line_order = true
+
+# Station details (entrances, parking), live incidents, elevator outages, and the
+# station-to-station fare matrix. Nothing route- or schedule-related.
 [[sources]]
 type = "wmata_api"
 include_fares = true
-rail_line_order = true
 
 # Rider-guidance pages on wmata.com. A curated allow-list, not an open crawl: hub
 # pages (follow_children = true) fan out one hop to child pages under child_prefixes.
@@ -98,6 +111,7 @@ child_prefixes = [
   "/pay/",
 ]
 child_blocklist = [
+  "/ride/guides/airports-and-train-stations.html",  # describes routes: GTFS only
   "/news/employee-alerts.html",
   "/ride/metroalerts.html",
   "/initiatives/safety-and-security/es.html",
@@ -122,7 +136,6 @@ pages = [
   { url = "/ride/accessibility.html", category = "accessibility", follow_children = true },
   { url = "/ride/accessibility/metro-access.html", category = "accessibility" },
   { url = "/ride/elevators-escalators.html", category = "accessibility", follow_children = true },
-  { url = "/ride/maps.html", category = "maps" },
   { url = "/ride/guides.html", category = "new_rider", follow_children = true },
   { url = "/ride/guides/new-riders.html", category = "new_rider" },
   { url = "/ride/guides/visitors.html", category = "visitor" },

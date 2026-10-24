@@ -14,8 +14,8 @@ from transit_mcp.agencies import (
 from transit_mcp.config import Settings
 
 TEMPLATE = Path(__file__).resolve().parents[1] / "agencies" / "_template.toml"
-BUILTIN = {"wmata", "vre", "fairfax-connector", "art", "dash", "cue", "loudoun",
-           "omniride", "virginia-breeze"}
+BUILTIN = {"wmata", "metrobus", "vre", "fairfax-connector", "art", "dash", "cue",
+           "loudoun", "omniride", "virginia-breeze"}
 
 
 @pytest.fixture
@@ -34,10 +34,15 @@ def test_builtin_definitions_load(isolated_settings):
     agencies = load_agencies(isolated_settings)
     assert {a.slug for a in agencies} == BUILTIN
     wmata = next(a for a in agencies if a.slug == "wmata")
-    assert [s.type for s in wmata.sources] == ["wmata_api", "web_pages"]
+    assert [s.type for s in wmata.sources] == ["gtfs", "wmata_api", "web_pages"]
     assert wmata.fares.accepts_smartrip is True
     vre = next(a for a in agencies if a.slug == "vre")
-    assert vre.sources_of("gtfs")[0].options() == {"manual": True}
+    assert vre.sources_of("gtfs")[0].options()["transitland_id"] == (
+        "f-dqc-virginiarailwayexpress")
+    # every agency Transitland lists gets its schedules through Transitland
+    listed = {a.slug for a in agencies
+              if a.sources_of("gtfs") and a.sources_of("gtfs")[0].options().get("transitland_id")}
+    assert listed == BUILTIN - {"cue", "virginia-breeze"}
 
 
 def test_template_is_a_valid_agency_when_copied(local_dir):

@@ -124,6 +124,25 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
         if _table_exists(conn, "documents"):
             conn.execute("UPDATE documents SET feed_id = 'wmata' WHERE feed_id IS NULL")
         conn.execute("UPDATE schema_meta SET value = '3' WHERE key = 'version'")
+        version = 3
+
+    if version < 4:
+        # v4: GTFS provenance via Transitland; alerts from more than one agency.
+        new_cols = {
+            "gtfs_feeds": [("transitland_id", "TEXT"), ("fetched_via", "TEXT"),
+                           ("index_stops", "INTEGER NOT NULL DEFAULT 1")],
+            "alerts": [("feed_id", "TEXT NOT NULL DEFAULT 'wmata'"),
+                       ("affected_routes", "TEXT NOT NULL DEFAULT '[]'"),
+                       ("affected_stops", "TEXT NOT NULL DEFAULT '[]'"),
+                       ("url", "TEXT")],
+        }
+        for table, cols in new_cols.items():
+            if not _table_exists(conn, table):
+                continue
+            for name, decl in cols:
+                if not _has_column(conn, table, name):
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+        conn.execute("UPDATE schema_meta SET value = '4' WHERE key = 'version'")
 
 
 def init_db(db_path: str | Path) -> None:
@@ -211,6 +230,21 @@ class Database:
         return int(existing["id"]), changed
 
     # -- documents + chunks -------------------------------------------------
+    def prune_web_documents(self, *, feed_id: str | None, keep_urls: Iterable[str]) -> int:
+        """Delete this agency's scraped web documents whose page is no longer part of
+        its crawl (removed from the config, or no longer linked from a hub page)."""
+        keep = list(keep_urls)
+        marks = ",".join("?" for _ in keep) or "''"
+        cur = self.conn.execute(
+            f"""
+            DELETE FROM documents
+             WHERE feed_id IS ? AND url NOT IN ({marks})
+               AND source_id IN (SELECT id FROM sources WHERE source_type = 'web')
+            """,
+            (feed_id, *keep),
+        )
+        return cur.rowcount
+
     def replace_document(
         self, *, source_id: int, document: Document, chunks: Iterable[Chunk]
     ) -> int:
@@ -258,10 +292,15 @@ class Database:
             INSERT INTO alerts
                 (source_id, provider_alert_id, mode, headline, description,
                  affected_lines, affected_stations, severity, starts_at, ends_at,
-                 updated_at, raw_json, seen_at, resolved_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                 updated_at, raw_json, seen_at, resolved_at,
+                 feed_id, affected_routes, affected_stops, url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
             ON CONFLICT(provider_alert_id) DO UPDATE SET
                 source_id = excluded.source_id,
+                feed_id = excluded.feed_id,
+                affected_routes = excluded.affected_routes,
+                affected_stops = excluded.affected_stops,
+                url = excluded.url,
                 mode = excluded.mode,
                 headline = excluded.headline,
                 description = excluded.description,
@@ -289,29 +328,28 @@ class Database:
                 _iso(alert.updated_at),
                 alert.raw_json,
                 _iso(datetime.now()),
+                alert.feed_id,
+                json.dumps(alert.affected_routes),
+                json.dumps(alert.affected_stops),
+                alert.url,
             ),
         )
 
-    def reconcile_alerts(self, *, mode: str, seen_ids: Iterable[str]) -> int:
-        """Mark alerts of ``mode`` not in ``seen_ids`` as resolved. Returns count."""
+    def reconcile_alerts(
+        self, *, mode: str, seen_ids: Iterable[str], feed_id: str = "wmata"
+    ) -> int:
+        """Mark ``feed_id``'s alerts of ``mode`` not in ``seen_ids`` as resolved."""
         seen = list(seen_ids)
         now = _iso(datetime.now())
-        if not seen:
-            cur = self.conn.execute(
-                "UPDATE alerts SET resolved_at = ? "
-                "WHERE mode = ? AND resolved_at IS NULL",
-                (now, mode),
-            )
-            return cur.rowcount
         placeholders = ",".join("?" for _ in seen)
         cur = self.conn.execute(
             f"""
             UPDATE alerts
                SET resolved_at = ?
-             WHERE mode = ? AND resolved_at IS NULL
-               AND provider_alert_id NOT IN ({placeholders})
+             WHERE mode = ? AND feed_id = ? AND resolved_at IS NULL
+               {f"AND provider_alert_id NOT IN ({placeholders})" if seen else ""}
             """,
-            (now, mode, *seen),
+            (now, mode, feed_id, *seen),
         )
         return cur.rowcount
 

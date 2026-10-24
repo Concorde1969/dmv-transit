@@ -54,15 +54,18 @@ notes = "Anything else a first-time rider should know about paying."
 # Built-in source types: gtfs, web_pages, wmata_api. New types are plugins —
 # see docs/EXTENDING.md.
 
-# Schedules, stops and routes (GTFS static feed):
+# Schedules, stops and routes come ONLY from the agency's GTFS feed. Find the feed
+# on https://www.transit.land/ and copy its Onestop ID; `url` is the fallback.
 [[sources]]
 type = "gtfs"
+# transitland_id = "f-xxxx-exampletransit"
 url = "https://example-transit.org/gtfs/google_transit.zip"
-# If the agency blocks scripted downloads, use this instead of `url`, then save
-# the zip by hand as feeds/<slug>/google_transit.zip:
+# If the agency blocks scripted downloads and isn't on Transitland, use this
+# instead, then save the zip by hand as feeds/<slug>/google_transit.zip:
 # manual = true
 
-# Rider-information pages to make searchable (fares, how to pay, how to ride):
+# Web pages are for fares, how to pay/ride, and service alerts / detours only —
+# never for routes or schedules (those come from GTFS above).
 [[sources]]
 type = "web_pages"
 pages = [

@@ -43,13 +43,17 @@ transfer_policy = """\
 fare_page_url = "https://www.arlingtontransit.com/rider-info-fares/fares/"
 notes = "$2.00 base / $1.00 reduced. Fares change; confirm the current amount at the fare page before you travel."
 
+# Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]
 type = "gtfs"
+transitland_id = "f-dqcjj-arlingtontransit"
 url = "https://www.arlingtontransit.com/shared/content/gtfs/art/google_transit.zip"
 
+# Fares, how to pay, and service alerts / detours (never routes or schedules).
 [[sources]]
 type = "web_pages"
 pages = [
+  { url = "https://www.arlingtontransit.com/rider-info-fares/service-alerts/", category = "alerts" },
   { url = "https://www.arlingtontransit.com/rider-info-fares/fares/", category = "fares" },
   { url = "https://www.arlingtontransit.com/rider-info-fares/fare-programs/", category = "fares" },
   { url = "https://www.arlingtontransit.com/rider-info-fares/how-to-ride/", category = "payment" },

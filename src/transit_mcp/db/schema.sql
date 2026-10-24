@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
-INSERT INTO schema_meta (key, value) VALUES ('version', '3')
+INSERT INTO schema_meta (key, value) VALUES ('version', '4')
     ON CONFLICT(key) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
@@ -96,6 +96,10 @@ CREATE TABLE IF NOT EXISTS alerts (
     description       TEXT,
     affected_lines    TEXT NOT NULL DEFAULT '[]',   -- JSON array
     affected_stations TEXT NOT NULL DEFAULT '[]',   -- JSON array
+    feed_id           TEXT NOT NULL DEFAULT 'wmata', -- agency slug
+    affected_routes   TEXT NOT NULL DEFAULT '[]',   -- JSON array of GTFS route_ids
+    affected_stops    TEXT NOT NULL DEFAULT '[]',   -- JSON array of GTFS stop_ids
+    url               TEXT,
     severity          TEXT,
     starts_at         TEXT,
     ends_at           TEXT,
@@ -105,6 +109,7 @@ CREATE TABLE IF NOT EXISTS alerts (
     resolved_at       TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_active ON alerts(mode, resolved_at);
+CREATE INDEX IF NOT EXISTS idx_alerts_feed ON alerts(feed_id, resolved_at);
 
 -- ---------------------------------------------------------------------------
 -- Stations / lines (WMATA API).
@@ -225,7 +230,10 @@ CREATE TABLE IF NOT EXISTS gtfs_feeds (
                     CHECK (status IN ('loaded', 'pending', 'error')),
     error_text      TEXT,
     fetched_at      TEXT,
-    last_changed_at TEXT
+    last_changed_at TEXT,
+    transitland_id  TEXT,             -- Transitland Onestop ID, when listed there
+    fetched_via     TEXT,             -- transitland | transitland-listed-url | agency-url | local file
+    index_stops     INTEGER NOT NULL DEFAULT 1  -- 0: stops not used for place search/links
 );
 
 CREATE TABLE IF NOT EXISTS gtfs_agencies (

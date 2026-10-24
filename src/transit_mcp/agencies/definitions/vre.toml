@@ -53,10 +53,9 @@ notes = """\
   is a surcharge or no sale on board. Fares change; confirm the current amount at the \
   fare page before you travel."""
 
-# vre.org sits behind a Cloudflare challenge, so the feed can't be fetched by a
-# script. Download google_transit.zip in a browser and save it as
-# feeds/vre/google_transit.zip. (Its fare pages are blocked too — the [fares]
-# section above is the source of truth.)
+# Routes, stops and schedules: GTFS found through Transitland. (vre.org's web
+# pages sit behind a Cloudflare challenge, so fares come from the [fares] section.)
 [[sources]]
 type = "gtfs"
-manual = true
+transitland_id = "f-dqc-virginiarailwayexpress"
+url = "https://gtfs.vre.org/containercdngtfsupload/google_transit.zip"

@@ -58,7 +58,7 @@ else
 fi
 
 step "Preparing folders and settings"
-install -d -o "$OWNER" -g "$OWNER" "$PROJECT_DIR/feeds/vre" "$PROJECT_DIR/feeds/cue"
+install -d -o "$OWNER" -g "$OWNER" "$PROJECT_DIR/feeds/cue"
 if [[ -f "$PROJECT_DIR/.env" ]]; then
   echo ".env already exists — leaving it alone."
 else

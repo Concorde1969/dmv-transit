@@ -49,9 +49,17 @@ notes = """\
   $2.00 base / $1.00 reduced; some Fairfax County shuttle routes are free. Fares \
   change; confirm the current amount at the fare page before you travel."""
 
+# Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]
 type = "gtfs"
+transitland_id = "f-dqcj-fairfaxconnector"
 url = "https://www.fairfaxcounty.gov/connector/sites/connector/files/assets/connector_gtfs.zip"
+
+# Live service alerts (detours, closed stops, missed trips): GTFS-realtime.
+[[sources]]
+type = "gtfs_rt_alerts"
+transitland_id = "f-fairfaxconnector~rt"
+url = "https://www.fairfaxcounty.gov/gtfsrt/alerts"
 
 [[sources]]
 type = "web_pages"

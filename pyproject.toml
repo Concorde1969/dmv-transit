@@ -18,6 +18,7 @@ dependencies = [
     "fastapi>=0.110",
     "uvicorn>=0.30",
     "tzdata>=2024.1",  # time zones inside slim containers
+    "gtfs-realtime-bindings>=1.0",  # agencies' GTFS-realtime service alerts
 ]
 
 [project.optional-dependencies]

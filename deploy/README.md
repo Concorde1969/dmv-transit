@@ -25,8 +25,11 @@ Plan on **about an hour** the first time, most of it waiting for DNS.
 | Anthropic API | depends on use — **capped by the limits below** |
 | WMATA API, agency GTFS feeds | free |
 
-Why 2 GB: measured peak memory for the three containers during the nightly data load
-is ~540 MB, plus ~400 MB for Ubuntu and Docker. A 1 GB instance would run at the edge.
+Why 2 GB: the nightly data load now includes WMATA's Metrobus schedule (4+ million
+timetable rows). It is processed in a streaming way — the heaviest step peaked at about
+110 MB measured locally — and the database is about 650 MB on disk. With Ubuntu and
+Docker (~400 MB) that leaves comfortable headroom; a 1 GB instance would run at the edge.
+The first full load takes roughly 6–10 minutes.
 
 ## 0. Before you start
 
@@ -177,18 +180,19 @@ cd ~/dmvtransit && docker compose up -d
 cd ~/dmvtransit && docker compose exec scheduler transit-mcp ingest all
 ```
 
-**Add the VRE / CUE schedules** (those agencies block automated downloads). Download
-each `google_transit.zip` in your browser, then from your PC upload them with the SSH
-key Lightsail gives you (**Account → SSH keys → Download**):
+**Add the CUE schedule** (CUE isn't listed in Transitland and blocks automated
+downloads; every other agency's schedule is found through Transitland automatically).
+Download CUE's `google_transit.zip` in your browser, then from your PC upload it with
+the SSH key Lightsail gives you (**Account → SSH keys → Download**):
 
 ```bash
-scp -i LightsailDefaultKey-us-east-1.pem google_transit.zip ubuntu@YOUR_STATIC_IP:~/dmvtransit/feeds/vre/
+scp -i LightsailDefaultKey-us-east-1.pem google_transit.zip ubuntu@YOUR_STATIC_IP:~/dmvtransit/feeds/cue/
 ```
 
-and load them on the server:
+and load it on the server:
 
 ```bash
-cd ~/dmvtransit && docker compose exec scheduler transit-mcp ingest gtfs --only vre,cue
+cd ~/dmvtransit && docker compose exec scheduler transit-mcp ingest gtfs --only cue
 ```
 
 **Plug in your scheduling engine** — see [docs/EXTENDING.md](../docs/EXTENDING.md).

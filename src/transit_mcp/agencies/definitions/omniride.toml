@@ -50,13 +50,18 @@ notes = """\
   Local is about $1.55 ($0.75 reduced). Fares change; confirm the current amount at \
   the fare page before you travel."""
 
+# Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]
 type = "gtfs"
+transitland_id = "f-dqch-prtc"
+transitland_atlas = "prtctransit.org.dmfr.json"
 url = "https://www.omniride.com/omniride/assets/File/google_transit.zip"
 
+# Fares, how to pay, and service alerts / detours (never routes or schedules).
 [[sources]]
 type = "web_pages"
 pages = [
+  { url = "https://www.omniride.com/news/service-updates/", category = "alerts" },
   { url = "https://www.omniride.com/services/general-rider-information/fares-and-transfers/", category = "fares" },
   { url = "https://www.omniride.com/services/general-rider-information/mobile-payment/", category = "payment" },
   { url = "https://www.omniride.com/services/general-rider-information/smartrip/", category = "payment" },

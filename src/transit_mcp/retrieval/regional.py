@@ -13,7 +13,22 @@ import math
 
 from transit_mcp.config import get_settings
 from transit_mcp.db.database import Database
-from transit_mcp.retrieval.queries import is_stale, lookup_alias, resolve_station
+from transit_mcp.retrieval.disruptions import TripScope, for_trip
+from transit_mcp.retrieval.metro import station_service
+from transit_mcp.retrieval.queries import (
+    feed_provenance,
+    is_stale,
+    lookup_alias,
+    resolve_station,
+)
+
+# Metrorail GTFS route_id -> the line code WMATA's alerts use.
+_ROUTE_ALERT_ID = {("wmata", r): c for r, c in (
+    ("RED", "RD"), ("BLUE", "BL"), ("GREEN", "GR"), ("YELLOW", "YL"),
+    ("ORANGE", "OR"), ("SILVER", "SV"))}
+# Agencies whose fare / payment pages are stored under another agency's slug.
+_DOCS_FEED = {"metrobus": "wmata"}
+_FARE_TEXT_CHARS = 2500
 
 _DAY_ALIASES = {
     "mon": "mon", "monday": "mon", "tue": "tue", "tues": "tue", "tuesday": "tue",
@@ -85,6 +100,7 @@ def resolve_point(db: Database, place: str) -> dict | None:
         SELECT feed_id, stop_id, name, lat, lon
           FROM gtfs_stops
          WHERE lat IS NOT NULL AND name LIKE ?
+           AND feed_id NOT IN (SELECT feed_id FROM gtfs_feeds WHERE index_stops = 0)
          ORDER BY LENGTH(name) LIMIT 1
         """,
         (f"%{p}%",),
@@ -205,6 +221,7 @@ def find_stops_near(
           FROM gtfs_stops
          WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
            AND (location_type IS NULL OR location_type IN (0, ''))
+           AND feed_id NOT IN (SELECT feed_id FROM gtfs_feeds WHERE index_stops = 0)
         """,
         (pt["lat"] - dlat, pt["lat"] + dlat, pt["lon"] - dlon, pt["lon"] + dlon),
     ).fetchall()
@@ -275,9 +292,9 @@ def _resolve_feed(db: Database, agency: str) -> str | None:
 
 def get_route(db: Database, agency: str, query: str) -> dict:
     feed = _resolve_feed(db, agency)
-    if not feed or feed == "wmata":
-        return {"error": "use get_station_info / WMATA line tools for Metro; "
-                "this tool covers the regional GTFS agencies", "agency": agency}
+    if not feed:
+        return {"error": "unknown_agency", "agency": agency,
+                "known": [a["feed_id"] for a in list_agencies(db)]}
     q = query.strip()
     row = db.conn.execute(
         """
@@ -300,6 +317,8 @@ def get_route(db: Database, agency: str, query: str) -> dict:
     fare = db.conn.execute(
         "SELECT * FROM fare_vending WHERE feed_id=?", (feed,)
     ).fetchone()
+    scope = TripScope()
+    scope.add(feed, _ROUTE_ALERT_ID.get((feed, row["route_id"]), row["route_id"]))
     return {
         "agency": feed,
         "route": " ".join(x for x in (row["short_name"], row["long_name"]) if x),
@@ -318,6 +337,8 @@ def get_route(db: Database, agency: str, query: str) -> dict:
         },
         "route_url": row["route_url"],
         "fare": dict(fare) if fare else None,
+        **for_trip(db, scope),
+        **feed_provenance(db, feed),
     }
 
 
@@ -401,28 +422,16 @@ def transfers_at(
             of, oi, on, ok = lk["a_feed"], lk["a_id"], lk["a_name"], lk["a_kind"]
         if of == feed:
             continue
-        svc = None if ok == "wmata" else _stop_service(db, of, oi)
-        feasible, why = _feasible_on(
-            {  # WMATA: synthesize an all-days summary
-                "runs_mon": 1, "runs_tue": 1, "runs_wed": 1, "runs_thu": 1,
-                "runs_fri": 1, "runs_sat": 1, "runs_sun": 1,
-                "weekday_first": "05:00:00", "weekday_last": "24:00:00",
-                "saturday_first": "05:00:00", "saturday_last": "24:00:00",
-                "sunday_first": "07:00:00", "sunday_last": "24:00:00",
-            } if ok == "wmata" else svc,
-            day, time,
-        )
+        svc = station_service(db, oi) if ok == "wmata" else _stop_service(db, of, oi)
+        feasible, why = _feasible_on(svc, day, time)
         entry = {
             "agency": of,
             "stop": on,
             "walk_min": lk["walk_min"],
             "distance_m": lk["distance_m"],
-            "routes": (json.loads(svc["route_ids"]) if svc else
-                       (json.loads(_line_codes(db, oi)) if ok == "wmata" else [])),
-            "service": (
-                "Metrorail daily ~5am–midnight" if ok == "wmata"
-                else _service_line(svc)
-            ),
+            "routes": (json.loads(_line_codes(db, oi)) if ok == "wmata" else
+                       (json.loads(svc["route_ids"]) if svc else [])),
+            "service": _service_line(svc) if svc else "schedule not loaded",
             "link_type": lk["link_source"],
             "overlap_days": lk["overlap_days"],
         }
@@ -439,8 +448,9 @@ def transfers_at(
         "matched_stop": {"kind": kind, "agency": feed, "id": sid},
         "day": day, "time": time,
         "connections": by_agency,
-        "note": "Walking transfers based on stop proximity; confirm exact departure "
-        "times before travelling.",
+        "note": "Walking transfers based on stop proximity; service days and times "
+        "from each agency's GTFS schedule. Confirm exact departure times before "
+        "travelling.",
     }
 
 
@@ -467,18 +477,32 @@ def how_to_pay(db: Database, agency: str) -> dict:
     ).fetchone()
     docs = db.conn.execute(
         """
-        SELECT url, title, retrieved_at FROM documents
+        SELECT url, title, retrieved_at, body_markdown, category FROM documents
          WHERE feed_id = ? AND category IN ('fares', 'payment')
-         ORDER BY category
+         ORDER BY category, LENGTH(url)
         """,
-        (feed,),
+        (_DOCS_FEED.get(feed, feed),),
     ).fetchall()
+    fare_doc = next((d for d in docs if d["category"] == "fares"), None)
+    page_text = None
+    if fare_doc:
+        body = fare_doc["body_markdown"] or ""
+        page_text = {
+            "url": fare_doc["url"], "retrieved_at": fare_doc["retrieved_at"],
+            "text": body[:_FARE_TEXT_CHARS] + (" ..." if len(body) > _FARE_TEXT_CHARS
+                                               else ""),
+        }
+    docs = [{k: d[k] for k in ("url", "title", "retrieved_at")} for d in docs]
     if not fare:
         return {"agency": feed, "error": "no_fare_vending_data",
-                "sources": [dict(d) for d in docs]}
+                "fare_page_text": page_text, "sources": docs}
     return {
         "agency": feed,
         "display_name": prof["display_name"] if prof else feed,
+        # The agency's fare page, as published: the source for prices and rules.
+        "fare_page_text": page_text,
+        "summary_note": "The fields below are a hand-maintained summary. If they "
+                        "differ from fare_page_text, the fare page is correct.",
         "base_fare": fare["base_fare"],
         "reduced_fare": fare["reduced_fare"],
         "currency": fare["currency"],
@@ -493,5 +517,5 @@ def how_to_pay(db: Database, agency: str) -> dict:
         "notes": fare["notes"],
         "fare_page": fare["fare_page_url"],
         "stale": is_stale(fare["updated_at"]),
-        "sources": [dict(d) for d in docs],
+        "sources": docs,
     }

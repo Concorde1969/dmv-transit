@@ -30,12 +30,16 @@ transfer_policy = "No fare, so transfers are irrelevant — board and ride."
 fare_page_url = "https://www.dashbus.com/traveltips/"
 notes = "DASH is 100% fare-free. The DASH app is for real-time tracking only."
 
+# Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]
 type = "gtfs"
+transitland_id = "f-dqchv-alexandriatransitcompanydash"
 url = "https://www.dashbus.com/wp-content/gtfs/google_transit.zip"
 
+# Fares, how to pay, and service alerts / detours (never routes or schedules).
 [[sources]]
 type = "web_pages"
 pages = [
+  { url = "https://www.dashbus.com/alert-list/", category = "alerts" },
   { url = "https://www.dashbus.com/traveltips/", category = "payment" },
 ]

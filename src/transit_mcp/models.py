@@ -84,14 +84,18 @@ class DocumentWithChunks(BaseModel):
 
 
 class Alert(BaseModel):
-    """A real-time service disruption from the WMATA API."""
+    """A real-time service disruption (WMATA API, or an agency's GTFS-realtime feed)."""
 
     provider_alert_id: str
+    feed_id: str = "wmata"
     mode: AlertMode
     headline: str
     description: str | None = None
     affected_lines: list[str] = Field(default_factory=list)
     affected_stations: list[str] = Field(default_factory=list)
+    affected_routes: list[str] = Field(default_factory=list)
+    affected_stops: list[str] = Field(default_factory=list)
+    url: str | None = None
     severity: str | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None

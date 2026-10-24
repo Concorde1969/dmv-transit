@@ -43,6 +43,8 @@ def _load_nodes(db: Database) -> list[dict]:
           FROM gtfs_stops
          WHERE lat IS NOT NULL AND lon IS NOT NULL
            AND (location_type IS NULL OR location_type IN (0, ''))
+           -- e.g. Metrorail platforms: linked by station code instead
+           AND feed_id NOT IN (SELECT feed_id FROM gtfs_feeds WHERE index_stops = 0)
         """
     ):
         nodes.append({
@@ -157,7 +159,8 @@ def _import_feed_transfers(db: Database, now: str) -> int:
     rows = db.conn.execute(
         "SELECT feed_id, from_stop_id, to_stop_id, min_transfer_time "
         "FROM gtfs_transfers WHERE from_stop_id IS NOT NULL AND to_stop_id IS NOT NULL "
-        "AND from_stop_id <> to_stop_id"
+        "AND from_stop_id <> to_stop_id "
+        "AND feed_id NOT IN (SELECT feed_id FROM gtfs_feeds WHERE index_stops = 0)"
     ).fetchall()
     for r in rows:
         s = {

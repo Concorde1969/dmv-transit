@@ -61,7 +61,7 @@ Three layers, each swappable on its own (details in
                                          heuristic | python | process | http
                                                       │  TripRequest / TripPlan
                                                       ▼
-                                   MCP server (14 tools) ──► web chat (Claude)
+                                   MCP server (15 tools) ──► web chat (Claude)
                                                          └─► any MCP client
 ```
 
@@ -73,6 +73,18 @@ Three layers, each swappable on its own (details in
 
 Every stored record keeps its source URL, fetch time and content hash, so answers are
 cited and stale data is flagged.
+
+### Where each kind of answer comes from
+
+| Answer | Source |
+| --- | --- |
+| Routes, stops, schedules, service days and hours (Metrorail and Metrobus included) | Each agency's **GTFS** feed, found through **[Transitland](https://www.transit.land/)** |
+| Fares, how to pay, how to ride | The agency's own **fare / rider web pages**, plus WMATA's station-to-station fare data (checked against wmata.com/pay.html) |
+| Disruptions | WMATA real-time incidents, agencies' GTFS-realtime alerts, and their service-alert / service-change web pages — always shown *alongside* the GTFS schedule, never instead of it |
+
+Web pages are never used for routes or schedules. Feeds are fetched from Transitland's
+own copy when a `TRANSITLAND_API_KEY` is set and the license allows it, otherwise from
+the official URL Transitland lists (`transit-mcp doctor` shows which, per feed).
 
 ## Command line
 
@@ -102,15 +114,16 @@ content hash. One failing source never stops the rest of a run.
 
 | slug | agency | mode | data |
 | --- | --- | --- | --- |
-| `wmata` | Metro — Metrorail & Metrobus | rail + bus | WMATA API + wmata.com |
-| `vre` | Virginia Railway Express | commuter rail | GTFS (manual download) |
-| `fairfax-connector` | Fairfax Connector | bus | GTFS + fare page |
-| `art` | Arlington Transit | bus | GTFS + fare pages |
-| `dash` | DASH (Alexandria) — fare-free | bus | GTFS + rider page |
-| `cue` | CUE (City of Fairfax) | bus | GTFS (manual download) |
-| `loudoun` | Loudoun County Transit | bus | GTFS + fare pages |
-| `omniride` | OmniRide (PRTC) | bus | GTFS + fare pages |
-| `virginia-breeze` | Virginia Breeze | intercity coach | GTFS + booking page |
+| `wmata` | Metrorail (WMATA) | rail | GTFS via Transitland + WMATA API (stations, incidents, fares) + wmata.com (fares, alerts, guides) |
+| `metrobus` | Metrobus (WMATA) | bus | GTFS via Transitland (+ WMATA bus incidents) |
+| `vre` | Virginia Railway Express | commuter rail | GTFS via Transitland |
+| `fairfax-connector` | Fairfax Connector | bus | GTFS via Transitland + GTFS-realtime alerts + fare page |
+| `art` | Arlington Transit | bus | GTFS via Transitland + fare and alert pages |
+| `dash` | DASH (Alexandria) — fare-free | bus | GTFS via Transitland + rider page |
+| `cue` | CUE (City of Fairfax) | bus | GTFS (manual download — not in Transitland) |
+| `loudoun` | Loudoun County Transit | bus | GTFS via Transitland + fare and news pages |
+| `omniride` | OmniRide (PRTC) | bus | GTFS via Transitland + fare and service-update pages |
+| `virginia-breeze` | Virginia Breeze | intercity coach | GTFS (operator URL — not in Transitland) + booking page |
 
 To add one, copy `agencies/_template.toml` — see [agencies/README.md](agencies/README.md).
 
@@ -118,11 +131,12 @@ To add one, copy `agencies/_template.toml` — see [agencies/README.md](agencies
 
 | Tool | Purpose |
 | --- | --- |
-| `search_transit_info(query, category?, limit?)` | Full-text search across all rider guidance, with citations |
-| `get_service_alerts(line?, station?, mode?)` | Current Metro rail/bus disruptions |
+| `search_transit_info(query, category?, limit?)` | Search the agencies' fare / how-to / alert pages (never routes or schedules) |
+| `get_service_alerts(line?, station?, mode?, agency?)` | Live disruptions: WMATA incidents + agencies' GTFS-realtime alerts |
 | `get_elevator_escalator_status(station?)` | Elevator / escalator outages |
 | `get_station_info(station)` | Lines, address, parking, entrances |
 | `get_fare(origin, destination, rider_type?)` | Metrorail station-to-station fare |
+| `get_metro_route(origin, destination)` | Metrorail lines, changes of train, direction, first/last trains, disruptions |
 | `list_topics()` / `get_guide(topic)` | Content overview / full rider guides |
 | `list_agencies()` | Every system: role, strengths, service area, fare headline |
 | `find_stops_near(place, radius_m?, agency?)` | Stops/stations near a place, across agencies |
@@ -167,6 +181,6 @@ Tests run offline against fixtures in `tests/fixtures/` (the Node engine test ru
 ## Legal
 
 See [NOTICE.md](NOTICE.md). WMATA API data is used under its Developer License
-Agreement; GTFS feeds are published by each agency for redistribution; scraping is
+Agreement; GTFS feeds are published by each agency (located through Transitland); scraping is
 limited to public, robots-allowed pages, rate-limited, and stored with attribution.
 Not affiliated with WMATA or any agency listed.

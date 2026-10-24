@@ -28,6 +28,7 @@ from transit_mcp.ingest.sources.base import IngestContext, RunOptions, Scope, So
 _REGISTRY: dict[str, Source] = {}
 _BUILTINS = (
     "transit_mcp.ingest.sources.gtfs",
+    "transit_mcp.ingest.sources.gtfs_rt_alerts",
     "transit_mcp.ingest.sources.web_pages",
     "transit_mcp.ingest.sources.wmata_api",
 )

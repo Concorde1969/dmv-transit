@@ -38,14 +38,16 @@ def _service_day_masks(db: Database, feed_id: str) -> dict[str, list[int]]:
     ):
         masks[r["service_id"]] = [int(r[c] or 0) for c in _DAY_COLS]
 
-    # calendar_dates-only services: infer weekdays from added dates.
+    # Services with no weekly pattern (calendar_dates-only, or all-zero calendar
+    # rows as in WMATA's feeds): infer weekdays from the added dates.
+    weekly = {sid for sid, m in masks.items() if any(m)}
     rows = db.conn.execute(
         "SELECT service_id, date FROM gtfs_calendar_dates "
         "WHERE feed_id=? AND exception_type=1",
         (feed_id,),
     ).fetchall()
     for r in rows:
-        if r["service_id"] in masks:
+        if r["service_id"] in weekly:
             continue
         try:
             dow = datetime.strptime(r["date"], _DOW_FROM_DATE).weekday()  # Mon=0
@@ -74,20 +76,21 @@ def _days_label(mask: list[int]) -> str:
 
 
 def summarize_feed(db: Database, feed_id: str) -> dict:
+    """Per-stop and per-route service windows for one feed.
+
+    Streams ``stop_times`` and keeps only running aggregates (min/max times, counts),
+    so memory stays flat even for very large feeds such as Metrobus (4M+ rows).
+    """
     masks = _service_day_masks(db, feed_id)
+    no_days = [0] * 7
 
-    trips = db.conn.execute(
-        "SELECT trip_id, route_id, service_id FROM gtfs_trips WHERE feed_id=?",
-        (feed_id,),
-    ).fetchall()
-    trip_meta = {t["trip_id"]: (t["route_id"], t["service_id"]) for t in trips}
-
-    stimes = db.conn.execute(
-        "SELECT trip_id, stop_id, stop_sequence, departure_time, arrival_time "
-        "FROM gtfs_stop_times WHERE feed_id=? ORDER BY trip_id, stop_sequence",
-        (feed_id,),
-    ).fetchall()
-
+    trip_meta = {
+        t["trip_id"]: (t["route_id"], t["service_id"])
+        for t in db.conn.execute(
+            "SELECT trip_id, route_id, service_id FROM gtfs_trips WHERE feed_id=?",
+            (feed_id,),
+        )
+    }
     stop_names = dict(
         db.conn.execute(
             "SELECT stop_id, name FROM gtfs_stops WHERE feed_id=?", (feed_id,)
@@ -100,59 +103,78 @@ def summarize_feed(db: Database, feed_id: str) -> dict:
         )
     }
 
-    # --- per-stop aggregation ------------------------------------------------
+    def _window(agg: dict, key: str, dep: str) -> None:
+        lo, hi = agg.get(key, (None, None))
+        agg[key] = (dep if lo is None or dep < lo else lo, dep if hi is None or dep > hi else hi)
+
     stop_agg: dict[str, dict] = {}
-    # --- per-route aggregation --------------------------------------------
     route_agg: dict[str, dict] = {}
-
     trip_stopcount: dict[str, int] = {}
-    for st in stimes:
-        trip_stopcount[st["trip_id"]] = trip_stopcount.get(st["trip_id"], 0) + 1
+    wk_count: dict[tuple[str, str], int] = {}  # (route, stop) -> weekday departures
 
-    for st in stimes:
-        rid, sid = trip_meta.get(st["trip_id"], (None, None))
-        mask = masks.get(sid, [0] * 7)
+    for st in db.conn.execute(
+        "SELECT trip_id, stop_id, departure_time, arrival_time "
+        "FROM gtfs_stop_times WHERE feed_id=?",
+        (feed_id,),
+    ):
+        trip = st["trip_id"]
+        trip_stopcount[trip] = trip_stopcount.get(trip, 0) + 1
+        rid, sid = trip_meta.get(trip, (None, None))
+        mask = masks.get(sid, no_days)
         dep = _norm_time(st["departure_time"] or st["arrival_time"])
 
-        sa = stop_agg.setdefault(
-            st["stop_id"],
-            {"mask": [0] * 7, "wk": [], "sat": [], "sun": [], "routes": set(),
-             "trips": set()},
-        )
+        sa = stop_agg.get(st["stop_id"])
+        if sa is None:
+            sa = stop_agg[st["stop_id"]] = {"mask": [0] * 7, "routes": set(),
+                                            "evening": False}
         sa["mask"] = [a | b for a, b in zip(sa["mask"], mask)]
         if rid:
             sa["routes"].add(rid)
-        sa["trips"].add(st["trip_id"])
         if dep:
             if any(mask[:5]):
-                sa["wk"].append(dep)
+                _window(sa, "wk", dep)
             if mask[5]:
-                sa["sat"].append(dep)
+                _window(sa, "sat", dep)
             if mask[6]:
-                sa["sun"].append(dep)
+                _window(sa, "sun", dep)
+            if dep >= "20:00:00" and any(mask):
+                sa["evening"] = True
 
         if rid:
-            ra = route_agg.setdefault(
-                rid,
-                {"mask": [0] * 7, "deps": [], "trips": set(), "wk_by_stop": {}},
-            )
+            ra = route_agg.get(rid)
+            if ra is None:
+                ra = route_agg[rid] = {"mask": [0] * 7, "trips": set()}
             ra["mask"] = [a | b for a, b in zip(ra["mask"], mask)]
-            ra["trips"].add(st["trip_id"])
+            ra["trips"].add(trip)
             if dep:
-                ra["deps"].append(dep)
+                _window(ra, "deps", dep)
                 if any(mask[:5]):
-                    ra["wk_by_stop"].setdefault(st["stop_id"], []).append(dep)
+                    wk_count[(rid, st["stop_id"])] = wk_count.get((rid, st["stop_id"]), 0) + 1
+
+    # Trips per week at each stop: distinct trips (a loop may visit a stop twice).
+    stop_trips_per_week: dict[str, int] = {}
+    for r in db.conn.execute(
+        "SELECT st.stop_id, t.service_id, COUNT(DISTINCT st.trip_id) AS n "
+        "FROM gtfs_stop_times st JOIN gtfs_trips t "
+        "ON t.feed_id = st.feed_id AND t.trip_id = st.trip_id "
+        "WHERE st.feed_id=? GROUP BY st.stop_id, t.service_id",
+        (feed_id,),
+    ):
+        stop_trips_per_week[r["stop_id"]] = (stop_trips_per_week.get(r["stop_id"], 0)
+                                             + r["n"] * sum(masks.get(r["service_id"],
+                                                                      no_days)))
+
+    busiest: dict[str, tuple[str, int]] = {}
+    for (rid, stop_id), n in wk_count.items():
+        if n > busiest.get(rid, ("", 0))[1]:
+            busiest[rid] = (stop_id, n)
 
     now = datetime.now().isoformat(sep=" ", timespec="seconds")
 
     db.conn.execute("DELETE FROM stop_service_summary WHERE feed_id=?", (feed_id,))
     for stop_id, a in stop_agg.items():
         m = a["mask"]
-        trips_per_week = sum(
-            sum(masks.get(trip_meta.get(t, (None, None))[1], [0] * 7))
-            for t in a["trips"]
-        )
-        all_deps = a["wk"] + a["sat"] + a["sun"]
+        wk, sat, sun = (a.get(k, (None, None)) for k in ("wk", "sat", "sun"))
         lat, lon = stop_coords.get(stop_id, (None, None))
         db.conn.execute(
             """
@@ -167,15 +189,10 @@ def summarize_feed(db: Database, feed_id: str) -> dict:
             (
                 feed_id, stop_id, stop_names.get(stop_id), lat, lon,
                 m[0], m[1], m[2], m[3], m[4], m[5], m[6],
-                min(a["wk"]) if a["wk"] else None,
-                max(a["wk"]) if a["wk"] else None,
-                min(a["sat"]) if a["sat"] else None,
-                max(a["sat"]) if a["sat"] else None,
-                min(a["sun"]) if a["sun"] else None,
-                max(a["sun"]) if a["sun"] else None,
-                trips_per_week, json.dumps(sorted(a["routes"])),
+                wk[0], wk[1], sat[0], sat[1], sun[0], sun[1],
+                stop_trips_per_week.get(stop_id, 0), json.dumps(sorted(a["routes"])),
                 int(m[5] or m[6]),
-                int(any(d >= "20:00:00" for d in all_deps)),
+                int(a["evening"]),
                 now,
             ),
         )
@@ -183,10 +200,24 @@ def summarize_feed(db: Database, feed_id: str) -> dict:
     db.conn.execute("DELETE FROM route_service_summary WHERE feed_id=?", (feed_id,))
     for route_id, a in route_agg.items():
         m = a["mask"]
-        busiest = max(a["wk_by_stop"].values(), key=len, default=[])
-        headway = _median_headway_min(sorted(busiest))
-        rep_trip = max(
-            (t for t in a["trips"]), key=lambda t: trip_stopcount.get(t, 0), default=None
+        headway = None
+        if route_id in busiest:
+            deps = sorted(
+                d for d in (
+                    _norm_time(r["departure_time"] or r["arrival_time"])
+                    for r in db.conn.execute(
+                        "SELECT st.departure_time, st.arrival_time, t.service_id "
+                        "FROM gtfs_stop_times st JOIN gtfs_trips t "
+                        "ON t.feed_id = st.feed_id AND t.trip_id = st.trip_id "
+                        "WHERE st.feed_id=? AND st.stop_id=? AND t.route_id=?",
+                        (feed_id, busiest[route_id][0], route_id),
+                    )
+                    if any(masks.get(r["service_id"], no_days)[:5])
+                ) if d
+            )
+            headway = _median_headway_min(deps)
+        rep_trip = max(  # longest trip; ties broken by trip_id so runs are repeatable
+            a["trips"], key=lambda t: (trip_stopcount.get(t, 0), t), default=None
         )
         first_name = last_name = None
         num_stops = trip_stopcount.get(rep_trip, 0) if rep_trip else 0
@@ -215,8 +246,8 @@ def summarize_feed(db: Database, feed_id: str) -> dict:
             (
                 feed_id, route_id, _days_label(m),
                 int(any(m[:5])), int(m[5]), int(m[6]),
-                min(a["deps"]) if a["deps"] else None,
-                max(a["deps"]) if a["deps"] else None,
+                a.get("deps", (None, None))[0],
+                a.get("deps", (None, None))[1],
                 trips_per_week, headway, num_stops, first_name, last_name, now,
             ),
         )

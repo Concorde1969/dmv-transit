@@ -29,9 +29,15 @@ general knowledge or memory — lines, routes, transfers, fares, hours and stati
 If the tools don't return it, say the information isn't available here and point to the
 agency's official website.
 
+Sources: routes, stops, schedules, service days and hours come ONLY from GTFS schedule
+data (found through Transitland) via get_metro_route, plan_connection, get_route and
+transfers_at. Agency web pages (search_transit_info, how_to_pay's fare_page_text) are
+used only for fares, how to pay/ride, and disruptions. When a result lists
+active_disruptions, still give the scheduled route and tell the rider about each one.
+
 For any Metrorail trip between two stations call get_metro_route — it says which line(s)
-to ride, where to change trains, and which direction. Never describe a Metrorail trip as
-direct / one seat / no transfer unless get_metro_route returns "transfers": 0.
+to ride, where to change trains, which direction, and when trains run. Never describe a
+Metrorail trip as direct / one seat / no transfer unless it returns "transfers": 0.
 For other WMATA specifics use get_fare / get_service_alerts /
 get_elevator_escalator_status / get_station_info. For anything spanning agencies use
 list_agencies, find_stops_near, get_route, transfers_at, how_to_pay, plan_connection,
@@ -54,8 +60,10 @@ def _db() -> Database:
 
 @mcp.tool()
 def search_transit_info(query: str, category: str | None = None, limit: int = 5) -> list[dict]:
-    """Full-text search across all rider guidance (fares, payment, accessibility,
-    safety, rules, new-rider/visitor guides, station & line summaries).
+    """Full-text search of the agencies' web pages: fares, how to pay, accessibility,
+    safety, rules, new-rider/visitor guides, and service-change notices. NOT a source
+    for routes, stops, schedules, hours or service days — use get_metro_route,
+    plan_connection, get_route or transfers_at (GTFS schedule data) for those.
 
     Args:
         query: Natural-language search terms, e.g. "pay with phone" or "bringing a bike".
@@ -69,17 +77,21 @@ def search_transit_info(query: str, category: str | None = None, limit: int = 5)
 
 @mcp.tool()
 def get_service_alerts(
-    line: str | None = None, station: str | None = None, mode: str | None = None
+    line: str | None = None, station: str | None = None, mode: str | None = None,
+    agency: str | None = None,
 ) -> list[dict]:
-    """Current service disruptions and delays.
+    """Live service disruptions: WMATA incidents (Metrorail, Metrobus, elevators) and
+    agencies' GTFS-realtime alerts (detours, closed stops, missed trips).
 
     Args:
-        line: Rail line code filter (RD, BL, YL, OR, GR, SV).
-        station: Station name or code filter.
+        line: Metrorail line code (RD, BL, YL, OR, GR, SV) or bus route number.
+        station: Metrorail station name or code.
         mode: "rail", "bus", or "elevator_escalator".
+        agency: Agency slug, e.g. "wmata", "metrobus", "fairfax-connector".
     """
     with _db() as db:
-        return queries.get_service_alerts(db, line=line, station=station, mode=mode)
+        return queries.get_service_alerts(db, line=line, station=station, mode=mode,
+                                          agency=agency)
 
 
 @mcp.tool()
@@ -163,12 +175,13 @@ def find_stops_near(place: str, radius_m: int = 400, agency: str | None = None) 
 
 @mcp.tool()
 def get_route(agency: str, query: str) -> dict:
-    """Details for a regional bus/rail route: description, days/hours of service,
-    typical frequency, endpoints, and fare.
+    """One route from an agency's GTFS schedule: days and hours of service, typical
+    frequency, endpoints, fare, and any live disruptions on it.
 
     Args:
-        agency: Feed slug or name (e.g. "fairfax-connector", "OmniRide", "loudoun").
-        query: Route number or name (e.g. "599", "Metro Express", "Gold 1").
+        agency: Agency slug or name (e.g. "metrobus", "wmata" for Metrorail lines,
+            "fairfax-connector", "OmniRide", "loudoun").
+        query: Route number or name (e.g. "A11", "Blue", "599", "Metro Express").
     """
     with _db() as db:
         return regional.get_route(db, agency, query)
@@ -177,8 +190,9 @@ def get_route(agency: str, query: str) -> dict:
 @mcp.tool()
 def transfers_at(place: str, day: str | None = None, time: str | None = None) -> dict:
     """Routes from OTHER systems reachable on foot from a station or stop, grouped by
-    agency, each with walk time and its service window. Pass `day` (e.g. "saturday")
-    and/or `time` ("HH:MM") to get a per-connection feasibility check.
+    agency, each with walk time and its service window from the GTFS schedules. Pass
+    `day` (e.g. "saturday") and/or `time` ("HH:MM") to get a per-connection
+    feasibility check.
     """
     with _db() as db:
         return regional.transfers_at(db, place, day=day, time=time)
@@ -186,12 +200,13 @@ def transfers_at(place: str, day: str | None = None, time: str | None = None) ->
 
 @mcp.tool()
 def how_to_pay(agency: str) -> dict:
-    """How to pay to ride one agency: accepted payment methods, where to buy, the
-    mobile app, SmarTrip/contactless acceptance, exact-change rules, transfer
-    policy, and a cited fare page.
+    """How to pay to ride one agency. `fare_page_text` is the agency's own fare page
+    (the source for prices, discounts and transfer rules); the other fields are a
+    shorter hand-maintained summary that the fare page overrides.
 
     Args:
-        agency: Feed slug or name (e.g. "vre", "dash", "omniride", "wmata").
+        agency: Agency slug or name (e.g. "vre", "dash", "omniride", "wmata",
+            "metrobus").
     """
     with _db() as db:
         return regional.how_to_pay(db, agency)
