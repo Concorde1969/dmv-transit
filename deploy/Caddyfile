@@ -1,0 +1,39 @@
+# Caddy obtains and renews HTTPS certificates for SITE_DOMAIN automatically
+# (DNS must already point at this server, and ports 80 + 443 must be open).
+{
+	email {$ACME_EMAIL}
+}
+
+www.{$SITE_DOMAIN} {
+	redir https://{$SITE_DOMAIN}{uri} permanent
+}
+
+{$SITE_DOMAIN} {
+	request_body {
+		max_size 16KB
+	}
+
+	# Compress everything except the streamed chat answers (compression buffers them).
+	@compressible not path /api/chat
+	encode @compressible zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		-Server
+	}
+
+	reverse_proxy app:8765 {
+		# Send each piece of a streamed answer immediately.
+		flush_interval -1
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

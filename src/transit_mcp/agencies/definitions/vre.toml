@@ -1,0 +1,62 @@
+slug = "vre"
+name = "Virginia Railway Express"
+mode = "commuter_rail"
+
+[profile]
+display_name = "Virginia Railway Express (VRE)"
+role = """\
+  Peak-hour commuter rail on two lines — Fredericksburg and Manassas — carrying \
+  riders from outer Virginia suburbs into Alexandria, Crystal City, L'Enfant, and \
+  Union Station."""
+strengths = """\
+  Fast and comfortable; bypasses I-95/I-66 congestion entirely; large free/cheap \
+  park-and-ride lots at outer stations; a VRE ticket includes a free connecting ride \
+  on most local buses and Metro that day."""
+weaknesses = """\
+  Weekday peak only and mostly peak-direction — roughly inbound 05:00–09:00, \
+  outbound 15:30–19:00; no midday, evening, weekend, or holiday service; limited \
+  reverse-commute trips."""
+service_area = """\
+  Fredericksburg, Spotsylvania, Stafford, Manassas, Prince William, Fairfax → \
+  Alexandria → DC."""
+connects_to = [
+  "Union Station (Metro Red, Amtrak, MARC)",
+  "L'Enfant Plaza (Metro Green/Yellow/Blue/Orange/Silver)",
+  "Crystal City (Metro Blue/Yellow)",
+  "Alexandria / King St-Old Town (Metro Blue/Yellow, Amtrak, DASH)",
+  "Franconia-Springfield (Metro Blue, OmniRide)",
+  "Backlick Road, Rolling Road, Burke Centre",
+]
+frequency_tier = "peak"
+park_and_ride = true
+
+[fares]
+payment_methods = [
+  "VRE Mobile app ticket (buy and activate before boarding)",
+  "Paper ticket from a station ticket vending machine",
+  "Monthly / multi-ride / 5-day passes",
+  "No SmarTrip for VRE fare; no cash paid to the conductor",
+]
+where_to_buy = [
+  "VRE Mobile app (iOS/Android) — buy and activate before you board",
+  "Ticket vending machines at every VRE station",
+  "Employer Commuter Choice / transit benefit programs",
+]
+mobile_app_name = "VRE Mobile"
+transfer_policy = """\
+  A valid VRE ticket includes a free same-day connecting ride on Metrorail, \
+  Metrobus, ART, DASH, Fairfax Connector, OmniRide, and other partners ('free ride' \
+  / step-up) — keep your ticket to show."""
+fare_page_url = "https://www.vre.org/service/fares/"
+notes = """\
+  Fares are zone/distance based, roughly $4–$14 one way; buy before boarding — there \
+  is a surcharge or no sale on board. Fares change; confirm the current amount at the \
+  fare page before you travel."""
+
+# vre.org sits behind a Cloudflare challenge, so the feed can't be fetched by a
+# script. Download google_transit.zip in a browser and save it as
+# feeds/vre/google_transit.zip. (Its fare pages are blocked too — the [fares]
+# section above is the source of truth.)
+[[sources]]
+type = "gtfs"
+manual = true

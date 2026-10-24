@@ -1,0 +1,73 @@
+# ---------------------------------------------------------------------------
+# Agency definition template
+#
+# To add an agency:
+#   1. Copy this file to agencies/<slug>.toml (no leading underscore).
+#   2. Fill it in. Only `slug`, `name` and at least one [[sources]] are required.
+#   3. Run:  transit-mcp agencies --config        (checks the file)
+#            transit-mcp ingest --only <slug>     (loads its data)
+#
+# A file here with the same slug as a built-in agency replaces the built-in one.
+# Files starting with "_" (like this one) are ignored.
+# ---------------------------------------------------------------------------
+
+slug = "example-transit"        # lowercase letters, digits, dashes; unique
+name = "Example Transit"         # official name
+mode = "bus"                     # bus | rail+bus | commuter_rail | intercity_bus | ...
+enabled = true                   # false = keep the file but skip it everywhere
+
+# What this system is FOR. The trip advisor uses this to pick the right system
+# for each part of a journey, and the assistant uses it to explain choices.
+[profile]
+display_name = "Example Transit"                 # optional; defaults to `name`
+role = "One sentence: what part of the network this system covers."
+strengths = "Why a rider would choose it (frequency, coverage, price, speed...)."
+weaknesses = "Limits a rider must know (no weekends, peak only, small area...)."
+service_area = "Towns / counties served."
+connects_to = [                                   # transfer hubs with other systems
+  "Some Metro Station (Metro Orange)",
+]
+frequency_tier = "frequent"      # frequent | peak | infrequent | intercity
+park_and_ride = false
+
+# How a rider actually PAYS. Shown verbatim to riders — write it plainly.
+[fares]
+base_fare = 2.00                 # omit if it varies by distance
+reduced_fare = 1.00              # seniors / disabled; omit if unknown
+payment_methods = [
+  "SmarTrip card",
+  "Exact-change cash in the farebox",
+]
+where_to_buy = [
+  "Buy or reload a SmarTrip at any Metrorail station",
+]
+mobile_app_name = ""             # e.g. "Example Transit Go"; leave empty if none
+accepts_smartrip = true
+accepts_contactless = false
+cash_onboard = true
+exact_change_required = true
+transfer_policy = "Free transfers within 2 hours with SmarTrip."
+fare_page_url = "https://example-transit.org/fares"
+notes = "Anything else a first-time rider should know about paying."
+
+# WHERE THE DATA COMES FROM. Add as many [[sources]] blocks as you need.
+# Built-in source types: gtfs, web_pages, wmata_api. New types are plugins —
+# see docs/EXTENDING.md.
+
+# Schedules, stops and routes (GTFS static feed):
+[[sources]]
+type = "gtfs"
+url = "https://example-transit.org/gtfs/google_transit.zip"
+# If the agency blocks scripted downloads, use this instead of `url`, then save
+# the zip by hand as feeds/<slug>/google_transit.zip:
+# manual = true
+
+# Rider-information pages to make searchable (fares, how to pay, how to ride):
+[[sources]]
+type = "web_pages"
+pages = [
+  { url = "https://example-transit.org/fares", category = "fares" },
+  { url = "https://example-transit.org/how-to-ride", category = "payment" },
+]
+# categories: fares, payment, accessibility, safety, rules, maps, new_rider,
+#             visitor, alerts, policy

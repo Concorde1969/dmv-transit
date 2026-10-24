@@ -1,0 +1,3 @@
+stop_id,stop_name,stop_lat,stop_lon,location_type
+B1,Hub Stop B,38.9101,-77.0501,0
+B2,Office Park,38.9500,-77.1000,0

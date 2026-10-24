@@ -1,0 +1,4 @@
+stop_id,stop_code,stop_name,stop_desc,stop_lat,stop_lon,location_type,wheelchair_boarding
+A1,1001,Downtown A,Main and 1st,38.9000,-77.0000,0,1
+A2,1002,Hub Stop,Transfer point,38.9100,-77.0500,0,1
+A3,1003,Far Corner,Edge of town,38.9180,-77.0500,0,0

@@ -1,0 +1,41 @@
+slug = "dash"
+name = "DASH (Alexandria Transit Company)"
+mode = "bus"
+
+[profile]
+role = """\
+  Alexandria's local bus grid, linking every Alexandria Metro station and \
+  neighborhood; the redesigned 'New DASH Network' runs frequent, all-day, seven-day \
+  service."""
+strengths = """\
+  Completely fare-free since September 2021 — just board; 15-minute service on many \
+  lines; runs seven days a week including evenings; direct links to King St-Old Town \
+  VRE/Amtrak."""
+weaknesses = "Covers the City of Alexandria only; does not extend far past city limits."
+service_area = "City of Alexandria."
+connects_to = [
+  "King St-Old Town (Metro Blue/Yellow, VRE, Amtrak)",
+  "Braddock Road, Eisenhower Avenue, Van Dorn Street (Blue/Yellow)",
+  "Pentagon (Line 35), Shirlington, Mark Center",
+]
+frequency_tier = "frequent"
+
+[fares]
+base_fare = 0.0
+reduced_fare = 0.0
+payment_methods = ["No fare — every DASH bus is free. Just board."]
+where_to_buy = ["Nothing to buy; DASH has been fare-free since September 2021."]
+mobile_app_name = "DASH Bus"
+transfer_policy = "No fare, so transfers are irrelevant — board and ride."
+fare_page_url = "https://www.dashbus.com/traveltips/"
+notes = "DASH is 100% fare-free. The DASH app is for real-time tracking only."
+
+[[sources]]
+type = "gtfs"
+url = "https://www.dashbus.com/wp-content/gtfs/google_transit.zip"
+
+[[sources]]
+type = "web_pages"
+pages = [
+  { url = "https://www.dashbus.com/traveltips/", category = "payment" },
+]

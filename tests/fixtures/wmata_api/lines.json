@@ -1,0 +1,7 @@
+{
+  "Lines": [
+    {"LineCode": "RD", "DisplayName": "Red", "StartStationCode": "A15", "EndStationCode": "B11", "InternalDestination1": "", "InternalDestination2": ""},
+    {"LineCode": "BL", "DisplayName": "Blue", "StartStationCode": "J03", "EndStationCode": "G05", "InternalDestination1": "", "InternalDestination2": ""},
+    {"LineCode": "SV", "DisplayName": "Silver", "StartStationCode": "N06", "EndStationCode": "G05", "InternalDestination1": "", "InternalDestination2": ""}
+  ]
+}

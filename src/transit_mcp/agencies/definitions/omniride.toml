@@ -1,0 +1,63 @@
+slug = "omniride"
+name = "OmniRide (PRTC)"
+mode = "bus"
+
+[profile]
+role = """\
+  Prince William area transit: weekday express commuter buses to DC, the Pentagon, \
+  Tysons, and Mark Center; 'Metro Express' connectors to Franconia-Springfield and \
+  Tysons; and OmniRide Local routes in Manassas, Manassas Park, and eastern Prince \
+  William."""
+strengths = """\
+  Express routes bypass I-95/I-66 from large commuter lots; Metro Express links \
+  riders to the Blue and Silver lines; connects to Manassas and Woodbridge VRE \
+  stations; OmniRide Plus on-demand microtransit in some zones."""
+weaknesses = """\
+  Express routes are weekday peak-only and peak-direction; local routes run every \
+  30–60 min; limited weekend service."""
+service_area = """\
+  Prince William County, Manassas, Manassas Park, Woodbridge, Dale City, Gainesville, \
+  Haymarket."""
+connects_to = [
+  "Franconia-Springfield (Metro Blue) via Metro Express",
+  "Tysons (Metro Silver) via Metro Express",
+  "Pentagon (Blue/Yellow)",
+  "L'Enfant Plaza, Downtown DC, Rosslyn, Ballston (peak express)",
+  "Manassas and Woodbridge VRE stations",
+]
+frequency_tier = "peak"
+park_and_ride = true
+
+[fares]
+payment_methods = [
+  "SmarTrip card or SmarTrip in Apple/Google Wallet",
+  "Exact-change cash in the farebox",
+]
+where_to_buy = [
+  "Use an existing SmarTrip or buy/reload at any Metrorail station, online, or at retail",
+  "Plan trips and book OmniRide Plus microtransit in the OmniRide app",
+]
+mobile_app_name = "OmniRide"
+accepts_smartrip = true
+cash_onboard = true
+exact_change_required = true
+transfer_policy = """\
+  Free transfers between OmniRide buses; SmarTrip gives the regional transfer \
+  discount with Metro."""
+fare_page_url = "https://www.omniride.com/services/general-rider-information/fares-and-transfers/"
+notes = """\
+  Express commuter routes to DC/Pentagon are roughly $6.55–$8.30 one way; OmniRide \
+  Local is about $1.55 ($0.75 reduced). Fares change; confirm the current amount at \
+  the fare page before you travel."""
+
+[[sources]]
+type = "gtfs"
+url = "https://www.omniride.com/omniride/assets/File/google_transit.zip"
+
+[[sources]]
+type = "web_pages"
+pages = [
+  { url = "https://www.omniride.com/services/general-rider-information/fares-and-transfers/", category = "fares" },
+  { url = "https://www.omniride.com/services/general-rider-information/mobile-payment/", category = "payment" },
+  { url = "https://www.omniride.com/services/general-rider-information/smartrip/", category = "payment" },
+]

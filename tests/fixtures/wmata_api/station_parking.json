@@ -1,0 +1,10 @@
+{
+  "StationsParking": [
+    {
+      "Code": "A15",
+      "Notes": "Parking is available Monday - Friday. Address to garage: 15903 Somerville Drive.",
+      "AllDayParking": {"TotalCount": 5745, "RiderCost": 5.2, "NonRiderCost": 5.2, "SaturdayRiderCost": 0.0, "SaturdayNonRiderCost": 0.0},
+      "ShortTermParking": {"TotalCount": 34, "Notes": "Short term parking available 5am - 2am, time limit 12 hours"}
+    }
+  ]
+}

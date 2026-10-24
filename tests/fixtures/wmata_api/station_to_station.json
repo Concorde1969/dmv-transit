@@ -1,0 +1,19 @@
+{
+  "StationToStationInfos": [
+    {
+      "SourceStation": "A15", "DestinationStation": "A01",
+      "CompositeMiles": 14.98, "RailTime": 34,
+      "RailFare": {"PeakTime": 6.5, "OffPeakTime": 3.85, "SeniorDisabled": 3.25}
+    },
+    {
+      "SourceStation": "A15", "DestinationStation": "A15",
+      "CompositeMiles": 0.0, "RailTime": 0,
+      "RailFare": {"PeakTime": 0.0, "OffPeakTime": 0.0, "SeniorDisabled": 0.0}
+    },
+    {
+      "SourceStation": "A15", "DestinationStation": "C01",
+      "CompositeMiles": 15.1, "RailTime": 36,
+      "RailFare": {"PeakTime": 6.5, "OffPeakTime": 3.85, "SeniorDisabled": 3.25}
+    }
+  ]
+}

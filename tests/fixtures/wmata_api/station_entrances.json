@@ -1,0 +1,16 @@
+{
+  "Entrances": [
+    {
+      "ID": "1", "Name": "Metro Center, 12th & F St NW",
+      "StationCode1": "A01", "StationCode2": "C01",
+      "Description": "Elevator and escalator entrance at the northwest corner of 12th and F St NW.",
+      "Lat": 38.898, "Lon": -77.028
+    },
+    {
+      "ID": "2", "Name": "Shady Grove West",
+      "StationCode1": "A15", "StationCode2": "",
+      "Description": "Kiss & Ride entrance on the west side of the station.",
+      "Lat": 39.12, "Lon": -77.165
+    }
+  ]
+}

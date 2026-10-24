@@ -1,0 +1,16 @@
+{
+  "Incidents": [
+    {
+      "IncidentID": "AB1C2D34-0000-1111-2222-333344445555",
+      "Description": "Red Line: Trains single tracking btwn Grosvenor & Medical Center due to a track problem. Expect delays.",
+      "StartLocationFullName": null,
+      "EndLocationFullName": null,
+      "PassengerDelay": 0,
+      "DelaySeverity": "Minor",
+      "IncidentType": "Delay",
+      "EmergencyText": null,
+      "LinesAffected": "RD; ; ; ; ",
+      "DateUpdated": "2026-08-29T13:12:03"
+    }
+  ]
+}

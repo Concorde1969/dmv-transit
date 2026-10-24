@@ -1,0 +1,49 @@
+slug = "cue"
+name = "CUE Bus (City of Fairfax)"
+mode = "bus"
+
+[profile]
+role = """\
+  A small four-route local system (Gold 1/2, Green 1/2) circulating the City of \
+  Fairfax and George Mason University with a direct link to Vienna/Fairfax-GMU Metro \
+  on the Orange Line."""
+strengths = """\
+  Cheap and simple; the fastest transit link between GMU and the Orange Line; \
+  frequent on weekdays; free for anyone with a Mason ID."""
+weaknesses = """\
+  Tiny service area (City of Fairfax + GMU); reduced weekend frequency; no \
+  late-night service."""
+service_area = "City of Fairfax and George Mason University."
+connects_to = [
+  "Vienna/Fairfax-GMU (Metro Orange)",
+  "George Mason University",
+  "Fairfax Connector routes in Old Town Fairfax",
+]
+frequency_tier = "frequent"
+
+[fares]
+base_fare = 2.00
+reduced_fare = 1.00
+payment_methods = [
+  "SmarTrip card",
+  "Exact-change cash in the farebox",
+  "George Mason University ID (Mason students/staff/faculty ride free)",
+]
+where_to_buy = [
+  "Use an existing SmarTrip or buy one at any Metrorail station or retail",
+  "Mason affiliates just show/tap their Mason ID",
+]
+accepts_smartrip = true
+cash_onboard = true
+exact_change_required = true
+transfer_policy = "Pay with SmarTrip for the discounted transfer to Metrorail and Metrobus."
+fare_page_url = "https://www.fairfaxva.gov/government/public-works/transportation/cue-bus"
+notes = """\
+  $2.00 base / $1.00 reduced; free with a valid Mason ID. Fares change; confirm the \
+  current amount at the fare page before you travel."""
+
+# fairfaxva.gov returns an HTML block page to scripts. Download the CUE GTFS zip in a
+# browser and save it as feeds/cue/google_transit.zip.
+[[sources]]
+type = "gtfs"
+manual = true

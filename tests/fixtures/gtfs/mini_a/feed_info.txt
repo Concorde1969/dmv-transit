@@ -1,0 +1,2 @@
+feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date
+Mini A Transit,https://mini-a.example,en,20260101,20261231

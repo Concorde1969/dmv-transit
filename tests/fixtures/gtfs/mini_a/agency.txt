@@ -1,0 +1,2 @@
+agency_id,agency_name,agency_url,agency_timezone,agency_phone,agency_fare_url
+MA,Mini A Transit,https://mini-a.example,America/New_York,555-0100,https://mini-a.example/fares

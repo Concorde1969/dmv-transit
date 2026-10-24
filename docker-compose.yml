@@ -1,0 +1,71 @@
+# DMV Regional Transportation Assistant — production stack.
+#
+#   docker compose up -d --build      start / update
+#   docker compose logs -f app        watch the web app
+#   docker compose logs -f scheduler  watch data refreshes
+#
+# Settings come from ./.env (start from deploy/.env.production.example).
+name: dmvtransit
+
+x-app: &app
+  build: .
+  image: dmvtransit-app:latest
+  env_file: .env
+  # These pin container paths and production mode. They take precedence over .env,
+  # so a .env copied from a laptop can't point the database outside the volume.
+  environment:
+    APP_ENV: production
+    TRUST_PROXY: "true"
+    CHAT_HOST: 0.0.0.0
+    CHAT_PORT: "8765"
+    TRANSIT_MCP_DB: /data/transit.db
+    TRANSIT_MCP_CACHE_DIR: /data/cache
+    GTFS_ARCHIVE_DIR: /data/gtfs
+    FEEDS_DIR: /data/feeds
+    AGENCIES_DIR: /app/agencies
+  volumes:
+    - transit_data:/data
+    # Manually downloaded feeds (VRE, CUE): scp them into ./feeds/<agency>/
+    - ./feeds:/data/feeds:ro
+  restart: unless-stopped
+  logging: &logging
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  app:
+    <<: *app
+    command: ["transit-mcp", "chat"]
+    expose:
+      - "8765"          # reachable only by Caddy, never published to the internet
+
+  scheduler:
+    <<: *app
+    command: ["transit-mcp", "scheduler"]
+    healthcheck:
+      disable: true
+
+  caddy:
+    image: caddy:2.8
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?Set SITE_DOMAIN in .env (e.g. dmvtransit.com)}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL in .env (for certificate notices)}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    logging: *logging
+
+volumes:
+  transit_data:
+  caddy_data:     # HTTPS certificates — keep this volume
+  caddy_config:

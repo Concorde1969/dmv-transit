@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DMV Regional Transportation Assistant</title>
+<style>
+  :root {
+    /* Warm "wayfinding" palette — cream paper, friendly teal, terracotta accents */
+    --paper:      #FBF4E9;
+    --paper-deep: #F4E9D7;
+    --card:       #FFFDF8;
+    --ink:        #2B2620;   /* warm near-black, softer than #000 */
+    --ink-soft:   #5C5346;
+    --line:       #E4D7C1;
+    --teal:       #1E6E62;
+    --teal-deep:  #185349;
+    --teal-tint:  #E6F0ED;
+    --clay:       #C25B32;
+    --clay-tint:  #F7E6DC;
+    --gold-bg:    #FBEFD3;
+    --gold-ink:   #7A5310;
+    --err-bg:     #F8E4DC;
+    --err-ink:    #8F3218;
+    --focus:      #1E6E62;
+
+    --serif: "Iowan Old Style", "Palatino Linotype", "Palatino", "Book Antiqua",
+             Georgia, "Times New Roman", serif;
+    --sans:  "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+
+    --radius: 16px;
+    --measure: 40rem;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    background-color: var(--paper);
+    background-image:
+      radial-gradient(1100px 480px at 82% -6%, rgba(30,110,98,0.07), transparent 70%),
+      radial-gradient(900px 420px at -8% 108%, rgba(194,91,50,0.07), transparent 70%);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 18px;
+    line-height: 1.65;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Faint paper grain */
+  body::before {
+    content: "";
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    opacity: 0.5;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E");
+  }
+  body > * { position: relative; z-index: 1; }
+
+  a { color: var(--teal-deep); text-underline-offset: 3px; text-decoration-thickness: 1.5px; }
+
+  :focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  /* ---------- Header ---------- */
+  header {
+    background: var(--card);
+    border-bottom: 1px solid var(--line);
+    padding: 20px clamp(16px, 4vw, 40px) 22px;
+    display: flex;
+    align-items: flex-end;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .brand { flex: 1; min-width: 260px; }
+  header h1 {
+    font-family: var(--serif);
+    font-size: clamp(1.5rem, 1.1rem + 1.6vw, 2rem);
+    line-height: 1.15;
+    margin: 0;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    color: var(--ink);
+  }
+  header .tagline {
+    margin: 6px 0 0;
+    font-size: 1rem;
+    color: var(--ink-soft);
+  }
+  /* dotted "route line" motif */
+  header .route {
+    margin-top: 12px;
+    height: 4px;
+    border-radius: 2px;
+    background: repeating-linear-gradient(
+      90deg, var(--clay) 0 14px, transparent 14px 24px);
+    max-width: 220px;
+  }
+
+  .btn {
+    font: inherit;
+    font-size: 1rem;
+    font-weight: 600;
+    min-height: 52px;
+    padding: 12px 22px;
+    border-radius: 12px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: background-color .15s ease, border-color .15s ease, transform .1s ease;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn-quiet {
+    background: var(--paper-deep);
+    color: var(--teal-deep);
+    border-color: var(--line);
+  }
+  .btn-quiet:hover { background: #EFE2CB; }
+
+  /* ---------- Setup / problem banner ---------- */
+  #status {
+    display: none;
+    padding: 14px clamp(16px, 4vw, 40px);
+    background: var(--gold-bg);
+    color: var(--gold-ink);
+    border-bottom: 1px solid var(--line);
+    font-size: 1rem;
+  }
+  #status.show { display: block; }
+  #status.bad { background: var(--err-bg); color: var(--err-ink); }
+  #status .tech { display: block; margin-top: 4px; font-size: 0.9rem; opacity: 0.85; }
+
+  /* ---------- Conversation ---------- */
+  main { flex: 1; overflow-y: auto; padding: clamp(20px, 4vw, 40px) 16px 12px; }
+  .wrap {
+    max-width: var(--measure);
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 26px;
+  }
+
+  .msg { display: flex; flex-direction: column; gap: 8px; animation: rise .35s ease both; }
+  .msg .who {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 0.95rem; font-weight: 700; color: var(--ink-soft);
+  }
+  .msg .who::before {
+    content: ""; width: 12px; height: 12px; border-radius: 50%;
+    background: var(--teal); flex: none;
+  }
+  .msg.user { align-items: flex-end; }
+  .msg.user .who { flex-direction: row-reverse; }
+  .msg.user .who::before { background: var(--clay); }
+
+  .bubble {
+    padding: 18px 20px;
+    border-radius: var(--radius);
+    background: var(--card);
+    border: 1px solid var(--line);
+    box-shadow: 0 1px 2px rgba(43,38,32,0.04), 0 8px 24px -18px rgba(43,38,32,0.25);
+    overflow-wrap: anywhere;
+  }
+  .msg.user .bubble {
+    background: var(--teal);
+    color: #FFFDF8;
+    border-color: var(--teal);
+    max-width: 90%;
+    box-shadow: 0 10px 24px -16px rgba(30,110,98,0.7);
+  }
+  .msg.user .bubble a { color: #EAF4F1; }
+
+  .bubble p { margin: 0 0 12px; }
+  .bubble > *:last-child { margin-bottom: 0; }
+  .bubble ul, .bubble ol { margin: 10px 0; padding-left: 26px; }
+  .bubble li { margin: 6px 0; }
+  .bubble h1, .bubble h2, .bubble h3 {
+    font-family: var(--serif); font-weight: 600;
+    font-size: 1.15rem; margin: 18px 0 8px; line-height: 1.3;
+  }
+  .bubble code {
+    background: var(--paper-deep); padding: 2px 6px; border-radius: 6px;
+    font-size: 0.92em;
+  }
+  .msg.user .bubble code { background: rgba(255,255,255,0.18); }
+
+  /* ---------- Thinking indicator ---------- */
+  .thinking {
+    display: inline-flex; align-items: center; gap: 12px;
+    padding: 12px 18px; border-radius: 999px;
+    background: var(--teal-tint); color: var(--teal-deep);
+    font-size: 1rem; font-weight: 600;
+    align-self: flex-start;
+  }
+  .thinking .dots { display: inline-flex; gap: 5px; }
+  .thinking .dots i {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--clay);
+    display: block; animation: bounce 1.2s ease-in-out infinite;
+  }
+  .thinking .dots i:nth-child(2) { animation-delay: .18s; }
+  .thinking .dots i:nth-child(3) { animation-delay: .36s; }
+
+  /* ---------- "Where this comes from" panel ---------- */
+  details.trace {
+    align-self: flex-start;
+    max-width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--paper-deep);
+  }
+  details.trace > summary {
+    cursor: pointer; list-style: none;
+    padding: 12px 16px; min-height: 48px;
+    display: flex; align-items: center; gap: 10px;
+    font-size: 0.98rem; font-weight: 600; color: var(--ink-soft);
+  }
+  details.trace > summary::-webkit-details-marker { display: none; }
+  details.trace > summary::before { content: "📄"; font-size: 1rem; }
+  details.trace[open] > summary { border-bottom: 1px solid var(--line); }
+  .trace-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; }
+
+  .sources { display: flex; flex-direction: column; gap: 10px; }
+  .sources .h { font-weight: 700; color: var(--ink); font-size: 0.98rem; }
+  .sources .src { font-size: 0.98rem; line-height: 1.5; }
+  .sources .src a { word-break: break-word; }
+  .badge {
+    display: inline-block; font-size: 0.8rem; font-weight: 600;
+    padding: 2px 9px; border-radius: 999px;
+    background: var(--gold-bg); color: var(--gold-ink);
+    margin-left: 8px; white-space: nowrap;
+  }
+  .ts { color: var(--ink-soft); font-size: 0.85rem; }
+
+  details.tools {
+    border-top: 1px dashed var(--line); padding-top: 10px;
+  }
+  details.tools > summary {
+    cursor: pointer; font-size: 0.9rem; color: var(--ink-soft); list-style: none;
+  }
+  details.tools > summary::-webkit-details-marker { display: none; }
+  details.tools > summary::before { content: "▸ "; }
+  details.tools[open] > summary::before { content: "▾ "; }
+  .toolcall { margin-top: 10px; }
+  .toolcall .name { font-weight: 600; font-size: 0.9rem; }
+  .toolcall .args, .toolcall .preview {
+    margin-top: 4px; background: var(--card); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 10px;
+    font-family: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+    font-size: 0.8rem; white-space: pre-wrap; overflow-wrap: anywhere;
+    max-height: 200px; overflow: auto;
+  }
+  .toolcall.err .name { color: var(--err-ink); }
+
+  .notice {
+    padding: 14px 16px; border-radius: 12px; font-size: 1rem;
+    background: var(--err-bg); color: var(--err-ink); margin-top: 10px;
+  }
+
+  /* ---------- Welcome ---------- */
+  .welcome { max-width: var(--measure); margin: 4vh auto 0; text-align: center; }
+  .welcome h2 {
+    font-family: var(--serif); font-weight: 600;
+    font-size: clamp(1.6rem, 1.2rem + 1.8vw, 2.1rem);
+    margin: 0 0 10px; color: var(--ink);
+  }
+  .welcome p { font-size: 1.08rem; color: var(--ink-soft); margin: 0 auto; max-width: 34rem; }
+  .prompt-label {
+    margin: 30px 0 12px; font-weight: 700; color: var(--ink); font-size: 1rem;
+  }
+  .chips { display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
+  .chip {
+    font: inherit; font-size: 1.02rem;
+    text-align: left;
+    background: var(--card);
+    border: 2px solid var(--line);
+    border-radius: 14px;
+    padding: 16px 20px;
+    min-height: 56px;
+    cursor: pointer;
+    color: var(--ink);
+    display: flex; align-items: center; gap: 12px;
+    transition: border-color .15s ease, background-color .15s ease, transform .1s ease;
+  }
+  .chip::before { content: "→"; color: var(--clay); font-weight: 700; flex: none; }
+  .chip:hover { border-color: var(--teal); background: var(--teal-tint); }
+  .chip:active { transform: translateY(1px); }
+
+  /* ---------- Composer ---------- */
+  footer {
+    border-top: 1px solid var(--line);
+    background: var(--card);
+    padding: 16px clamp(16px, 4vw, 40px) 18px;
+  }
+  .composer {
+    max-width: var(--measure); margin: 0 auto;
+    display: flex; gap: 12px; align-items: flex-end;
+  }
+  .field { flex: 1; }
+  label.tf {
+    display: block; font-weight: 700; font-size: 0.98rem;
+    margin-bottom: 6px; color: var(--ink);
+  }
+  textarea {
+    width: 100%; resize: none;
+    font: inherit; font-size: 1.05rem;
+    padding: 14px 16px;
+    border: 2px solid var(--line);
+    border-radius: 14px;
+    background: var(--paper);
+    color: var(--ink);
+    max-height: 180px;
+    outline: none;
+  }
+  textarea::placeholder { color: #9a8f7c; }
+  textarea:focus { border-color: var(--teal); background: var(--card); }
+  .send {
+    background: var(--clay);
+    color: #FFFDF8;
+    border: 2px solid var(--clay);
+    border-radius: 14px;
+    min-height: 56px;
+    padding: 14px 26px;
+    font: inherit; font-size: 1.05rem; font-weight: 700;
+    cursor: pointer;
+    transition: background-color .15s ease, transform .1s ease;
+  }
+  .send:hover:not(:disabled) { background: #A94A25; }
+  .send:active { transform: translateY(1px); }
+  .send:disabled { background: #C9B79E; border-color: #C9B79E; cursor: default; }
+  .hint {
+    max-width: var(--measure); margin: 10px auto 0;
+    color: var(--ink-soft); font-size: 0.92rem; line-height: 1.5;
+  }
+  .counter { min-height: 1.2em; margin-top: 4px; font-size: 0.88rem; color: var(--ink-soft); text-align: right; }
+  .counter.near { color: var(--err-ink); font-weight: 600; }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes bounce { 0%, 80%, 100% { transform: translateY(0); opacity: .55; } 40% { transform: translateY(-6px); opacity: 1; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+  }
+
+  @media (max-width: 560px) {
+    body { font-size: 17px; }
+    .send { padding: 14px 18px; }
+    .composer { gap: 8px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <h1>DMV Regional Transportation Assistant</h1>
+    <p class="tagline">Buses, trains, and Metro across DC, Maryland &amp; Virginia</p>
+    <div class="route" aria-hidden="true"></div>
+  </div>
+  <button class="btn btn-quiet" id="resetBtn">Start a new question</button>
+</header>
+
+<div id="status" role="status" aria-live="polite"></div>
+
+<main id="main">
+  <div class="wrap" id="log">
+    <div class="welcome" id="welcome">
+      <h2>Hello — how can I help you get around?</h2>
+      <p>
+        Ask a question in plain words about riding the bus, train, or Metro anywhere
+        in the Washington DC, Maryland, and Virginia area. New to public transit?
+        That's exactly who this is for.
+      </p>
+      <div class="prompt-label">Try one of these to get started:</div>
+      <div class="chips" id="chips"></div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="composer">
+    <div class="field">
+      <label class="tf" for="input">Type your question</label>
+      <textarea id="input" rows="1" maxlength="1000" aria-describedby="counter"
+        placeholder="For example: How do I get from Reston to Old Town Alexandria?"></textarea>
+      <div class="counter" id="counter" aria-live="polite"></div>
+    </div>
+    <button class="send" id="sendBtn">Send</button>
+  </div>
+  <div class="hint">
+    Press <strong>Send</strong> (or the Enter key) to ask. Use Shift+Enter for a new
+    line. This assistant offers helpful guidance — always double-check departure
+    times and prices with the transit agency before you travel.
+    <br>Please don't include personal information. Conversations are not saved.
+  </div>
+</footer>
+
+<script>
+const SUGGESTIONS = [
+  "I've never used the Metro. How does it work?",
+  "How do I pay to ride the bus or the train?",
+  "How do I get from Reston to Old Town Alexandria?",
+  "What will it cost to go from Shady Grove to downtown DC?",
+  "Is there bus service near me on weekends?",
+  "Which stations have working elevators right now?",
+];
+
+const log = document.getElementById('log');
+const welcome = document.getElementById('welcome');
+const input = document.getElementById('input');
+const sendBtn = document.getElementById('sendBtn');
+const statusEl = document.getElementById('status');
+
+let sessionId = sessionStorage.getItem('tmcp_sid');
+if (!sessionId) { sessionId = Math.random().toString(36).slice(2); sessionStorage.setItem('tmcp_sid', sessionId); }
+let streaming = false;
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Friendly label for non-web source URIs (wmata://station/A01, gtfs://dash/agency, ...)
+function sourceLabel(url) {
+  if (/^https?:\/\//.test(url)) return null;
+  const m = url.match(/^(\w+):\/\/([^/]+)(?:\/(.*))?$/);
+  if (!m) return url;
+  const sys = m[1] === 'wmata' ? 'Metro (WMATA)' : m[1].toUpperCase();
+  const kind = (m[2] || '').replace(/-/g, ' ');
+  return `${sys} ${kind} data`.replace(/\s+/g, ' ').trim();
+}
+
+// Minimal, safe Markdown -> HTML for assistant text.
+function md(src) {
+  const lines = src.replace(/\r\n/g, '\n').split('\n');
+  let html = '', list = null;
+  const inline = (t) => esc(t)
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/(^|[\s(])((https?:\/\/[^\s)]+))(?=[\s).,]|$)/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>');
+  const closeList = () => { if (list) { html += `</${list}>`; list = null; } };
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    let m;
+    if ((m = line.match(/^(#{1,3})\s+(.*)$/))) { closeList(); const lvl = Math.min(m[1].length + 1, 3); html += `<h${lvl}>${inline(m[2])}</h${lvl}>`; continue; }
+    if ((m = line.match(/^\s*[-*]\s+(.*)$/))) { if (list !== 'ul') { closeList(); list = 'ul'; html += '<ul>'; } html += `<li>${inline(m[1])}</li>`; continue; }
+    if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) { if (list !== 'ol') { closeList(); list = 'ol'; html += '<ol>'; } html += `<li>${inline(m[1])}</li>`; continue; }
+    if (line === '') { closeList(); continue; }
+    closeList(); html += `<p>${inline(line)}</p>`;
+  }
+  closeList();
+  return html || '<p></p>';
+}
+
+function scrollDown() { const m = document.getElementById('main'); m.scrollTop = m.scrollHeight; }
+
+function addMessage(role) {
+  welcome.style.display = 'none';
+  const el = document.createElement('div');
+  el.className = `msg ${role}`;
+  el.innerHTML = `<div class="who">${role === 'user' ? 'You asked' : 'Assistant'}</div><div class="bubble"></div>`;
+  log.appendChild(el);
+  scrollDown();
+  return el.querySelector('.bubble');
+}
+
+function makeThinking() {
+  const t = document.createElement('div');
+  t.className = 'thinking';
+  t.innerHTML = 'Finding your answer <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>';
+  log.appendChild(t);
+  scrollDown();
+  return t;
+}
+
+function renderTrace(turn) {
+  if (!turn.tools.length && !turn.sources.size) return;
+  const d = document.createElement('details');
+  d.className = 'trace';
+  d.innerHTML = `<summary>Where this answer comes from</summary>`;
+  const body = document.createElement('div');
+  body.className = 'trace-body';
+
+  if (turn.sources.size) {
+    const s = document.createElement('div');
+    s.className = 'sources';
+    s.innerHTML = '<div class="h">Based on information from:</div>';
+    for (const src of turn.sources.values()) {
+      const row = document.createElement('div');
+      row.className = 'src';
+      const stale = src.stale ? '<span class="badge">may be out of date</span>' : '';
+      const ts = src.retrieved_at ? ` <span class="ts">checked ${esc(String(src.retrieved_at).split(' ')[0])}</span>` : '';
+      const friendly = sourceLabel(src.url);
+      const link = friendly
+        ? esc(friendly)
+        : `<a href="${esc(src.url)}" target="_blank" rel="noopener">${esc(src.url.replace(/^https?:\/\//, ''))}</a>`;
+      row.innerHTML = link + stale + ts;
+      s.appendChild(row);
+    }
+    body.appendChild(s);
+  }
+
+  if (turn.tools.length) {
+    const td = document.createElement('details');
+    td.className = 'tools';
+    td.innerHTML = `<summary>Technical details (${turn.tools.length} lookup${turn.tools.length === 1 ? '' : 's'})</summary>`;
+    for (const t of turn.tools) {
+      const tc = document.createElement('div');
+      tc.className = 'toolcall' + (t.is_error ? ' err' : '');
+      let h = `<div class="name">${esc(t.name)}${t.is_error ? ' — error' : ''}</div>`;
+      if (t.input && Object.keys(t.input).length) h += `<div class="args">${esc(JSON.stringify(t.input, null, 2))}</div>`;
+      if (t.preview) h += `<div class="preview">${esc(t.preview)}</div>`;
+      tc.innerHTML = h;
+      td.appendChild(tc);
+    }
+    body.appendChild(td);
+  }
+
+  d.appendChild(body);
+  log.appendChild(d);
+  scrollDown();
+}
+
+async function send(text) {
+  if (streaming) return;
+  text = (text || '').trim();
+  if (!text) return;
+  streaming = true; sendBtn.disabled = true;
+  input.value = ''; autosize();
+
+  addMessage('user').textContent = text;
+  const bubble = addMessage('assistant');
+  let thinking = makeThinking();
+  let answer = '';
+  const turn = { tools: [], sources: new Map() };
+
+  let resp;
+  try {
+    resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, message: text }),
+    });
+  } catch (e) {
+    if (thinking) { thinking.remove(); thinking = null; }
+    bubble.innerHTML = `<div class="notice">Sorry — I couldn't reach the assistant just now. Please check your connection and try again.</div>`;
+    streaming = false; sendBtn.disabled = false; return;
+  }
+
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '', done = false;
+
+  const clearThinking = () => { if (thinking) { thinking.remove(); thinking = null; } };
+
+  const handle = (evt) => {
+    if (evt.type === 'text') {
+      answer += evt.text;
+      if (answer.trim()) clearThinking();
+      bubble.innerHTML = md(answer);
+      scrollDown();
+    } else if (evt.type === 'tool_call') {
+      turn.tools.push({ name: evt.name, input: evt.input || {}, is_error: false });
+    } else if (evt.type === 'tool_result') {
+      const t = [...turn.tools].reverse().find(x => x.name === evt.name && !x.preview) || turn.tools[turn.tools.length - 1];
+      if (t) { t.preview = evt.preview; t.is_error = evt.is_error; }
+      for (const s of (evt.sources || [])) if (s.url) turn.sources.set(s.url, s);
+    } else if (evt.type === 'error') {
+      clearThinking();
+      const box = document.createElement('div');
+      box.className = 'notice';
+      box.textContent = evt.message;
+      bubble.appendChild(box);
+    } else if (evt.type === 'done') {
+      done = true;
+    }
+  };
+
+  while (!done) {
+    const { value, done: rdone } = await reader.read();
+    if (rdone) break;
+    buf += dec.decode(value, { stream: true });
+    const parts = buf.split('\n\n');
+    buf = parts.pop();
+    for (const part of parts) {
+      const line = part.split('\n').find(l => l.startsWith('data:'));
+      if (!line) continue;
+      try { handle(JSON.parse(line.slice(5).trim())); } catch (_) {}
+    }
+  }
+
+  clearThinking();
+  if (!answer && !bubble.querySelector('.notice')) {
+    bubble.innerHTML = '<p>I wasn’t able to find an answer to that. Try rewording your question, or ask about a specific place, station, or route.</p>';
+  }
+  renderTrace(turn);
+  streaming = false; sendBtn.disabled = false;
+  input.focus();
+}
+
+const counterEl = document.getElementById('counter');
+function autosize() {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 180) + 'px';
+  // Only mention the length limit once someone is getting close to it.
+  const max = input.maxLength, left = max - input.value.length;
+  counterEl.textContent = left <= 150 ? `${left} characters left` : '';
+  counterEl.classList.toggle('near', left <= 50);
+}
+input.addEventListener('input', autosize);
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input.value); }
+});
+sendBtn.addEventListener('click', () => send(input.value));
+
+document.getElementById('resetBtn').addEventListener('click', async () => {
+  try {
+    await fetch('/api/reset', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+  } catch (_) {}
+  log.querySelectorAll('.msg, details.trace, .thinking').forEach(n => n.remove());
+  welcome.style.display = '';
+  input.focus();
+});
+
+const chips = document.getElementById('chips');
+for (const s of SUGGESTIONS) {
+  const c = document.createElement('button');
+  c.className = 'chip'; c.type = 'button'; c.textContent = s;
+  c.addEventListener('click', () => send(s));
+  chips.appendChild(c);
+}
+
+(async function boot() {
+  try {
+    const h = await (await fetch('/api/health')).json();
+    if (h.ok === true) {
+      // Everything is fine: show nothing — a clean, calm screen.
+    } else if (!('anthropic_key_present' in h)) {
+      // Public deployment: no internal details, just a friendly notice.
+      statusEl.className = 'show bad';
+      statusEl.textContent = 'Sorry — the assistant isn’t available right now. Please try again in a few minutes.';
+      sendBtn.disabled = true;
+    } else if (!h.anthropic_key_present) {
+      statusEl.className = 'show bad';
+      statusEl.innerHTML = 'This assistant isn’t finished being set up yet.'
+        + '<span class="tech">The person who installed it needs to add an ANTHROPIC_API_KEY to the .env file and restart <code>transit-mcp chat</code>.</span>';
+      sendBtn.disabled = true;
+    } else if (!h.mcp_ready) {
+      statusEl.className = 'show bad';
+      statusEl.innerHTML = 'The transit information service didn’t start.'
+        + '<span class="tech">' + esc(h.mcp_error || 'unknown error') + ' — run <code>transit-mcp ingest all</code> first.</span>';
+      sendBtn.disabled = true;
+    }
+  } catch (e) {
+    statusEl.className = 'show bad';
+    statusEl.textContent = 'Cannot reach the assistant. Make sure it is running, then refresh this page.';
+    sendBtn.disabled = true;
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+# Never bake secrets or local data into the image.
+.env
+.env.*
+!.env.example
+*.db
+*.db-wal
+*.db-shm
+data/
+.cache/
+feeds/*
+
+# Local tooling
+.venv/
+venv/
+.git/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+tests/
+*.bat

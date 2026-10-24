@@ -1,0 +1,108 @@
+slug = "wmata"
+name = "Metro (WMATA)"
+mode = "rail+bus"
+
+[profile]
+display_name = "Metro (WMATA) — Metrorail & Metrobus"
+role = """\
+  The regional rapid-transit backbone: six grade-separated rail lines plus a dense \
+  bus network across DC, Arlington, Alexandria, and inner \
+  Fairfax/Montgomery/Prince George's."""
+strengths = """\
+  Highest frequency and span in the region; rail is unaffected by road traffic; one \
+  payment method works system-wide and on most local bus partners; runs until \
+  ~midnight (later Fri/Sat)."""
+weaknesses = """\
+  Does not reach the outer exurbs (Loudoun west, Prince William, Fredericksburg, \
+  western Fairfax); rail disruptions cascade; some bus routes are infrequent off-peak."""
+service_area = """\
+  Washington DC; Arlington, Alexandria, Fairfax, Falls Church, Montgomery MD, \
+  Prince George's MD."""
+connects_to = ["itself — the hub every other system feeds"]
+frequency_tier = "frequent"
+park_and_ride = true
+
+[fares]
+base_fare = 2.25
+reduced_fare = 1.10
+payment_methods = [
+  "SmarTrip card",
+  "SmarTrip in Apple Wallet / Google Wallet",
+  "Contactless bank card or phone (tap to pay, treated as SmarTrip)",
+  "Metrobus: exact-change cash accepted; Metrorail: no cash",
+]
+where_to_buy = [
+  "Fare vending machines in every Metrorail station",
+  "Add a SmarTrip in the SmarTrip app (iOS/Android) or Apple/Google Wallet",
+  "wmata.com and CVS / Giant / Safeway and commuter stores",
+]
+mobile_app_name = "SmarTrip"
+accepts_smartrip = true
+accepts_contactless = true
+cash_onboard = true
+exact_change_required = true
+transfer_policy = """\
+  Rail-to-rail transfers are free (one continuous trip). Bus-to-bus and bus-rail \
+  transfers get a discount (about $0.50 off the second boarding) when you pay with \
+  SmarTrip or contactless within 2 hours."""
+fare_page_url = "https://www.wmata.com/pay.html"
+notes = """\
+  Metrorail fare is distance- and time-of-day based ($2.25 off-peak up to ~$6.75 \
+  peak). Metrobus is a $2.00 flat fare. Fares change; confirm the current amount at \
+  the fare page before you travel."""
+
+# Real-time incidents, stations, lines, parking, entrances, station-to-station fares.
+[[sources]]
+type = "wmata_api"
+include_fares = true
+
+# Rider-guidance pages on wmata.com. A curated allow-list, not an open crawl: hub
+# pages (follow_children = true) fan out one hop to child pages under child_prefixes.
+[[sources]]
+type = "web_pages"
+base_url = "https://www.wmata.com"
+max_pages = 60
+child_suffix = ".html"
+# Localized mirrors of every page live under these first path segments.
+skip_path_segments = ["am", "ar", "es", "fa", "fil", "fr", "ko", "pt-br", "ru", "so", "vi", "zh-hans", "zh-hant"]
+child_prefixes = [
+  "/ride/guides/",
+  "/ride/alerts-and-advisories/",
+  "/ride/elevators-escalators/",
+  "/ride/accessibility/",
+  "/initiatives/safety-and-security/",
+  "/pay/",
+]
+child_blocklist = [
+  "/news/employee-alerts.html",
+  "/ride/metroalerts.html",
+  "/initiatives/safety-and-security/es.html",
+]
+# Category for discovered child pages, first matching prefix wins.
+child_categories = [
+  { prefix = "/pay/fare-programs", category = "fares" },
+  { prefix = "/pay/", category = "payment" },
+  { prefix = "/ride/alerts-and-advisories/", category = "alerts" },
+  { prefix = "/ride/elevators-escalators/", category = "accessibility" },
+  { prefix = "/ride/accessibility/", category = "accessibility" },
+  { prefix = "/initiatives/safety-and-security/", category = "safety" },
+  { prefix = "/ride/guides/visitors", category = "visitor" },
+  { prefix = "/ride/guides/", category = "new_rider" },
+]
+pages = [
+  { url = "/ride/alerts-and-advisories.html", category = "alerts", follow_children = true },
+  { url = "/pay.html", category = "fares", follow_children = true },
+  { url = "/pay/smart-trip.html", category = "payment" },
+  { url = "/pay/tap-ride-go.html", category = "payment" },
+  { url = "/pay/fare-programs.html", category = "fares" },
+  { url = "/ride/accessibility.html", category = "accessibility", follow_children = true },
+  { url = "/ride/accessibility/metro-access.html", category = "accessibility" },
+  { url = "/ride/elevators-escalators.html", category = "accessibility", follow_children = true },
+  { url = "/ride/maps.html", category = "maps" },
+  { url = "/ride/guides.html", category = "new_rider", follow_children = true },
+  { url = "/ride/guides/new-riders.html", category = "new_rider" },
+  { url = "/ride/guides/visitors.html", category = "visitor" },
+  { url = "/initiatives/safety-and-security.html", category = "safety", follow_children = true },
+  { url = "/about/metro-transit-police-department.html", category = "safety" },
+  { url = "/about/metro-transit-police-department/contact-us.html", category = "safety" },
+]

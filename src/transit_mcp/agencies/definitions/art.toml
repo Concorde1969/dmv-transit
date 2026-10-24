@@ -1,0 +1,56 @@
+slug = "art"
+name = "Arlington Transit (ART)"
+mode = "bus"
+
+[profile]
+role = """\
+  Arlington's local bus, connecting neighborhoods to Metrorail stations and covering \
+  the gaps between the Orange/Silver and Blue/Yellow corridors where Metrobus does \
+  not go."""
+strengths = """\
+  Frequent core routes (41, 42, 43, 45, 55, 87); fills local coverage Metro misses; \
+  ties into every Arlington Metro station and the Shirlington and Pentagon City bus \
+  hubs."""
+weaknesses = "Smaller network; several routes are peak-only; limited late-night service."
+service_area = "Arlington County."
+connects_to = [
+  "Ballston-MU, Virginia Square, Clarendon, Court House (Orange/Silver)",
+  "Rosslyn (Orange/Silver/Blue)",
+  "Pentagon City, Crystal City (Blue/Yellow)",
+  "East Falls Church (Orange/Silver)",
+  "Shirlington bus hub",
+]
+frequency_tier = "frequent"
+
+[fares]
+base_fare = 2.00
+reduced_fare = 1.00
+payment_methods = [
+  "SmarTrip card or SmarTrip in Apple/Google Wallet",
+  "Contactless bank card or phone",
+  "Exact-change cash in the farebox",
+]
+where_to_buy = [
+  "Use an existing SmarTrip or buy/reload one at any Metrorail station, online, or at retail",
+]
+accepts_smartrip = true
+accepts_contactless = true
+cash_onboard = true
+exact_change_required = true
+transfer_policy = """\
+  SmarTrip/contactless gives the regional transfer discount with Metrorail and \
+  Metrobus within 2 hours; ART-to-ART transfers are free."""
+fare_page_url = "https://www.arlingtontransit.com/rider-info-fares/fares/"
+notes = "$2.00 base / $1.00 reduced. Fares change; confirm the current amount at the fare page before you travel."
+
+[[sources]]
+type = "gtfs"
+url = "https://www.arlingtontransit.com/shared/content/gtfs/art/google_transit.zip"
+
+[[sources]]
+type = "web_pages"
+pages = [
+  { url = "https://www.arlingtontransit.com/rider-info-fares/fares/", category = "fares" },
+  { url = "https://www.arlingtontransit.com/rider-info-fares/fare-programs/", category = "fares" },
+  { url = "https://www.arlingtontransit.com/rider-info-fares/how-to-ride/", category = "payment" },
+]

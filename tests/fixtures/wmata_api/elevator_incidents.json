@@ -1,0 +1,26 @@
+{
+  "ElevatorIncidents": [
+    {
+      "UnitName": "A01E01", "UnitType": "ELEVATOR", "UnitStatus": null,
+      "StationCode": "A01", "StationName": "Metro Center, G and 11th St Entrance",
+      "LocationDescription": "Elevator between street and mezzanine",
+      "SymptomCode": null, "TimeOutOfService": "05:00",
+      "SymptomDescription": "Modernization",
+      "DisplayOrder": 0,
+      "DateOutOfServ": "2026-08-01T00:00:00",
+      "DateUpdated": "2026-08-29T05:13:03",
+      "EstimatedReturnToService": "2026-12-31T23:59:59"
+    },
+    {
+      "UnitName": "A01X01", "UnitType": "ESCALATOR", "UnitStatus": null,
+      "StationCode": "A01", "StationName": "Metro Center",
+      "LocationDescription": "Escalator between mezzanine and platform",
+      "SymptomCode": null, "TimeOutOfService": "01:00",
+      "SymptomDescription": "Service Call",
+      "DisplayOrder": 0,
+      "DateOutOfServ": "2026-08-29T00:00:00",
+      "DateUpdated": "2026-08-29T07:13:03",
+      "EstimatedReturnToService": "2026-08-30T23:59:59"
+    }
+  ]
+}

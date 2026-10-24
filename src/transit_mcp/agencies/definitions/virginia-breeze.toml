@@ -1,0 +1,56 @@
+slug = "virginia-breeze"
+name = "Virginia Breeze"
+mode = "intercity_bus"
+
+[profile]
+role = """\
+  State-sponsored intercity coach (DRPT) with five routes linking southwest, \
+  central, and Shenandoah Valley Virginia to Northern Virginia and DC — Valley \
+  Flyer, Piedmont Express, Capital Connector, Highlands Rhythm, and Star City \
+  Express."""
+strengths = """\
+  Reaches cities with no other transit link to DC (Blacksburg, Roanoke, Lynchburg, \
+  Harrisonburg, Bristol, Martinsville); comfortable coach with Wi-Fi and restroom; \
+  stops at West Falls Church Metro, Dulles Airport, Rosslyn, and Union Station."""
+weaknesses = """\
+  One round trip per route per day; long-distance only (not a local option); advance \
+  online booking strongly recommended and seats sell out."""
+service_area = """\
+  Corridors from SW/central/Valley Virginia to Dulles, Falls Church, Arlington, and \
+  DC."""
+connects_to = [
+  "West Falls Church (Metro Orange)",
+  "Dulles International Airport (Metro Silver via the airport station)",
+  "Rosslyn (Orange/Silver/Blue)",
+  "Union Station DC (Metro Red, Amtrak, MARC, VRE)",
+]
+frequency_tier = "intercity"
+park_and_ride = true
+
+[fares]
+payment_methods = [
+  "Buy an e-ticket online in advance (credit/debit card)",
+  "Walk-up seats sometimes available but not guaranteed; no SmarTrip",
+]
+where_to_buy = [
+  "Book at the Virginia Breeze website / booking partner before your trip",
+  "Show the e-ticket (QR code) to the driver when boarding",
+]
+transfer_policy = """\
+  No integrated transfers — a Breeze ticket covers only the coach. Buy Metro fare \
+  separately at your connecting station."""
+fare_page_url = "https://virginiabreeze.drpt.virginia.gov/"
+notes = """\
+  Distance-based intercity fares, roughly $15–$60 one way depending on how far you \
+  ride; reserve early because each route runs once a day. Fares change; confirm the \
+  current amount at the fare page before you travel."""
+
+[[sources]]
+type = "gtfs"
+url = "https://maps.tds.ai/download-feed/virginia-breeze-gtfs"
+
+[[sources]]
+type = "web_pages"
+pages = [
+  { url = "https://virginiabreeze.drpt.virginia.gov/", category = "fares" },
+]

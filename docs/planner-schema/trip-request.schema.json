@@ -1,0 +1,372 @@
+{
+  "$defs": {
+    "FeedRef": {
+      "description": "One archived GTFS feed the engine may read.",
+      "properties": {
+        "agency": {
+          "title": "Agency",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mode"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Absolute path to the GTFS .zip.",
+          "title": "Path"
+        },
+        "fetched_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fetched At"
+        },
+        "valid_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valid From"
+        },
+        "valid_until": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valid Until"
+        }
+      },
+      "required": [
+        "agency"
+      ],
+      "title": "FeedRef",
+      "type": "object"
+    },
+    "NearbyStop": {
+      "description": "A boarding point within walking distance of a place.",
+      "properties": {
+        "agency": {
+          "description": "Agency slug, e.g. 'dash' or 'wmata'.",
+          "title": "Agency",
+          "type": "string"
+        },
+        "stop_id": {
+          "description": "GTFS stop_id (or WMATA station code).",
+          "title": "Stop Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "kind": {
+          "description": "'gtfs' = a stop in that agency's GTFS feed; 'wmata' = a Metrorail station code (WMATA data comes from its API, not the GTFS archive).",
+          "enum": [
+            "gtfs",
+            "wmata"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "lat": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lat"
+        },
+        "lon": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lon"
+        },
+        "distance_m": {
+          "title": "Distance M",
+          "type": "integer"
+        },
+        "walk_min": {
+          "title": "Walk Min",
+          "type": "integer"
+        },
+        "routes": {
+          "description": "route_ids / line codes",
+          "items": {
+            "type": "string"
+          },
+          "title": "Routes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "agency",
+        "stop_id",
+        "name",
+        "kind",
+        "distance_m",
+        "walk_min"
+      ],
+      "title": "NearbyStop",
+      "type": "object"
+    },
+    "Place": {
+      "description": "An origin or destination, already geocoded by the assistant.",
+      "properties": {
+        "query": {
+          "description": "What the rider typed.",
+          "title": "Query",
+          "type": "string"
+        },
+        "label": {
+          "description": "What it resolved to, e.g. 'Ballston-MU station'.",
+          "title": "Label",
+          "type": "string"
+        },
+        "lat": {
+          "title": "Lat",
+          "type": "number"
+        },
+        "lon": {
+          "title": "Lon",
+          "type": "number"
+        },
+        "kind": {
+          "enum": [
+            "wmata",
+            "gtfs",
+            "point"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "agency": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agency"
+        },
+        "stop_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stop Id"
+        },
+        "nearby_stops": {
+          "description": "Stops within ~900 m, nearest first.",
+          "items": {
+            "$ref": "#/$defs/NearbyStop"
+          },
+          "title": "Nearby Stops",
+          "type": "array"
+        }
+      },
+      "required": [
+        "query",
+        "label",
+        "lat",
+        "lon",
+        "kind"
+      ],
+      "title": "Place",
+      "type": "object"
+    },
+    "PlannerContext": {
+      "properties": {
+        "gtfs_dir": {
+          "description": "Absolute path of the GTFS archive folder.",
+          "title": "Gtfs Dir",
+          "type": "string"
+        },
+        "manifest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Absolute path to manifest.json.",
+          "title": "Manifest"
+        },
+        "feeds": {
+          "items": {
+            "$ref": "#/$defs/FeedRef"
+          },
+          "title": "Feeds",
+          "type": "array"
+        },
+        "walk_speed_m_per_min": {
+          "default": 80.0,
+          "title": "Walk Speed M Per Min",
+          "type": "number"
+        },
+        "transfer_radius_m": {
+          "default": 250,
+          "title": "Transfer Radius M",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "gtfs_dir"
+      ],
+      "title": "PlannerContext",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "contract_version": {
+      "default": "1",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "origin": {
+      "$ref": "#/$defs/Place"
+    },
+    "destination": {
+      "$ref": "#/$defs/Place"
+    },
+    "day": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "monday..sunday, 'weekday', 'weekend', or null for any day.",
+      "title": "Day"
+    },
+    "date": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "YYYY-MM-DD if the rider gave one.",
+      "title": "Date"
+    },
+    "depart_after": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "HH:MM, local time.",
+      "title": "Depart After"
+    },
+    "arrive_by": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "HH:MM, local time.",
+      "title": "Arrive By"
+    },
+    "rider_category": {
+      "default": "regular",
+      "description": "regular | senior | disabled | ...",
+      "title": "Rider Category",
+      "type": "string"
+    },
+    "max_options": {
+      "default": 3,
+      "title": "Max Options",
+      "type": "integer"
+    },
+    "context": {
+      "$ref": "#/$defs/PlannerContext"
+    }
+  },
+  "required": [
+    "origin",
+    "destination",
+    "context"
+  ],
+  "title": "TripRequest",
+  "type": "object"
+}

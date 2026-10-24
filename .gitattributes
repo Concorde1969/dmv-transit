@@ -1,0 +1,10 @@
+# Windows batch files must keep CRLF line endings: cmd.exe mis-handles labels
+# and `goto` in LF-only batch files.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Shell scripts and container files run on Linux: always LF.
+*.sh text eol=lf
+Dockerfile text eol=lf
+deploy/Caddyfile text eol=lf
+*.yml text eol=lf
