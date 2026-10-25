@@ -111,8 +111,9 @@ function Remove-SshSession($Session) {
 }
 
 function Invoke-Remote($Session, [string]$Command) {
+    <# Show the command's output; return only its exit code. #>
     $ErrorActionPreference = 'Continue'
-    & ssh @($Session.Args) "$($Session.User)@$($Session.Host)" $Command
+    & ssh @($Session.Args) "$($Session.User)@$($Session.Host)" $Command | Out-Host
     return $LASTEXITCODE
 }
 
