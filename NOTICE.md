@@ -43,6 +43,21 @@ Developer License Agreement yourself — terms may have changed.
   used only to ground a language model's answers — not republished as a stand-alone
   copy of WMATA's website.
 
+## Chat logs and privacy
+
+The public site saves each conversation for review (`src/transit_mcp/chatlog.py`):
+questions, answers, which data tools were used, timing, token counts, and why a
+question was refused if it was. Visitors are identified only by an anonymous ID — a
+keyed hash of the IP address that can't be turned back into the address — plus a
+coarse device type (phone / tablet / computer). IP addresses and full browser
+identifiers are not stored; the app's own request log is off and the web server's
+access log masks addresses to their network. Email addresses, phone numbers and long
+digit runs are removed from questions and answers before saving. Rows are deleted
+after `CHATLOG_RETENTION_DAYS` (365 by default), and `transit-mcp chatlog delete`
+removes a conversation or a visitor's chats on request. The site tells visitors all of
+this in its footer and "About this site" section. The chat log sits on the server
+disk and is included in its automatic snapshots.
+
 ## GTFS feeds and Transitland
 
 Routes, stops and schedules come only from GTFS static feeds. WMATA's rail and bus feeds

@@ -95,6 +95,15 @@ class Settings(BaseSettings):
     chat_session_ttl_minutes: int = Field(default=120, alias="CHAT_SESSION_TTL_MINUTES")
     chat_max_sessions: int = Field(default=2000, alias="CHAT_MAX_SESSIONS")
 
+    # --- Chat log (questions, answers, diagnostics; see chatlog.py) ---
+    chatlog_enabled: bool = Field(default=True, alias="CHATLOG_ENABLED")
+    chatlog_db: Path = Field(default=Path("./chatlog.db"), alias="CHATLOG_DB")
+    chatlog_retention_days: int = Field(default=365, alias="CHATLOG_RETENTION_DAYS")
+    # Remove email addresses, phone numbers and long digit runs before storing.
+    chatlog_redact: bool = Field(default=True, alias="CHATLOG_REDACT")
+    # Key for anonymous visitor IDs; if empty, a random one is kept in the chat log.
+    chatlog_salt: str | None = Field(default=None, alias="CHATLOG_SALT")
+
     # --- Scheduled data refresh (`transit-mcp scheduler`) ---
     refresh_alerts_minutes: int = Field(default=15, alias="REFRESH_ALERTS_MINUTES")
     refresh_full_at: str = Field(default="03:30", alias="REFRESH_FULL_AT")  # local HH:MM

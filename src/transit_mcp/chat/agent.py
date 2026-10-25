@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -101,6 +102,22 @@ GROUNDING_NUDGE = (
 )
 
 
+# Event types the chat app consumes for its log; never sent to the browser.
+INTERNAL_EVENTS = frozenset({"usage", "nudged"})
+
+
+def _usage_event(final: Any) -> dict:
+    usage = getattr(final, "usage", None)
+
+    def n(name: str) -> int:
+        return int(getattr(usage, name, 0) or 0)
+
+    return {"type": "usage", "model": getattr(final, "model", None),
+            "input_tokens": n("input_tokens"), "output_tokens": n("output_tokens"),
+            "cache_read_tokens": n("cache_read_input_tokens"),
+            "cache_write_tokens": n("cache_creation_input_tokens")}
+
+
 def _walk_for_sources(obj: Any, out: dict[str, dict]) -> None:
     if isinstance(obj, dict):
         url = obj.get("url")
@@ -176,10 +193,12 @@ async def run_chat(
             return
 
         messages.append({"role": "assistant", "content": final.content})
+        yield _usage_event(final)
 
         tool_uses = [b for b in final.content if b.type == "tool_use"]
         if not tool_uses and not grounded and not nudged:
             nudged = True
+            yield {"type": "nudged"}
             messages.append(
                 {"role": "user", "content": [{"type": "text", "text": GROUNDING_NUDGE}]}
             )
@@ -199,7 +218,9 @@ async def run_chat(
                 "name": tu.name,
                 "input": tu.input,
             }
+            started = time.monotonic()
             text, is_error = await bridge.call_tool(tu.name, tu.input or {})
+            duration_ms = int((time.monotonic() - started) * 1000)
             tool_result_blocks.append(
                 {
                     "type": "tool_result",
@@ -215,6 +236,7 @@ async def run_chat(
                 "is_error": is_error,
                 "sources": extract_sources(text),
                 "preview": preview,
+                "duration_ms": duration_ms,
             }
 
         messages.append({"role": "user", "content": tool_result_blocks})

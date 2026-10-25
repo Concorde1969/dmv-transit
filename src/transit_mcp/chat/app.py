@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -18,7 +19,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from transit_mcp.chat.agent import run_chat
+from transit_mcp.chat.agent import INTERNAL_EVENTS, run_chat
 from transit_mcp.chat.guard import (
     MESSAGES,
     DailyCap,
@@ -27,6 +28,7 @@ from transit_mcp.chat.guard import (
     trim_history,
 )
 from transit_mcp.chat.mcp_bridge import McpBridge
+from transit_mcp.chatlog import ChatLog, TurnRecord, device_class
 from transit_mcp.config import get_settings
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -44,6 +46,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.limiter = RateLimiter(settings.chat_rate_per_minute, settings.chat_rate_per_day)
     app.state.daily_cap = DailyCap(settings.chat_daily_limit, settings.timezone)
+    app.state.chatlog = None
+    if settings.chatlog_enabled:
+        try:
+            app.state.chatlog = ChatLog.from_settings(settings)
+            app.state.chatlog.prune(settings.chatlog_retention_days)
+        except Exception:  # noqa: BLE001 - the site works without its log
+            log.exception("chat log unavailable")
 
     app.state.bridge = McpBridge()
     try:
@@ -64,6 +73,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.bridge.stop()
         if app.state.anthropic is not None:
             await app.state.anthropic.close()
+        if app.state.chatlog is not None:
+            app.state.chatlog.close()
 
 
 app = FastAPI(title="DMV Regional Transportation Assistant", lifespan=lifespan,
@@ -141,42 +152,77 @@ async def chat(request: Request) -> StreamingResponse:
     settings = st.settings
     prod = settings.is_production
 
-    body = await _read_json(request)
-    if body is None:
-        return _message_only(
-            MESSAGES["too_long"].format(limit=settings.chat_max_message_chars)
-        )
-    session_id = str(body.get("session_id") or "default")[:64]
-    user_message = str(body.get("message") or "").strip()
-
-    if st.anthropic is None:
-        return _message_only(MESSAGES["unavailable"] if prod else
-                             "ANTHROPIC_API_KEY is not set. Add it to .env and restart.")
-    if st.mcp_error is not None:
-        return _message_only(MESSAGES["unavailable"] if prod else
-                             f"MCP server did not start: {st.mcp_error}. "
-                             "Run `transit-mcp ingest all` first.")
-    if not user_message:
-        return _message_only(MESSAGES["empty"])
-    if len(user_message) > settings.chat_max_message_chars:
-        return _message_only(
-            MESSAGES["too_long"].format(limit=settings.chat_max_message_chars)
-        )
-
+    chatlog: ChatLog | None = st.chatlog
     client_ip = request.client.host if request.client else "unknown"
+    started = time.monotonic()
+
+    body = await _read_json(request)
+    session_id = str((body or {}).get("session_id") or "default")[:64]
+    user_message = str((body or {}).get("message") or "").strip()
+    rec = TurnRecord(
+        conversation_id=session_id,
+        visitor_id=chatlog.visitor_id(client_ip) if chatlog else "",
+        question=user_message[: settings.chat_max_message_chars],
+        device=device_class(request.headers.get("user-agent")),
+        model=settings.anthropic_model,
+    )
+
+    def refuse(outcome: str, message: str) -> StreamingResponse:
+        """Answer with a plain message, and log the question as refused."""
+        if chatlog is not None and outcome != "empty":
+            rec.outcome = outcome
+            rec.latency_ms = int((time.monotonic() - started) * 1000)
+            chatlog.safe_record(rec)
+        return _message_only(message)
+
+    too_long = MESSAGES["too_long"].format(limit=settings.chat_max_message_chars)
+    if body is None:
+        return refuse("too_long", too_long)
+    if st.anthropic is None:
+        return refuse("unavailable", MESSAGES["unavailable"] if prod else
+                      "ANTHROPIC_API_KEY is not set. Add it to .env and restart.")
+    if st.mcp_error is not None:
+        return refuse("unavailable", MESSAGES["unavailable"] if prod else
+                      f"MCP server did not start: {st.mcp_error}. "
+                      "Run `transit-mcp ingest all` first.")
+    if not user_message:
+        return refuse("empty", MESSAGES["empty"])
+    if len(user_message) > settings.chat_max_message_chars:
+        return refuse("too_long", too_long)
+
     limited = st.limiter.check(client_ip)
     if limited:
-        log.info("rate limit (%s) for %s", limited, client_ip)
-        return _message_only(MESSAGES[limited])
+        log.info("rate limit (%s) for visitor %s", limited, rec.visitor_id or client_ip)
+        return refuse(limited, MESSAGES[limited])
 
     session = st.sessions.get(session_id)
     if session.lock.locked():
-        return _message_only(MESSAGES["busy_session"])
+        return refuse("busy_session", MESSAGES["busy_session"])
     if settings.chat_max_turns and session.turns >= settings.chat_max_turns:
-        return _message_only(MESSAGES["max_turns"])
+        return refuse("max_turns", MESSAGES["max_turns"])
     if not st.daily_cap.try_take():
         log.warning("site-wide daily chat limit reached (%s)", st.daily_cap.limit)
-        return _message_only(MESSAGES["site_busy"])
+        return refuse("site_busy", MESSAGES["site_busy"])
+
+    def note(event: dict) -> None:
+        """Collect what the log needs from each event of the answer."""
+        kind = event.get("type")
+        if kind == "text":
+            if rec.first_text_ms is None:
+                rec.first_text_ms = int((time.monotonic() - started) * 1000)
+            rec.answer += event.get("text", "")
+        elif kind == "tool_call":
+            rec.tools.append({"name": event.get("name"), "input": event.get("input")})
+        elif kind == "tool_result" and rec.tools:
+            rec.tools[-1].update(is_error=bool(event.get("is_error")),
+                                 duration_ms=event.get("duration_ms"))
+        elif kind == "usage":
+            rec.add_usage(event)
+            rec.model = event.get("model") or rec.model
+        elif kind == "nudged":
+            rec.nudged = True
+        elif kind == "error":
+            rec.outcome, rec.error = "error", str(event.get("message"))[:2000]
 
     async def event_stream() -> AsyncIterator[str]:
         async with session.lock:
@@ -193,6 +239,9 @@ async def chat(request: Request) -> StreamingResponse:
                     max_tokens=settings.chat_max_tokens,
                     max_iterations=settings.chat_max_tool_iterations,
                 ):
+                    note(event)
+                    if event.get("type") in INTERNAL_EVENTS:
+                        continue
                     if event.get("type") == "error":
                         failed = True
                         log.error("chat turn failed: %s", event.get("message"))
@@ -202,6 +251,7 @@ async def chat(request: Request) -> StreamingResponse:
             except Exception as exc:  # noqa: BLE001
                 failed = True
                 log.exception("chat turn crashed")
+                rec.outcome, rec.error = "error", f"{type(exc).__name__}: {exc}"[:2000]
                 yield _sse({"type": "error", "message": MESSAGES["failed"] if prod
                             else f"{type(exc).__name__}: {exc}"})
             finally:
@@ -211,6 +261,9 @@ async def chat(request: Request) -> StreamingResponse:
                     session.messages[:] = snapshot
                 else:
                     session.turns += 1
+                if chatlog is not None:
+                    rec.latency_ms = int((time.monotonic() - started) * 1000)
+                    chatlog.safe_record(rec)
             yield _sse({"type": "done"})
 
     return _stream(event_stream())
@@ -254,6 +307,9 @@ def serve(open_browser: bool = False) -> None:
         host=settings.chat_host,
         port=settings.chat_port,
         log_level="info" if settings.is_production else "warning",
+        # Per-request lines would record visitors' IP addresses; Caddy's access log
+        # (with addresses masked) covers requests instead.
+        access_log=False,
         proxy_headers=settings.trust_proxy,
         forwarded_allow_ips="*" if settings.trust_proxy else None,
     )

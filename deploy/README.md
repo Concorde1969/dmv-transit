@@ -132,6 +132,26 @@ powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 'cd ~/dmvtr
 powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 'cd ~/dmvtransit && docker compose logs --tail 100 app'
 ```
 
+**Review chats** — every question and answer is saved for a year (see "Chat log" below).
+Download the last 30 days as a spreadsheet plus a detailed JSON file into `chat-exports\`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\lightsail\download-chats.ps1
+```
+
+`-Days 7`, or `-Since 2026-10-01 -Until 2026-11-01`, picks the period. For totals only:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 'cd ~/dmvtransit && docker compose exec -T app transit-mcp chatlog stats --days 7'
+```
+
+To honour a removal request, delete a conversation (or `--visitor <id>` for all of
+one visitor's chats); the IDs are in the downloaded files:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 'cd ~/dmvtransit && docker compose exec -T app transit-mcp chatlog delete --conversation <id>'
+```
+
 **Change keys or limits** — edit your local `.env` (keys) and re-run `push-env.ps1`, or
 edit the server's `.env` (`~/dmvtransit/.env`) through Lightsail's browser SSH and run
 `docker compose up -d`.
@@ -194,8 +214,19 @@ Automatic snapshots are deleted with the instance; manual snapshots are not.
   spend limit on the AWS project). If the site-wide daily limit is hit, visitors see a
   polite "come back tomorrow" message instead of errors.
 - **Backups:** automatic snapshots (08:00 UTC daily) cover everything. All transit data
-  can be re-downloaded anyway; the only things worth protecting are `.env` and the
-  certificates (both inside the snapshot).
+  can be re-downloaded anyway; the things worth protecting are `.env`, the
+  certificates and the chat log (all inside the snapshot).
+
+## Chat log
+
+The site saves each question with its answer, the data tools used, timing, token
+counts and — for refused questions — the reason (rate limit, daily cap, too long).
+Visitors get an anonymous ID (a keyed hash of their IP address, never the address);
+email addresses, phone numbers and long numbers are removed before saving; rows older
+than a year are deleted every night. The page tells visitors this in its footer and
+"About this site". Settings (`CHATLOG_*`) are in the server's `.env`; set
+`CHATLOG_ENABLED=false` to stop saving. Downloaded files in `chat-exports\` contain
+what visitors typed: keep them private (the folder is git-ignored).
 
 ## Troubleshooting
 
@@ -218,5 +249,7 @@ Automatic snapshots are deleted with the instance; manual snapshots are not.
   `X-Forwarded-For` headers are discarded by Caddy), a site-wide daily cap, 1,000-
   character questions, 20-question conversations, bounded memory for conversations.
 - Visitors see plain-language messages only; technical details go to the server logs.
+- No IP addresses are stored: the chat log uses anonymous visitor IDs, the app's
+  per-request log is off, and Caddy's access log masks addresses to their network.
 - Secrets live only in `~/dmvtransit/.env` (`chmod 600`), never in the image or Git.
 - Containers run as a non-root user; Ubuntu installs security updates automatically.

@@ -26,5 +26,8 @@ venv/
 .pytest_cache/
 .ruff_cache/
 
+# Chat-log downloads (deploy/lightsail/download-chats.ps1) contain visitors' questions
+chat-exports/
+
 # Machine-local Claude Code settings
 .claude/settings.local.json

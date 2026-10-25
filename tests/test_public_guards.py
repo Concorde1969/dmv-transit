@@ -106,6 +106,15 @@ def client(isolated_settings, monkeypatch):
     async def fake_run_chat(*, messages, **kw):
         if behavior["mode"] == "ok":
             messages.append({"role": "assistant", "content": "answer"})
+            yield {"type": "nudged"}
+            yield {"type": "usage", "model": "m-test", "input_tokens": 100,
+                   "output_tokens": 20, "cache_read_tokens": 0, "cache_write_tokens": 0}
+            yield {"type": "tool_call", "id": "t1", "name": "get_metro_route",
+                   "input": {"origin": "DCA", "destination": "IAD"}}
+            yield {"type": "tool_result", "name": "get_metro_route", "is_error": False,
+                   "sources": [], "preview": "{}", "duration_ms": 12}
+            yield {"type": "usage", "model": "m-test", "input_tokens": 300,
+                   "output_tokens": 50, "cache_read_tokens": 0, "cache_write_tokens": 0}
             yield {"type": "text", "text": "answer"}
             yield {"type": "done"}
         elif behavior["mode"] == "error_event":
@@ -173,3 +182,51 @@ def test_oversized_body_rejected(client):
     resp = client.post("/api/chat", content=b"{" + b" " * 9000 + b"}",
                        headers={"Content-Type": "application/json"})
     assert _events(resp)[0]["type"] == "error"
+
+
+# --- chat log --------------------------------------------------------------------
+def _turns(client):
+    return list(client.app.state.chatlog.rows())
+
+
+def test_answered_turn_is_logged_with_diagnostics(client):
+    ev = _ask(client, text="DCA to IAD? email me at a.b@example.com", sid="log1")
+    assert not any(e["type"] in ("usage", "nudged") for e in ev)  # internal only
+    (turn,) = _turns(client)
+    assert turn["outcome"] == "ok" and turn["answer"] == "answer"
+    assert turn["question"] == "DCA to IAD? email me at [email]"
+    assert turn["conversation_id"] == "log1"
+    assert turn["tools"] == [{"name": "get_metro_route",
+                              "input": {"origin": "DCA", "destination": "IAD"},
+                              "is_error": False, "duration_ms": 12}]
+    assert (turn["input_tokens"], turn["output_tokens"]) == (400, 70)
+    assert turn["model"] == "m-test" and turn["nudged"] == 1
+    assert turn["latency_ms"] is not None and turn["first_text_ms"] is not None
+    assert len(turn["visitor_id"]) == 16
+
+
+def test_refused_and_failed_turns_are_logged(client):
+    _ask(client, text="x" * 1001, sid="a")
+    for i in range(4):
+        _ask(client, sid=f"b{i}")          # 4th is over the 3-per-minute limit
+    client.behavior["mode"] = "error_event"
+    client.app.state.limiter.check = lambda ip: None
+    _ask(client, sid="c")
+    outcomes = [t["outcome"] for t in _turns(client)]
+    assert outcomes == ["too_long", "ok", "ok", "ok", "minute", "error"]
+    failed = _turns(client)[-1]
+    assert "secret internals" in failed["error"]   # kept for the owner, not shown
+
+
+def test_chat_log_never_stores_the_ip_address(client):
+    _ask(client, sid="ip")
+    raw = client.app.state.chatlog.path.read_bytes()
+    assert b"testclient" not in raw
+
+
+def test_chat_still_works_if_the_log_fails(client, monkeypatch):
+    def boom(rec):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(client.app.state.chatlog, "record_turn", boom)
+    assert any(e.get("text") == "answer" for e in _ask(client, sid="f1"))

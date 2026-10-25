@@ -32,8 +32,23 @@ www.{$SITE_DOMAIN} {
 		flush_interval -1
 	}
 
+	# Access log with visitor addresses masked to their network (e.g. 203.0.0.0/16):
+	# the site promises not to keep IP addresses.
 	log {
 		output stdout
-		format console
+		format filter {
+			wrap console
+			fields {
+				request>remote_ip ip_mask {
+					ipv4 16
+					ipv6 32
+				}
+				request>client_ip ip_mask {
+					ipv4 16
+					ipv6 32
+				}
+				request>headers>X-Forwarded-For delete
+			}
+		}
 	}
 }

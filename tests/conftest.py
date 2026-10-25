@@ -48,6 +48,7 @@ def isolated_settings(tmp_path, monkeypatch):
         ("GTFS_ARCHIVE_DIR", "archive"),
         ("TRANSIT_MCP_CACHE_DIR", "cache"),
         ("FEEDS_DIR", "feeds"),
+        ("CHATLOG_DB", "chatlog.db"),
     ):
         monkeypatch.setenv(var, str(tmp_path / sub))
     return Settings(_env_file=None)

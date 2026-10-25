@@ -45,6 +45,7 @@ ENV APP_ENV=production \
     CHAT_HOST=0.0.0.0 \
     CHAT_PORT=8765 \
     TRANSIT_MCP_DB=/data/transit.db \
+    CHATLOG_DB=/data/chatlog.db \
     TRANSIT_MCP_CACHE_DIR=/data/cache \
     GTFS_ARCHIVE_DIR=/data/gtfs \
     FEEDS_DIR=/data/feeds \

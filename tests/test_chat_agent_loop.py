@@ -165,6 +165,11 @@ async def _ungrounded_answer_is_discarded_and_tools_are_used():
     assert "nonstop" not in text  # the guess never reaches the rider
     assert "6.75" in text
     assert bridge.calls
+    # diagnostics for the chat log: one usage event per API round, the nudge, timings
+    assert sum(e["type"] == "usage" for e in events) == 3
+    assert any(e["type"] == "nudged" for e in events)
+    result = next(e for e in events if e["type"] == "tool_result")
+    assert isinstance(result["duration_ms"], int)
     # the nudge is a list-content user turn, so history trimming never treats it as
     # a rider message
     nudge = messages[2]

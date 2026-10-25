@@ -219,6 +219,32 @@ def _cmd_scheduler(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_chatlog(args: argparse.Namespace) -> int:
+    from transit_mcp.chatlog import ChatLog
+
+    settings = get_settings()
+    if not Path(settings.chatlog_db).is_file():
+        print(f"No chat log yet at {settings.chatlog_db}.", file=sys.stderr)
+        return 1
+    chatlog = ChatLog.from_settings(settings)
+    try:
+        if args.chatlog_cmd == "export":
+            export = chatlog.export_csv if args.format == "csv" else chatlog.export_jsonl
+            # Binary write: identical bytes on Windows and Linux, UTF-8 regardless of console.
+            sys.stdout.buffer.write(export(args.since, args.until).encode("utf-8"))
+        elif args.chatlog_cmd == "stats":
+            print(json.dumps(chatlog.stats(args.days), indent=2))
+        elif args.chatlog_cmd == "delete":
+            n = chatlog.delete(conversation=args.conversation, visitor=args.visitor)
+            print(f"Deleted {n} question(s).")
+        elif args.chatlog_cmd == "prune":
+            n = chatlog.prune(settings.chatlog_retention_days)
+            print(f"Removed {n} question(s) older than {settings.chatlog_retention_days} days.")
+    finally:
+        chatlog.close()
+    return 0
+
+
 def _cmd_planner(args: argparse.Namespace) -> int:
     from transit_mcp.planning import TripPlan, TripRequest, get_planner
     from transit_mcp.planning.request import UnresolvedPlace, build_request
@@ -334,6 +360,21 @@ def build_parser() -> argparse.ArgumentParser:
     chat = sub.add_parser("chat", help="Run the local web chat UI")
     chat.add_argument("--open", action="store_true", help="open the browser when ready")
     chat.set_defaults(func=_cmd_chat)
+
+    cl = sub.add_parser("chatlog", help="Review the saved chats (export, stats, delete)")
+    clsub = cl.add_subparsers(dest="chatlog_cmd", required=True)
+    ex = clsub.add_parser("export", help="Write saved chats to stdout (CSV or JSON lines)")
+    ex.add_argument("--format", choices=["csv", "jsonl"], default="csv")
+    ex.add_argument("--since", help="YYYY-MM-DD (inclusive)")
+    ex.add_argument("--until", help="YYYY-MM-DD (exclusive)")
+    st = clsub.add_parser("stats", help="Totals for the last N days (JSON)")
+    st.add_argument("--days", type=int, default=7)
+    de = clsub.add_parser("delete", help="Delete one conversation or one visitor's chats")
+    who = de.add_mutually_exclusive_group(required=True)
+    who.add_argument("--conversation")
+    who.add_argument("--visitor")
+    clsub.add_parser("prune", help="Delete chats older than CHATLOG_RETENTION_DAYS")
+    cl.set_defaults(func=_cmd_chatlog)
 
     pl = sub.add_parser("planner", help="Work with trip-planning engines")
     plsub = pl.add_subparsers(dest="planner_cmd", required=True)

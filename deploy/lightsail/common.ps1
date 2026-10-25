@@ -117,6 +117,12 @@ function Invoke-Remote($Session, [string]$Command) {
     return $LASTEXITCODE
 }
 
+function Copy-FromRemote($Session, [string]$RemotePath, [string]$LocalPath) {
+    $ErrorActionPreference = 'Continue'
+    & scp @($Session.Args) "$($Session.User)@$($Session.Host):$RemotePath" $LocalPath
+    if ($LASTEXITCODE -ne 0) { throw "Download of $RemotePath failed." }
+}
+
 function Copy-ToRemote($Session, [string]$LocalPath, [string]$RemotePath) {
     $ErrorActionPreference = 'Continue'
     & scp @($Session.Args) $LocalPath "$($Session.User)@$($Session.Host):$RemotePath"

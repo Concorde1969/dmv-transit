@@ -57,7 +57,27 @@ class Scheduler:
     def _run_full(self) -> dict:
         from transit_mcp.ingest.run import run_all
 
-        return run_all(self.settings)
+        result = run_all(self.settings)
+        self._prune_chatlog()
+        return result
+
+    def _prune_chatlog(self) -> None:
+        """Nightly: delete chat-log rows past the retention period."""
+        if not self.settings.chatlog_enabled:
+            return
+        from transit_mcp.chatlog import ChatLog
+
+        try:
+            chatlog = ChatLog.from_settings(self.settings)
+            try:
+                n = chatlog.prune(self.settings.chatlog_retention_days)
+            finally:
+                chatlog.close()
+            if n:
+                log.info("chat log: removed %d questions older than %d days",
+                         n, self.settings.chatlog_retention_days)
+        except Exception:  # noqa: BLE001 - retried tomorrow night
+            log.exception("chat log cleanup failed")
 
     def _run_alerts(self) -> dict:
         from transit_mcp.ingest.pipeline import run_ingest
