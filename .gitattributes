@@ -8,3 +8,6 @@
 Dockerfile text eol=lf
 deploy/Caddyfile text eol=lf
 *.yml text eol=lf
+
+# PowerShell deploy scripts run on Windows.
+*.ps1 text eol=crlf

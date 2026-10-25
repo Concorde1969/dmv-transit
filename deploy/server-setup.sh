@@ -68,6 +68,9 @@ else
   echo "Created $PROJECT_DIR/.env"
 fi
 
+# Next-step instructions only for a person at a terminal (not first-boot user data).
+[[ -t 1 ]] || exit 0
+
 cat <<EOF
 
 ------------------------------------------------------------------------------

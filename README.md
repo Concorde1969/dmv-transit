@@ -43,7 +43,8 @@ Two agencies (VRE, CUE) block automated downloads — see
 ## Deploying (public website)
 
 The same app runs as a public site — **https://dmvtransit.com** — on one small AWS
-Lightsail server with Docker: `docker compose up -d --build` starts the website,
+Lightsail server in Ohio (us-east-2) with Docker, created and managed by the scripts in
+`deploy/lightsail/`: `docker compose up -d --build` starts the website,
 automatic HTTPS (Caddy) and a scheduler that keeps data fresh. Public mode adds
 per-visitor rate limits, a site-wide daily cap and friendly error messages.
 Step-by-step guide: **[deploy/README.md](deploy/README.md)**.
