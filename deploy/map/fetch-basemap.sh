@@ -18,6 +18,8 @@ MAXZOOM=15
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/map"
 TOOL_DIR="$DIR/.tool"
 
+# docker compose creates the mounted folder as root if it starts before this script.
+if [[ -d "$DIR" && ! -w "$DIR" ]]; then sudo chown "$(id -u):$(id -g)" "$DIR"; fi
 mkdir -p "$DIR" "$TOOL_DIR"
 if [[ ! -x "$TOOL_DIR/pmtiles" ]]; then
   arch="$(uname -m)"; case "$arch" in x86_64) arch=x86_64 ;; aarch64|arm64) arch=arm64 ;; esac
