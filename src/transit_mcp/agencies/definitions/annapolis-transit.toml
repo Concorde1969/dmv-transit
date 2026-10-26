@@ -1,0 +1,16 @@
+slug = "annapolis-transit"
+name = "Annapolis Transit"
+mode = "bus"
+
+# Added from the Transitland feed list. Descriptions and fares are intentionally left
+# out: answers about this agency come from its GTFS feed (routes, stops, schedules;
+# fare page from the feed's agency.txt) until a curated profile is written.
+[profile]
+frequency_tier = "infrequent"
+
+# Routes, stops and schedules: GTFS found through Transitland (url = fallback).
+[[sources]]
+type = "gtfs"
+transitland_id = "f-dqct-annapolistransit"
+transitland_atlas = "arcgis.com.dmfr.json"
+url = "https://www.arcgis.com/sharing/rest/content/items/c307923d57ab4871aff79491b4a1bfd3/data"

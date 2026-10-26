@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     # Optional (free at transit.land): lets GTFS feeds come from Transitland's own
     # copies and API. Without it, Transitland's public feed registry is used.
     transitland_api_key: str | None = Field(default=None, alias="TRANSITLAND_API_KEY")
+    # Transitland REST calls allowed per month (Explorer plan: 5,000; keep a margin).
+    transitland_monthly_budget: int = Field(default=4500, alias="TRANSITLAND_MONTHLY_BUDGET")
+    # geocode.maps.co key for turning addresses into map points (server-side only).
+    geocode_api_key: str | None = Field(default=None, alias="GEOCODE_API_KEY")
 
     # Storage
     db_path: Path = Field(default=Path("./transit.db"), alias="TRANSIT_MCP_DB")
@@ -94,6 +98,20 @@ class Settings(BaseSettings):
     chat_history_turns: int = Field(default=6, alias="CHAT_HISTORY_TURNS")
     chat_session_ttl_minutes: int = Field(default=120, alias="CHAT_SESSION_TTL_MINUTES")
     chat_max_sessions: int = Field(default=2000, alias="CHAT_MAX_SESSIONS")
+
+    # --- Leave-now trip planner for the map (planning/live.py) ---
+    # Self-hosted basemap (Protomaps extract; see deploy/map/fetch-basemap.sh).
+    map_tiles_path: Path = Field(default=Path("./data/map/dmv.pmtiles"), alias="MAP_TILES_PATH")
+    trip_stop_radius_m: int = Field(default=300, alias="TRIP_STOP_RADIUS_M")
+    trip_max_wait_min: int = Field(default=10, alias="TRIP_MAX_WAIT_MIN")
+    trip_window_min: int = Field(default=60, alias="TRIP_WINDOW_MIN")
+    # Gentle walking pace (m/min) for walk times shown to riders.
+    trip_walk_m_per_min: float = Field(default=70.0, alias="TRIP_WALK_M_PER_MIN")
+    trip_live_cache_s: int = Field(default=60, alias="TRIP_LIVE_CACHE_S")
+    # Most Transitland departures calls one search may make (Explorer plan budget).
+    trip_max_live_calls: int = Field(default=6, alias="TRIP_MAX_LIVE_CALLS")
+    trip_rate_per_minute: int = Field(default=10, alias="TRIP_RATE_PER_MINUTE")
+    trip_rate_per_day: int = Field(default=200, alias="TRIP_RATE_PER_DAY")
 
     # --- Chat log (questions, answers, diagnostics; see chatlog.py) ---
     chatlog_enabled: bool = Field(default=True, alias="CHATLOG_ENABLED")

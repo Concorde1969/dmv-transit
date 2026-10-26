@@ -1,0 +1,16 @@
+slug = "intercity-bus"
+name = "Intercity bus (UTEL-UIUC combined feed)"
+mode = "intercity_bus"
+
+# Added from the Transitland feed list. Descriptions and fares are intentionally left
+# out: answers about this agency come from its GTFS feed (routes, stops, schedules;
+# fare page from the feed's agency.txt) until a curated profile is written.
+[profile]
+frequency_tier = "intercity"
+
+# Routes, stops and schedules: GTFS found through Transitland (url = fallback).
+[[sources]]
+type = "gtfs"
+transitland_id = "f-utel~uiuc~intercity~bus"
+transitland_atlas = "github.com.dmfr.json"
+url = "https://github.com/UTEL-UIUC/intercity-bus-gtfs/raw/refs/heads/main/Merged_GTFS_Feed.zip"

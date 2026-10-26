@@ -141,6 +141,42 @@ CREATE INDEX IF NOT EXISTS idx_rail_line_stops_station ON rail_line_stops(statio
 
 -- Alternate names riders use for a stop or station ("DCA", "Reagan", "IAD").
 -- Seeded from each agency definition's [aliases] table.
+-- Route shapes, simplified (~10 m) and stored as encoded polylines, for maps.
+CREATE TABLE IF NOT EXISTS gtfs_shapes (
+    feed_id   TEXT NOT NULL,
+    shape_id  TEXT NOT NULL,
+    polyline  TEXT NOT NULL,       -- Google encoded polyline, precision 5
+    n_points  INTEGER NOT NULL,
+    PRIMARY KEY (feed_id, shape_id)
+);
+
+-- Stop clusters: every pair of stops in a cluster is closer than 0.3 km (greedy
+-- radius cover, see ingest/gtfs/clusters.py). Riders can walk between any two stops
+-- of a cluster to change vehicles.
+CREATE TABLE IF NOT EXISTS stop_clusters (
+    cluster_id INTEGER PRIMARY KEY,
+    lat        REAL NOT NULL,
+    lon        REAL NOT NULL,
+    n_stops    INTEGER NOT NULL,
+    n_feeds    INTEGER NOT NULL,
+    computed_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS cluster_stops (
+    cluster_id INTEGER NOT NULL,
+    feed_id    TEXT NOT NULL,
+    stop_id    TEXT NOT NULL,
+    PRIMARY KEY (feed_id, stop_id)
+);
+CREATE INDEX IF NOT EXISTS idx_cluster_stops_cluster ON cluster_stops(cluster_id);
+
+-- Calls made to metered APIs, per month (see api_budget.py).
+CREATE TABLE IF NOT EXISTS api_usage (
+    month   TEXT NOT NULL,          -- YYYY-MM in the site's time zone
+    service TEXT NOT NULL,          -- e.g. transitland
+    calls   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (month, service)
+);
+
 CREATE TABLE IF NOT EXISTS place_aliases (
     alias   TEXT PRIMARY KEY,     -- lowercase
     feed_id TEXT NOT NULL,

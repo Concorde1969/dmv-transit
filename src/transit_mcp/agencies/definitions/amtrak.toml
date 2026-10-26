@@ -1,0 +1,16 @@
+slug = "amtrak"
+name = "Amtrak"
+mode = "intercity_rail"
+
+# Added from the Transitland feed list. Descriptions and fares are intentionally left
+# out: answers about this agency come from its GTFS feed (routes, stops, schedules;
+# fare page from the feed's agency.txt) until a curated profile is written.
+[profile]
+frequency_tier = "intercity"
+
+# Routes, stops and schedules: GTFS found through Transitland (url = fallback).
+[[sources]]
+type = "gtfs"
+transitland_id = "f-9-amtrak~amtrakcalifornia~amtrakcharteredvehicle"
+transitland_atlas = "amtrak.com.dmfr.json"
+url = "https://content.amtrak.com/content/gtfs/GTFS.zip"

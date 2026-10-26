@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import mimetypes
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -28,10 +29,15 @@ from transit_mcp.chat.guard import (
     trim_history,
 )
 from transit_mcp.chat.mcp_bridge import McpBridge
+from transit_mcp.chat.trip_api import router as trip_router
 from transit_mcp.chatlog import ChatLog, TurnRecord, device_class
 from transit_mcp.config import get_settings
 
 STATIC_DIR = Path(__file__).parent / "static"
+# Browsers only run module scripts served as JavaScript; Windows' registry may not
+# know .mjs (MapLibre ships as .mjs).
+mimetypes.add_type("text/javascript", ".mjs")
+mimetypes.add_type("application/x-protobuf", ".pbf")
 MAX_BODY_BYTES = 8 * 1024
 log = logging.getLogger("transit_mcp.chat")
 
@@ -47,6 +53,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.limiter = RateLimiter(settings.chat_rate_per_minute, settings.chat_rate_per_day)
     app.state.daily_cap = DailyCap(settings.chat_daily_limit, settings.timezone)
     app.state.chatlog = None
+    app.state.trips = None  # created on first trip/geocode request (chat/trip_api.py)
     if settings.chatlog_enabled:
         try:
             app.state.chatlog = ChatLog.from_settings(settings)
@@ -75,16 +82,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await app.state.anthropic.close()
         if app.state.chatlog is not None:
             app.state.chatlog.close()
+        if getattr(app.state, "trips", None) is not None:
+            app.state.trips.close()
 
 
 app = FastAPI(title="DMV Regional Transportation Assistant", lifespan=lifespan,
               docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+app.include_router(trip_router)
 
 
 @app.get("/")
 async def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.api_route("/tiles/dmv.pmtiles", methods=["GET", "HEAD"])
+async def basemap(request: Request):
+    """The self-hosted basemap (one PMTiles file; the browser reads byte ranges)."""
+    path = Path(request.app.state.settings.map_tiles_path)
+    if not path.is_file():
+        return JSONResponse({"error": "basemap not installed"}, status_code=404)
+    return FileResponse(path, media_type="application/octet-stream",
+                        headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/api/health")

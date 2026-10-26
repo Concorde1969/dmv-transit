@@ -5,7 +5,7 @@
 
 .DESCRIPTION
   Builds the server's .env from deploy/.env.production.example, filling in:
-    ANTHROPIC_API_KEY, WMATA_API_KEY (required) and TRANSITLAND_API_KEY (optional)
+    ANTHROPIC_API_KEY, WMATA_API_KEY (required), TRANSITLAND_API_KEY and GEOCODE_API_KEY
       - copied from the .env in the project folder on this PC;
     SITE_DOMAIN and ACME_EMAIL - from the parameters below.
   Uploads it to the server (readable only by the server's user), then starts or
@@ -43,7 +43,7 @@ if (-not (Test-Path $localEnv)) { throw "No .env found at $localEnv." }
 $local = Read-EnvFile $localEnv
 
 $fill = @{ SITE_DOMAIN = $SiteDomain.Trim(); ACME_EMAIL = $AcmeEmail.Trim() }
-foreach ($name in 'ANTHROPIC_API_KEY', 'WMATA_API_KEY', 'TRANSITLAND_API_KEY') {
+foreach ($name in 'ANTHROPIC_API_KEY', 'WMATA_API_KEY', 'TRANSITLAND_API_KEY', 'GEOCODE_API_KEY') {
     if ($local[$name]) { $fill[$name] = $local[$name] }
 }
 $missing = @('ANTHROPIC_API_KEY', 'WMATA_API_KEY') | Where-Object { -not $fill[$_] }

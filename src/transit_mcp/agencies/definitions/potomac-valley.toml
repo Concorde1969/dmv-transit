@@ -1,0 +1,16 @@
+slug = "potomac-valley"
+name = "Potomac Valley Transit Authority"
+mode = "bus"
+
+# Added from the Transitland feed list. Descriptions and fares are intentionally left
+# out: answers about this agency come from its GTFS feed (routes, stops, schedules;
+# fare page from the feed's agency.txt) until a curated profile is written.
+[profile]
+frequency_tier = "infrequent"
+
+# Routes, stops and schedules: GTFS found through Transitland (url = fallback).
+[[sources]]
+type = "gtfs"
+transitland_id = "f-potomac~valley~transit~authority"
+transitland_atlas = "nationalrtap.org.dmfr.json"
+url = "https://rapid.nationalrtap.org/GTFSFileManagement/UserUploadFiles/12017/feed.zip"

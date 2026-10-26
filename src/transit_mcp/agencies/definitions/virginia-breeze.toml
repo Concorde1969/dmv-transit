@@ -45,9 +45,11 @@ notes = """\
   ride; reserve early because each route runs once a day. Fares change; confirm the \
   current amount at the fare page before you travel."""
 
-# Not listed in Transitland: the operator's own GTFS URL.
+# Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]
 type = "gtfs"
+transitland_id = "f-virginia~breeze"
+transitland_atlas = "trilliumtransit.com.dmfr.json"
 url = "https://maps.tds.ai/download-feed/virginia-breeze-gtfs"
 
 [[sources]]

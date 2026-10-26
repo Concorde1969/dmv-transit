@@ -1,0 +1,16 @@
+slug = "flixbus"
+name = "FlixBus"
+mode = "intercity_bus"
+
+# Added from the Transitland feed list. Descriptions and fares are intentionally left
+# out: answers about this agency come from its GTFS feed (routes, stops, schedules;
+# fare page from the feed's agency.txt) until a curated profile is written.
+[profile]
+frequency_tier = "intercity"
+
+# Routes, stops and schedules: GTFS found through Transitland (url = fallback).
+[[sources]]
+type = "gtfs"
+transitland_id = "f-9-flixbus"
+transitland_atlas = "flix.tech.dmfr.json"
+url = "http://gtfs.gis.flix.tech/gtfs_generic_us.zip"

@@ -19,8 +19,9 @@ TOML options::
     index_stops = false            # stops not used for place search / walking links
     metrorail_line_order = true    # also derive Metrorail station order (WMATA only)
 
-Download order: Transitland's copy → the URL Transitland lists → ``url`` → a manually
-saved ``feeds/<slug>/google_transit.zip`` (see ``ingest/transitland.py``). After
+Download order: the URL Transitland lists → Transitland's hosted copy (metered, only
+as a fallback) → ``url`` → a manually saved ``feeds/<slug>/google_transit.zip`` (see
+``ingest/transitland.py``). After
 loading, the feed is summarized (route/stop service windows), turned into searchable
 documents, and archived raw to ``data/gtfs/<slug>.zip`` for scheduling engines.
 """
@@ -32,6 +33,7 @@ import json
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from transit_mcp.agencies.models import AgencyConfig, SourceConfig
+from transit_mcp.api_budget import ApiBudget
 from transit_mcp.ingest.gtfs.loader import GtfsFeed, load_feed
 from transit_mcp.ingest.gtfs.summarize import summarize_feed, synthesize_docs
 from transit_mcp.ingest.sources import register_source
@@ -45,6 +47,9 @@ class GtfsOptions(BaseModel):
     url: str | None = None
     manual: bool = False
     transitland_id: str | None = None
+    # The feed's GTFS-realtime counterpart on Transitland, if any: live departures are
+    # checked only for agencies that have one.
+    transitland_rt_id: str | None = None
     transitland_atlas: str | None = None
     auth_env: str | None = None
     index_stops: bool = True
@@ -93,6 +98,7 @@ class GtfsSource:
                 agency_url=opts.url, auth_env=opts.auth_env,
                 atlas_file=opts.transitland_atlas,
                 settings=ctx.settings, http=ctx.api_http,
+                budget=ApiBudget.transitland(ctx.db, ctx.settings),
             )
             notes.extend(skipped)
             return result

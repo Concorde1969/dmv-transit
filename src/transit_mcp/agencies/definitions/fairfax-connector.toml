@@ -53,6 +53,8 @@ notes = """\
 [[sources]]
 type = "gtfs"
 transitland_id = "f-dqcj-fairfaxconnector"
+# Live departures: Transitland merges this GTFS-realtime feed into departures.
+transitland_rt_id = "f-fairfaxconnector~rt"
 url = "https://www.fairfaxcounty.gov/connector/sites/connector/files/assets/connector_gtfs.zip"
 
 # Live service alerts (detours, closed stops, missed trips): GTFS-realtime.

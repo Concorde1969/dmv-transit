@@ -4,14 +4,16 @@ Transitland (https://www.transit.land) is the registry of record for which GTFS 
 an agency publishes and where it lives. For each feed we look up its Transitland
 record, then fetch the GTFS zip in this order:
 
-1. Transitland's own hosted copy of the latest version — needs ``TRANSITLAND_API_KEY``
-   and is only served when the feed's license allows redistribution;
-2. the official download URL that Transitland lists for the feed, with whatever
+1. the official download URL that Transitland lists for the feed, with whatever
    authorization the record says it needs (e.g. WMATA's ``api_key`` header);
+2. Transitland's own hosted copy of the latest version — needs ``TRANSITLAND_API_KEY``,
+   is only served when the feed's license allows redistribution, and costs one call
+   from the monthly budget (``api_budget.py``);
 3. the URL in the agency's TOML, then a manually saved ``feeds/<slug>/`` zip.
 
-Records come from the Transitland REST API when a key is set, otherwise from the
-public ``transitland-atlas`` repository (the same data, published on GitHub).
+Records come from the public ``transitland-atlas`` repository (the same data as the
+REST API, published on GitHub, cached for a week); the REST API is the fallback.
+Routine refreshes therefore spend no API quota.
 """
 
 from __future__ import annotations
@@ -25,12 +27,13 @@ from urllib.parse import urlparse
 
 import httpx
 
+from transit_mcp.api_budget import ApiBudget
 from transit_mcp.config import Settings
 from transit_mcp.ingest.http import HttpClient
 
 REST_BASE = "https://transit.land/api/v2/rest"
 ATLAS_RAW = "https://raw.githubusercontent.com/transitland/transitland-atlas/master/feeds"
-ATLAS_MAX_AGE_S = 24 * 3600
+ATLAS_MAX_AGE_S = 7 * 24 * 3600  # registry entries rarely change
 
 
 @dataclass
@@ -90,10 +93,22 @@ def _atlas_json(http: HttpClient, cache_dir: Path, filename: str) -> dict:
 
 
 def feed_record(
-    onestop_id: str, *, settings: Settings, http: HttpClient, atlas_file: str | None
+    onestop_id: str, *, settings: Settings, http: HttpClient, atlas_file: str | None,
+    budget: ApiBudget | None = None,
 ) -> FeedRecord | None:
-    """Transitland's record for a feed, or None if it can't be found."""
-    if settings.transitland_api_key:
+    """Transitland's record for a feed, or None if it can't be found.
+
+    The public atlas (GitHub, cached) is tried first because it costs no API quota;
+    the REST API is used only if the atlas doesn't have the feed."""
+    if atlas_file:
+        try:
+            data = _atlas_json(http, settings.cache_dir, atlas_file)
+            for feed in data.get("feeds") or []:
+                if feed.get("id") == onestop_id:
+                    return _parse_feed(feed)
+        except (httpx.HTTPError, ValueError, OSError):
+            pass
+    if settings.transitland_api_key and (budget is None or budget.try_spend()):
         try:
             raw = http.get(f"{REST_BASE}/feeds/{onestop_id}", conditional=False,
                            headers={"apikey": settings.transitland_api_key})
@@ -101,15 +116,7 @@ def feed_record(
             if feeds:
                 return _parse_feed(feeds[0])
         except (httpx.HTTPError, ValueError):
-            pass  # fall back to the public atlas
-    if atlas_file:
-        try:
-            data = _atlas_json(http, settings.cache_dir, atlas_file)
-        except (httpx.HTTPError, ValueError, OSError):
-            return None
-        for feed in data.get("feeds") or []:
-            if feed.get("id") == onestop_id:
-                return _parse_feed(feed)
+            pass
     return None
 
 
@@ -129,10 +136,15 @@ def fetch_gtfs(
     atlas_file: str | None,
     settings: Settings,
     http: HttpClient,
+    budget: ApiBudget | None = None,
 ) -> tuple[FetchResult, list[str]]:
-    """Download a feed, trying Transitland first. Returns the result plus notes on
-    any sources that were tried and skipped. Raises FileNotFoundError if every
-    source fails."""
+    """Download a feed found through Transitland. Returns the result plus notes on any
+    sources that were tried and skipped. Raises FileNotFoundError if every source
+    fails.
+
+    Cheapest first (the Explorer plan allows 5,000 REST calls a month): the official
+    URL Transitland lists -> Transitland's hosted copy (one metered call, only with a
+    key and budget left) -> the TOML ``url`` -> a manually saved zip."""
     notes: list[str] = []
     secret = _secret(settings, auth_env)
     auth_headers = {}
@@ -140,25 +152,14 @@ def fetch_gtfs(
     record = None
     if transitland_id:
         record = feed_record(transitland_id, settings=settings, http=http,
-                             atlas_file=atlas_file or atlas_file_for(agency_url))
+                             atlas_file=atlas_file or atlas_file_for(agency_url),
+                             budget=budget)
         if record is None:
             notes.append(f"Transitland record {transitland_id} not found")
         elif record.auth_type == "header" and record.auth_param:
             auth_headers = {record.auth_param: secret} if secret else {}
 
-        # 1. Transitland's hosted copy.
-        if settings.transitland_api_key:
-            try:
-                _s, content, _ = http.get_bytes(
-                    f"{REST_BASE}/feeds/{transitland_id}/download_latest_feed_version",
-                    headers={"apikey": settings.transitland_api_key},
-                )
-                return FetchResult(content, "transitland", f"transit.land:{transitland_id}",
-                                   transitland_id), notes
-            except httpx.HTTPError as exc:
-                notes.append(f"Transitland copy unavailable ({_short(exc)})")
-
-        # 2. The official URL Transitland lists.
+        # 1. The official URL Transitland lists (no API quota).
         if record and record.static_current:
             if record.auth_type and not auth_headers:
                 notes.append(f"{record.static_current} needs {auth_env or 'a key'}")
@@ -170,6 +171,18 @@ def fetch_gtfs(
                                        record.static_current, transitland_id), notes
                 except httpx.HTTPError as exc:
                     notes.append(f"{record.static_current} failed ({_short(exc)})")
+
+        # 2. Transitland's hosted copy (metered; served only if the license allows).
+        if settings.transitland_api_key and (budget is None or budget.try_spend()):
+            try:
+                _s, content, _ = http.get_bytes(
+                    f"{REST_BASE}/feeds/{transitland_id}/download_latest_feed_version",
+                    headers={"apikey": settings.transitland_api_key},
+                )
+                return FetchResult(content, "transitland", f"transit.land:{transitland_id}",
+                                   transitland_id), notes
+            except httpx.HTTPError as exc:
+                notes.append(f"Transitland copy unavailable ({_short(exc)})")
 
     # 3. The agency URL from the TOML, then a manually saved file.
     if agency_url and (not record or agency_url != record.static_current):

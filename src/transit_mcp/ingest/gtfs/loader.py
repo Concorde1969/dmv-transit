@@ -1,7 +1,8 @@
 """Load one GTFS zip into the namespaced ``gtfs_*`` tables.
 
 Deliberately dependency-free: stdlib ``zipfile`` + ``csv`` streamed into SQLite.
-``shapes.txt`` is skipped (90-95% of a feed, only needed for map geometry).
+``shapes.txt`` (90-95% of a feed) is not loaded row by row; ``shapes.py`` stores each
+shape simplified and encoded, for drawing routes on the map.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 
 from transit_mcp.db.database import Database
+from transit_mcp.ingest.gtfs.shapes import load_shapes
 from transit_mcp.ingest.http import HttpClient
 from transit_mcp.ingest.transitland import FetchResult
 
@@ -121,7 +123,7 @@ FILE_MAP: dict[str, tuple[str, dict[str, str]]] = {
     }),
 }
 
-SKIP_FILES = {"shapes.txt"}
+SKIP_FILES = {"shapes.txt"}  # loaded simplified by shapes.py instead
 _STOP_TIMES = "stop_times.txt"
 
 GTFS_TABLES = sorted({tbl for tbl, _ in FILE_MAP.values()})
@@ -289,6 +291,10 @@ def load_feed(
             "transitland_id = ?, index_stops = ? WHERE feed_id = ?",
             (now, *provenance, feed.slug),
         )
+        # Feeds loaded before shapes were kept get them on their next refresh.
+        if not db.conn.execute("SELECT 1 FROM gtfs_shapes WHERE feed_id = ? LIMIT 1",
+                               (feed.slug,)).fetchone():
+            stats["shapes"] = load_shapes(db, feed.slug, zipfile.ZipFile(io.BytesIO(content)))
         db.commit()
         if archive_dir is not None:
             stats["archived"] = str(
@@ -306,6 +312,7 @@ def load_feed(
         if member == _STOP_TIMES and not load_stop_times:
             continue
         stats["rows"][member] = _load_member(db, feed.slug, zf, member)
+    stats["shapes"] = load_shapes(db, feed.slug, zf)  # simplified, for maps
 
     info = _feed_info(zf)
     db.conn.execute(

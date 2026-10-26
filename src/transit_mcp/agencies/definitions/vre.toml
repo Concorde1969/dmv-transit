@@ -58,4 +58,6 @@ notes = """\
 [[sources]]
 type = "gtfs"
 transitland_id = "f-dqc-virginiarailwayexpress"
+# Live departures: Transitland merges this GTFS-realtime feed into departures.
+transitland_rt_id = "f-vre~rt"
 url = "https://gtfs.vre.org/containercdngtfsupload/google_transit.zip"

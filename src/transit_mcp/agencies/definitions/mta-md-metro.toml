@@ -1,0 +1,18 @@
+slug = "mta-md-metro"
+name = "MTA Maryland Metro SubwayLink"
+mode = "rail"
+
+# Added from the Transitland feed list. Descriptions and fares are intentionally left
+# out: answers about this agency come from its GTFS feed (routes, stops, schedules;
+# fare page from the feed's agency.txt) until a curated profile is written.
+[profile]
+frequency_tier = "frequent"
+
+# Routes, stops and schedules: GTFS found through Transitland (url = fallback).
+[[sources]]
+type = "gtfs"
+transitland_id = "f-dq-mtamaryland~subwaylink"
+# Live departures: Transitland merges this GTFS-realtime feed into departures.
+transitland_rt_id = "f-dq-mtamaryland~subwaylink~rt"
+transitland_atlas = "mta.maryland.gov.dmfr.json"
+url = "https://feeds.mta.maryland.gov/gtfs/metro"

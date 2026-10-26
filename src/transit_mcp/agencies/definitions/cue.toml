@@ -42,10 +42,10 @@ notes = """\
   $2.00 base / $1.00 reduced; free with a valid Mason ID. Fares change; confirm the \
   current amount at the fare page before you travel."""
 
-# fairfaxva.gov returns an HTML block page to scripts. Download the CUE GTFS zip in a
-# browser and save it as feeds/cue/google_transit.zip.
-# Not listed in Transitland and not published for scripted download: save the
-# GTFS zip as feeds/cue/google_transit.zip.
+# Routes, stops and schedules: GTFS found through Transitland (listed URL is CUE's
+# TransLoc export). A manually saved feeds/cue/google_transit.zip is the last resort.
 [[sources]]
 type = "gtfs"
-manual = true
+transitland_id = "f-dqcj1-fairfaxcue"
+transitland_atlas = "transloc.com.dmfr.json"
+url = "http://cue.transloc.com/Secure/Admin/Reports/GTFSDownload.aspx"

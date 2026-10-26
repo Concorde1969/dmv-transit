@@ -57,6 +57,20 @@ CREATE TABLE IF NOT EXISTS turns (
     first_text_ms      INTEGER,
     nudged             INTEGER NOT NULL DEFAULT 0
 );
+-- Map trip searches. Coordinates are rounded to 3 decimals (~100 m); typed addresses
+-- are not stored.
+CREATE TABLE IF NOT EXISTS trip_searches (
+    id          INTEGER PRIMARY KEY,
+    ts          TEXT NOT NULL,
+    visitor_id  TEXT NOT NULL,
+    origin_lat  REAL, origin_lon REAL,
+    dest_lat    REAL, dest_lon   REAL,
+    n_options   INTEGER NOT NULL,
+    live_checks INTEGER NOT NULL DEFAULT 0,
+    latency_ms  INTEGER,
+    notice      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_trip_searches_ts ON trip_searches(ts);
 CREATE INDEX IF NOT EXISTS idx_turns_ts ON turns(ts);
 CREATE INDEX IF NOT EXISTS idx_turns_conversation ON turns(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_turns_visitor ON turns(visitor_id);
@@ -193,6 +207,23 @@ class ChatLog:
         except Exception:  # noqa: BLE001
             log.exception("could not write the chat log")
 
+    def safe_record_trip(self, *, visitor_id: str, origin: tuple[float, float],
+                         destination: tuple[float, float], n_options: int,
+                         live_checks: int, latency_ms: int, notice: str | None) -> None:
+        """Log a map trip search (coordinates rounded to ~100 m); never raises."""
+        try:
+            with self._lock:
+                self.conn.execute(
+                    "INSERT INTO trip_searches (ts, visitor_id, origin_lat, origin_lon, "
+                    "dest_lat, dest_lon, n_options, live_checks, latency_ms, notice) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (_now(), visitor_id, round(origin[0], 3), round(origin[1], 3),
+                     round(destination[0], 3), round(destination[1], 3), n_options,
+                     live_checks, latency_ms, notice))
+                self.conn.commit()
+        except Exception:  # noqa: BLE001
+            log.exception("could not write the trip log")
+
     # -- housekeeping ------------------------------------------------------------------
     def prune(self, older_than_days: int) -> int:
         """Delete turns (and then-empty conversations) older than the retention period."""
@@ -202,6 +233,7 @@ class ChatLog:
             sep=" ", timespec="seconds")
         with self._lock:
             n = self.conn.execute("DELETE FROM turns WHERE ts < ?", (cutoff,)).rowcount
+            self.conn.execute("DELETE FROM trip_searches WHERE ts < ?", (cutoff,))
             self.conn.execute(
                 "DELETE FROM conversations WHERE id NOT IN "
                 "(SELECT DISTINCT conversation_id FROM turns)")

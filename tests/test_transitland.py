@@ -81,35 +81,82 @@ def test_listed_url_is_used_with_the_auth_transitland_names(settings):
     assert all("api_key" not in h for u, h in http.calls if "wmata.com" not in u)
 
 
-def test_transitland_copy_is_preferred_when_a_key_is_set(settings):
+TL_VRE = "https://transit.land/api/v2/rest/feeds/f-dqc-virginiarailwayexpress"
+
+
+def test_listed_url_first_spends_no_api_quota(settings, tmp_db):
+    """With a key set and the feed in the atlas, no Transitland REST call is made."""
+    from transit_mcp.api_budget import ApiBudget
+
     s = settings.model_copy(update={"transitland_api_key": "TL-KEY"})
-    tl = "https://transit.land/api/v2/rest/feeds/f-dqc-virginiarailwayexpress"
+    budget = ApiBudget.transitland(tmp_db, s)
     http = FakeHttp({
-        tl: json.dumps({"feeds": [ATLAS["feeds"][1]]}).encode(),
-        f"{tl}/download_latest_feed_version": b"TL-COPY",
+        _atlas_url("vre.org.dmfr.json"): json.dumps(ATLAS).encode(),
+        "https://gtfs.vre.org/google_transit.zip": b"VRE-ZIP",
+        f"{TL_VRE}/download_latest_feed_version": b"TL-COPY",
     })
     result, _ = fetch_gtfs(
         slug="vre", transitland_id="f-dqc-virginiarailwayexpress", agency_url=None,
-        auth_env=None, atlas_file=None, settings=s, http=http,
+        auth_env=None, atlas_file="vre.org.dmfr.json", settings=s, http=http, budget=budget,
     )
-    assert (result.content, result.via) == (b"TL-COPY", "transitland")
-    assert http.calls[-1][1] == {"apikey": "TL-KEY"}
+    assert (result.content, result.via) == (b"VRE-ZIP", "transitland-listed-url")
+    assert not any("transit.land" in u for u, _ in http.calls)
+    assert budget.used() == 0
 
 
-def test_falls_back_to_listed_url_when_redistribution_is_refused(settings):
+def test_hosted_copy_is_the_metered_fallback(settings, tmp_db):
+    from transit_mcp.api_budget import ApiBudget
+
     s = settings.model_copy(update={"transitland_api_key": "TL-KEY"})
-    tl = "https://transit.land/api/v2/rest/feeds/f-dqc-virginiarailwayexpress"
+    budget = ApiBudget.transitland(tmp_db, s)
     http = FakeHttp({
-        tl: json.dumps({"feeds": [ATLAS["feeds"][1]]}).encode(),
-        f"{tl}/download_latest_feed_version": 401,
-        "https://gtfs.vre.org/google_transit.zip": b"VRE-ZIP",
+        _atlas_url("vre.org.dmfr.json"): json.dumps(ATLAS).encode(),
+        "https://gtfs.vre.org/google_transit.zip": 503,
+        f"{TL_VRE}/download_latest_feed_version": b"TL-COPY",
     })
     result, notes = fetch_gtfs(
         slug="vre", transitland_id="f-dqc-virginiarailwayexpress", agency_url=None,
-        auth_env=None, atlas_file="vre.org.dmfr.json", settings=s, http=http,
+        auth_env=None, atlas_file="vre.org.dmfr.json", settings=s, http=http, budget=budget,
     )
-    assert result.via == "transitland-listed-url"
-    assert any("HTTP 401" in n for n in notes)
+    assert (result.content, result.via) == (b"TL-COPY", "transitland")
+    assert http.calls[-1][1] == {"apikey": "TL-KEY"}
+    assert any("HTTP 503" in n for n in notes)
+    assert budget.used() == 1
+
+
+def test_no_metered_calls_once_the_budget_is_spent(settings, tmp_db):
+    from transit_mcp.api_budget import ApiBudget
+
+    s = settings.model_copy(update={"transitland_api_key": "TL-KEY",
+                                    "transitland_monthly_budget": 0})
+    http = FakeHttp({
+        _atlas_url("vre.org.dmfr.json"): json.dumps(ATLAS).encode(),
+        "https://gtfs.vre.org/google_transit.zip": 503,
+        f"{TL_VRE}/download_latest_feed_version": b"TL-COPY",
+    })
+    with pytest.raises(FileNotFoundError):
+        fetch_gtfs(slug="vre", transitland_id="f-dqc-virginiarailwayexpress",
+                   agency_url=None, auth_env=None, atlas_file="vre.org.dmfr.json",
+                   settings=s, http=http, budget=ApiBudget.transitland(tmp_db, s))
+    assert not any("transit.land" in u for u, _ in http.calls)
+
+
+def test_rest_record_is_only_a_fallback_for_missing_atlas_entries(settings, tmp_db):
+    from transit_mcp.api_budget import ApiBudget
+
+    s = settings.model_copy(update={"transitland_api_key": "TL-KEY"})
+    budget = ApiBudget.transitland(tmp_db, s)
+    http = FakeHttp({
+        _atlas_url("example.org.dmfr.json"): b'{"feeds": []}',
+        TL_VRE: json.dumps({"feeds": [ATLAS["feeds"][1]]}).encode(),
+        "https://gtfs.vre.org/google_transit.zip": b"VRE-ZIP",
+    })
+    result, _ = fetch_gtfs(
+        slug="vre", transitland_id="f-dqc-virginiarailwayexpress", agency_url=None,
+        auth_env=None, atlas_file="example.org.dmfr.json", settings=s, http=http,
+        budget=budget,
+    )
+    assert result.via == "transitland-listed-url" and budget.used() == 1
 
 
 def test_agency_url_then_local_file_are_last_resorts(settings, tmp_path):

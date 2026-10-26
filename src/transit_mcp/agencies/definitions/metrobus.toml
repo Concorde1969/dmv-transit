@@ -53,5 +53,7 @@ notes = """\
 [[sources]]
 type = "gtfs"
 transitland_id = "f-dqc-wmata~bus"
+# Live departures: Transitland merges this GTFS-realtime feed into departures.
+transitland_rt_id = "f-wmata~bus~rt"
 url = "https://api.wmata.com/gtfs/bus-gtfs-static.zip"
 auth_env = "WMATA_API_KEY"

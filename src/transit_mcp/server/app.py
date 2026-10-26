@@ -122,6 +122,117 @@ def get_fare(origin: str, destination: str, rider_type: str = "regular") -> dict
         return queries.get_fare(db, origin, destination, rider_type=rider_type)
 
 
+_trip_tools: dict = {}
+
+
+def _trip_helpers():
+    """Geocoder + live-departures client, created once (they hold caches)."""
+    if not _trip_tools:
+        from transit_mcp.api_budget import ApiBudget
+        from transit_mcp.chat.trip_api import agency_info
+        from transit_mcp.geocode import Geocoder
+        from transit_mcp.planning.realtime import TransitlandRealtime
+
+        settings = get_settings()
+        agencies = agency_info(settings)
+        _trip_tools.update(
+            settings=settings, agencies=agencies,
+            geocoder=Geocoder(settings.geocode_api_key),
+            realtime=TransitlandRealtime(
+                api_key=settings.transitland_api_key,
+                budget=ApiBudget.transitland(None, settings, shared=True),
+                feeds={s: a["transitland_id"] for s, a in agencies.items()
+                       if a["transitland_id"]},
+                cache_s=settings.trip_live_cache_s, tz=settings.timezone))
+    return _trip_tools
+
+
+def _place(db: Database, text: str):
+    from transit_mcp.planning.live import Point
+
+    t = text.strip()
+    try:
+        lat, lon = (float(x) for x in t.split(","))
+        return Point(lat, lon, t)
+    except ValueError:
+        pass
+    pt = regional.resolve_point(db, t)          # stations, stops, airports, aliases
+    if pt and pt.get("kind") in ("wmata", "gtfs"):
+        return Point(pt["lat"], pt["lon"], pt["label"])
+    hits = _trip_helpers()["geocoder"].search(t)   # addresses and landmarks
+    if hits:
+        return Point(hits[0]["lat"], hits[0]["lon"], hits[0]["label"])
+    if pt:
+        return Point(pt["lat"], pt["lon"], pt["label"])
+    return None
+
+
+@mcp.tool()
+def plan_trip_now(origin: str, destination: str) -> dict:
+    """Leave-now trip options with LIVE departures, like the site's map: stops within
+    a 4-minute walk (0.3 km) of each end, direct trips first and one transfer only when
+    needed; any option with a wait over 10 minutes at the start or a transfer is left
+    out. Use this when the rider wants to go now; use plan_connection for general
+    "how would I get there" or a later day.
+
+    Args:
+        origin: An address, landmark, station, or "lat,lon".
+        destination: An address, landmark, station, or "lat,lon".
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from transit_mcp.planning.live import LivePlanner, LiveSettings
+
+    h = _trip_helpers()
+    settings = h["settings"]
+    with _db() as db:
+        o, d = _place(db, origin), _place(db, destination)
+        if not o or not d:
+            return {"error": "could_not_find_place",
+                    "origin_found": bool(o), "destination_found": bool(d)}
+        result = LivePlanner(db, cfg=LiveSettings.from_settings(settings),
+                             realtime=h["realtime"], agencies=h["agencies"],
+                             tz=settings.timezone).plan(o, d)
+    tz = ZoneInfo(settings.timezone)
+
+    def clock(epoch):
+        # "%I" (not the Linux-only "%-I"), then drop the leading zero: "5:04 PM"
+        return datetime.fromtimestamp(epoch, tz).strftime("%I:%M %p").lstrip("0") \
+            if epoch else None
+
+    def brief(opt):
+        steps = []
+        for leg in opt["legs"]:
+            if leg["mode"] == "walk":
+                steps.append(f"walk {round(leg['duration_s'] / 60)} min"
+                             + (f" (wait {round(leg['wait_s'] / 60)} min)"
+                                if leg.get("transfer") else ""))
+            else:
+                name = leg["route_short_name"] or leg["route_long_name"] or leg["route_id"]
+                steps.append(
+                    f"{leg['agency_name']} {name} toward {leg['headsign'] or '?'}: board "
+                    f"{leg['board']['name']} at {clock(leg['board']['expected'])}"
+                    f"{' (live)' if leg['live'] else ' (scheduled)'}, ride {leg['stops']} "
+                    f"stops to {leg['alight']['name']}, arrive {clock(leg['alight']['expected'])}")
+        return {"leave_at": clock(opt["leave_at"]), "arrive_at": clock(opt["arrive_at"]),
+                "minutes": round(opt["duration_s"] / 60), "transfers": opt["transfers"],
+                "wait_minutes": round(opt["wait_s"] / 60), "live": opt["live"],
+                "fare_estimate": opt["fare_estimate"], "steps": steps}
+
+    return {
+        "from": o.label, "to": d.label,
+        "options": [brief(x) for x in result["options"]],
+        "later_options": [brief(x) for x in result.get("later_options", [])],
+        "notice": result.get("notice"),
+        "note": "Departure times marked (live) include real-time updates; others are the "
+                "timetable. Riders can see these options on the site's map.",
+        "source": "Agencies' GTFS timetables via Transitland, live departures from "
+                  "Transitland",
+        "url": "https://www.transit.land/",
+    }
+
+
 @mcp.tool()
 def get_metro_route(origin: str, destination: str) -> dict:
     """How to ride Metrorail between two stations: which line(s), where to change

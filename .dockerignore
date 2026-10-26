@@ -22,3 +22,11 @@ dist/
 *.egg-info/
 tests/
 *.bat
+
+# Basemap and analysis outputs (large; mounted or regenerated, never baked in)
+map/
+stops_all.json
+stop_clusters.json
+route_connections.json
+stop_clusters_map.html
+chat-exports/

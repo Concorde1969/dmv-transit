@@ -47,6 +47,8 @@ notes = "$2.00 base / $1.00 reduced. Fares change; confirm the current amount at
 [[sources]]
 type = "gtfs"
 transitland_id = "f-dqcjj-arlingtontransit"
+# Live departures: Transitland merges this GTFS-realtime feed into departures.
+transitland_rt_id = "f-art~rt"
 url = "https://www.arlingtontransit.com/shared/content/gtfs/art/google_transit.zip"
 
 # Fares, how to pay, and service alerts / detours (never routes or schedules).

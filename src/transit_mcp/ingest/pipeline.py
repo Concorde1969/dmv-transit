@@ -13,6 +13,7 @@ from typing import Literal
 from transit_mcp.agencies import AgencyConfig, load_agencies, seed_curated_tables
 from transit_mcp.config import Settings, get_settings
 from transit_mcp.db.database import Database
+from transit_mcp.ingest.gtfs.clusters import build_clusters
 from transit_mcp.ingest.gtfs.links import build_stop_links
 from transit_mcp.ingest.http import HttpClient
 from transit_mcp.ingest.sources import IngestContext, RunOptions, get_source
@@ -116,6 +117,7 @@ def run_ingest(
                 radius_m=settings.transfer_link_radius_m,
                 walk_speed_m_per_min=settings.walk_speed_m_per_min,
             )
+            result["post"]["clusters"] = build_clusters(db)
 
         status = "partial" if result["errors"] else "ok"
         result["errors"] = result["errors"] or None

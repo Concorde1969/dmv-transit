@@ -34,15 +34,12 @@ def test_load_local_feed_populates_tables(tmp_db, gtfs_feeds_dir):
     assert feed["feed_hash"]
 
 
-def test_shapes_txt_is_skipped(tmp_db, gtfs_feeds_dir):
-    load_feed(tmp_db, http=None, feed=MINI_A, feeds_dir=gtfs_feeds_dir)
-    tables = {
-        r["name"]
-        for r in tmp_db.conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        )
-    }
-    assert "gtfs_shapes" not in tables
+def test_shapes_are_stored_simplified_not_row_by_row(tmp_db, gtfs_feeds_dir):
+    stats = load_feed(tmp_db, http=None, feed=MINI_A, feeds_dir=gtfs_feeds_dir)
+    assert "shapes.txt" not in stats["rows"]          # no raw shape-point rows
+    n = tmp_db.conn.execute(
+        "SELECT COUNT(*) FROM gtfs_shapes WHERE feed_id = 'mini-a'").fetchone()[0]
+    assert n == stats["shapes"]
 
 
 def test_no_stop_times_flag(tmp_db, gtfs_feeds_dir):

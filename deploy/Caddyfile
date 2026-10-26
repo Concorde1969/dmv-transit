@@ -13,8 +13,9 @@ www.{$SITE_DOMAIN} {
 		max_size 16KB
 	}
 
-	# Compress everything except the streamed chat answers (compression buffers them).
-	@compressible not path /api/chat
+	# Compress everything except the streamed chat answers (compression buffers them)
+	# and the basemap (already compressed; the map reads it in byte ranges).
+	@compressible not path /api/chat /tiles/*
 	encode @compressible zstd gzip
 
 	header {
@@ -22,8 +23,11 @@ www.{$SITE_DOMAIN} {
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "geolocation=(), microphone=(), camera=()"
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		# Location: only this site may ask (to find stops near the rider).
+		Permissions-Policy "geolocation=(self), microphone=(), camera=()"
+		# Everything is served from this site. The map engine runs its worker from a
+		# blob: URL and draws icons into blob:/data: images.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; child-src blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 		-Server
 	}
 

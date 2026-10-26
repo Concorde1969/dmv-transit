@@ -19,6 +19,7 @@ x-app: &app
     CHAT_HOST: 0.0.0.0
     CHAT_PORT: "8765"
     TRANSIT_MCP_DB: /data/transit.db
+    MAP_TILES_PATH: /data/map/dmv.pmtiles   # basemap: deploy/map/fetch-basemap.sh
     CHATLOG_DB: /data/chatlog.db        # saved chats (kept 1 year; in snapshots)
     TRANSIT_MCP_CACHE_DIR: /data/cache
     GTFS_ARCHIVE_DIR: /data/gtfs
@@ -28,6 +29,8 @@ x-app: &app
     - transit_data:/data
     # Manually downloaded feeds (VRE, CUE): scp them into ./feeds/<agency>/
     - ./feeds:/data/feeds:ro
+    # Regional basemap (deploy/map/fetch-basemap.sh writes ./map/dmv.pmtiles)
+    - ./map:/data/map:ro
   restart: unless-stopped
   logging: &logging
     driver: json-file

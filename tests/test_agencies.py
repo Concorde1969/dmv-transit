@@ -15,7 +15,11 @@ from transit_mcp.config import Settings
 
 TEMPLATE = Path(__file__).resolve().parents[1] / "agencies" / "_template.toml"
 BUILTIN = {"wmata", "metrobus", "vre", "fairfax-connector", "art", "dash", "cue",
-           "loudoun", "omniride", "virginia-breeze"}
+           "loudoun", "omniride", "virginia-breeze",
+           # Maryland and intercity feeds from the Transitland feed list
+           "mta-md-bus", "mta-md-commuter-bus", "mta-md-metro", "mta-md-light-rail",
+           "marc", "annapolis-transit", "harbor-connector", "potomac-valley",
+           "intercity-bus", "flixbus", "amtrak"}
 
 
 @pytest.fixture
@@ -42,7 +46,7 @@ def test_builtin_definitions_load(isolated_settings):
     # every agency Transitland lists gets its schedules through Transitland
     listed = {a.slug for a in agencies
               if a.sources_of("gtfs") and a.sources_of("gtfs")[0].options().get("transitland_id")}
-    assert listed == BUILTIN - {"cue", "virginia-breeze"}
+    assert listed == BUILTIN
 
 
 def test_template_is_a_valid_agency_when_copied(local_dir):
