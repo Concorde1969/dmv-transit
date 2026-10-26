@@ -128,22 +128,15 @@ _trip_tools: dict = {}
 def _trip_helpers():
     """Geocoder + live-departures client, created once (they hold caches)."""
     if not _trip_tools:
-        from transit_mcp.api_budget import ApiBudget
-        from transit_mcp.chat.trip_api import agency_info
+        from transit_mcp.chat.trip_api import agency_info, build_realtime
         from transit_mcp.geocode import Geocoder
-        from transit_mcp.planning.realtime import TransitlandRealtime
 
         settings = get_settings()
         agencies = agency_info(settings)
         _trip_tools.update(
             settings=settings, agencies=agencies,
             geocoder=Geocoder(settings.geocode_api_key),
-            realtime=TransitlandRealtime(
-                api_key=settings.transitland_api_key,
-                budget=ApiBudget.transitland(None, settings, shared=True),
-                feeds={s: a["transitland_id"] for s, a in agencies.items()
-                       if a["transitland_id"]},
-                cache_s=settings.trip_live_cache_s, tz=settings.timezone))
+            realtime=build_realtime(settings, agencies))
     return _trip_tools
 
 

@@ -27,8 +27,14 @@ from transit_mcp.api_budget import ApiBudget
 from transit_mcp.chat.guard import RateLimiter
 from transit_mcp.db.database import Database
 from transit_mcp.geocode import Geocoder, in_region
+from transit_mcp.ingest.http import HttpClient
+from transit_mcp.ingest.transitland import _secret, atlas_file_for, feed_record
 from transit_mcp.planning.live import LivePlanner, LiveSettings, Point
-from transit_mcp.planning.realtime import TransitlandRealtime
+from transit_mcp.planning.realtime import (
+    CombinedRealtime,
+    DirectTripUpdates,
+    TransitlandRealtime,
+)
 
 log = logging.getLogger("transit_mcp.trip")
 router = APIRouter()
@@ -51,6 +57,7 @@ class LiveRide(BaseModel):
     agency: str = Field(max_length=64)
     stop_id: str = Field(max_length=128)
     trip_id: str = Field(max_length=256)
+    scheduled: int | None = None      # scheduled departure, epoch seconds
 
 
 class LiveBody(BaseModel):
@@ -67,9 +74,51 @@ def agency_info(settings) -> dict[str, dict]:
             "name": a.profile.display_name or a.name,
             "has_realtime": bool(opts.get("transitland_rt_id")),
             "transitland_id": opts.get("transitland_id"),
+            "transitland_rt_id": opts.get("transitland_rt_id"),
+            "transitland_atlas": opts.get("transitland_atlas"),
+            "url": opts.get("url"),
+            "auth_env": opts.get("auth_env"),
             "base_fare": a.fares.base_fare,
         }
     return out
+
+
+def build_realtime(settings, agencies: dict[str, dict],
+                   http: httpx.Client | None = None) -> CombinedRealtime:
+    """Live times: each agency's own TripUpdates feed (listed in Transitland's registry)
+    where we can read it, Transitland's departures API otherwise."""
+    http = http or httpx.Client(timeout=8.0)
+    direct: dict[str, tuple[str, dict]] = {}
+    budget = ApiBudget.transitland(None, settings, shared=True)
+    registry = HttpClient(user_agent=settings.http_user_agent, timeout=20.0)
+    try:
+        records = {
+            slug: feed_record(a["transitland_rt_id"], settings=settings, http=registry,
+                              budget=budget, atlas_file=a.get("transitland_atlas")
+                              or atlas_file_for(a.get("url")))
+            for slug, a in agencies.items() if a.get("transitland_rt_id")}
+    finally:
+        registry.close()
+    for slug, rec in records.items():
+        a = agencies[slug]
+        if not rec or not rec.realtime_trip_updates:
+            continue
+        headers = {}
+        if rec.auth_type == "header" and rec.auth_param:
+            secret = _secret(settings, a.get("auth_env"))
+            if not secret:
+                continue          # e.g. Swiftly-hosted feeds: use Transitland instead
+            headers = {rec.auth_param: secret}
+        elif rec.auth_type:
+            continue
+        direct[slug] = (rec.realtime_trip_updates, headers)
+    return CombinedRealtime(
+        DirectTripUpdates(direct, tz=settings.timezone, http=http),
+        TransitlandRealtime(
+            api_key=settings.transitland_api_key,
+            budget=budget,
+            feeds={s: a["transitland_id"] for s, a in agencies.items() if a["transitland_id"]},
+            cache_s=settings.trip_live_cache_s, tz=settings.timezone, http=http))
 
 
 class TripService:
@@ -82,13 +131,7 @@ class TripService:
         self.geocoder = Geocoder(settings.geocode_api_key, http=self.http)
         self.trip_limiter = RateLimiter(settings.trip_rate_per_minute, settings.trip_rate_per_day)
         self.geo_limiter = RateLimiter(40, 1000)
-        feeds = {slug: a["transitland_id"] for slug, a in self.agencies.items()
-                 if a["transitland_id"]}
-        self.realtime = TransitlandRealtime(
-            api_key=settings.transitland_api_key,
-            budget=ApiBudget.transitland(None, settings, shared=True),
-            feeds=feeds, cache_s=settings.trip_live_cache_s, tz=settings.timezone,
-            http=self.http)
+        self.realtime = build_realtime(settings, self.agencies, self.http)
 
     def close(self) -> None:
         self.http.close()
@@ -182,8 +225,8 @@ def trip_live(request: Request, body: LiveBody) -> JSONResponse:
     for r in body.rides:
         if not svc.agencies.get(r.agency, {}).get("has_realtime"):
             continue
-        deps, _ = svc.realtime.stop_departures(r.agency, r.stop_id, now.date())
-        hit = (deps or {}).get(r.trip_id)
+        sched = r.scheduled - midnight if r.scheduled else None
+        hit, _ = svc.realtime.lookup(r.agency, r.stop_id, r.trip_id, None, sched, now.date())
         if hit:
             out.append({"trip_id": r.trip_id, "live": hit["live"],
                         "cancelled": hit["cancelled"], "delay_s": hit["delay"],

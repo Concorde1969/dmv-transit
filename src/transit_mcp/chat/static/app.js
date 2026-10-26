@@ -466,7 +466,7 @@ async function refreshLive() {
   try {
     const r = await fetch("/api/trip/live", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rides: legs.map((l) => ({ agency: l.agency, stop_id: l.board.stop_id, trip_id: l.trip_id })) }),
+      body: JSON.stringify({ rides: legs.map((l) => ({ agency: l.agency, stop_id: l.board.stop_id, trip_id: l.trip_id, scheduled: l.board.scheduled })) }),
     });
     const data = await r.json();
     let changed = false;

@@ -41,6 +41,7 @@ class FeedRecord:
     onestop_id: str
     static_current: str | None = None
     realtime_alerts: str | None = None
+    realtime_trip_updates: str | None = None
     auth_type: str | None = None        # e.g. "header"
     auth_param: str | None = None       # e.g. "api_key"
     license: dict = field(default_factory=dict)
@@ -76,6 +77,7 @@ def _parse_feed(feed: dict) -> FeedRecord:
         onestop_id=feed.get("onestop_id") or feed.get("id") or "",
         static_current=urls.get("static_current"),
         realtime_alerts=urls.get("realtime_alerts"),
+        realtime_trip_updates=urls.get("realtime_trip_updates"),
         auth_type=auth.get("type"),
         auth_param=auth.get("param_name"),
         license=feed.get("license") or {},

@@ -129,12 +129,12 @@ class FakeRealtime:
     def available(self):
         return True
 
-    def cached(self, feed, stop):
+    def free(self, feed, stop):
         return False
 
-    def stop_departures(self, feed, stop_id, day):
+    def lookup(self, feed, stop_id, trip_id, seq, sched_dep_s, day):
         self.calls.append((feed, stop_id))
-        return self.by_stop.get((feed, stop_id)), True
+        return (self.by_stop.get((feed, stop_id)) or {}).get(trip_id), 1
 
 
 AGENCIES = {"bus": {"name": "Bus Co", "has_realtime": True, "base_fare": 2.0},

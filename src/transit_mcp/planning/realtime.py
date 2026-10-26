@@ -1,10 +1,17 @@
-"""Live departures from Transitland (scheduled times enriched with GTFS-realtime).
+"""Live departure times for the planner, from two sources (both found via Transitland):
 
-One call per stop (``/stops/<feed onestop id>:<stop_id>/departures``), so calls are
-precious on the Explorer plan: each answer is reused for ``TRIP_LIVE_CACHE_S``
-(60 s) and every call is reserved from the monthly ``ApiBudget`` first. When the key is
-missing or the budget is spent, :meth:`available` is False and the planner shows
-scheduled times, labelled as such.
+* :class:`DirectTripUpdates` — an agency's own GTFS-realtime TripUpdates feed, at the
+  URL Transitland's registry lists for it. One download (cached 30 s) covers every
+  trip, uses the same trip IDs as the timetable we loaded, and costs no Transitland
+  quota. Used wherever the feed is reachable (WMATA rail and bus, VRE, Fairfax
+  Connector, MARC).
+* :class:`TransitlandRealtime` — Transitland's departures API, one call per stop, for
+  feeds we can't read directly (e.g. those behind Swiftly keys). Calls are precious on
+  the Explorer plan: each answer is reused for ``TRIP_LIVE_CACHE_S`` and every call is
+  reserved from the monthly ``ApiBudget`` first.
+
+:class:`CombinedRealtime` picks the right one per feed. When neither works, the planner
+shows scheduled times, labelled as such.
 """
 
 from __future__ import annotations
@@ -44,6 +51,16 @@ class TransitlandRealtime:
     def cached(self, feed: str, stop_id: str) -> bool:
         hit = self._cache.get((feed, stop_id))
         return bool(hit and time.monotonic() - hit[0] < self.cache_s)
+
+    def free(self, feed: str, stop_id: str) -> bool:
+        """True if this stop's answer is cached (no Transitland call needed)."""
+        return self.cached(feed, stop_id)
+
+    def lookup(self, feed: str, stop_id: str, trip_id: str, seq: int | None,
+               sched_dep_s: int | None, day: date) -> tuple[dict | None, int]:
+        """Live info for one trip at one stop, and how many Transitland calls it took."""
+        deps, fetched = self.stop_departures(feed, stop_id, day)
+        return (deps or {}).get(trip_id), int(fetched)
 
     def stop_departures(self, feed: str, stop_id: str, service_day: date
                         ) -> tuple[dict | None, bool]:
@@ -128,3 +145,136 @@ def parse_departures(data: dict, service_day: date, tz: ZoneInfo) -> dict:
                 "cancelled": rel in ("CANCELED", "CANCELLED", "SKIPPED"),
             }
     return out
+
+
+
+class DirectTripUpdates:
+    """Agencies' own GTFS-realtime TripUpdates feeds, one cached download per feed."""
+
+    def __init__(self, feeds: dict[str, tuple[str, dict]], *, cache_s: int = 30,
+                 tz: str = "America/New_York", http: httpx.Client | None = None):
+        """``feeds``: agency slug -> (TripUpdates URL, request headers)."""
+        self.feeds = feeds
+        self.cache_s = cache_s
+        self.tz = ZoneInfo(tz)
+        self.http = http or httpx.Client(timeout=8.0)
+        self._cache: dict[str, tuple[float, dict | None]] = {}
+        self._lock = threading.Lock()
+
+    def has(self, feed: str) -> bool:
+        if feed not in self.feeds:
+            return False
+        hit = self._cache.get(feed)
+        # A feed that failed recently is skipped (so the fallback can be used) for 5 min.
+        return not (hit and hit[1] is None and time.monotonic() - hit[0] < 300)
+
+    def _trips(self, feed: str) -> dict | None:
+        with self._lock:
+            hit = self._cache.get(feed)
+            if hit and time.monotonic() - hit[0] < (self.cache_s if hit[1] is not None else 300):
+                return hit[1]
+        url, headers = self.feeds[feed]
+        try:
+            r = self.http.get(url, headers=headers)
+            r.raise_for_status()
+            data = parse_trip_updates(r.content)
+        except Exception as exc:  # noqa: BLE001 - network, TLS or protobuf errors
+            log.warning("realtime feed %s unavailable: %s", feed, exc)
+            data = None
+        with self._lock:
+            self._cache[feed] = (time.monotonic(), data)
+        return data
+
+    def lookup(self, feed: str, stop_id: str, trip_id: str, seq: int | None,
+               sched_dep_s: int | None, day: date) -> tuple[dict | None, int]:
+        trips = self._trips(feed)
+        if trips is None:
+            return None, 0
+        t = trips.get(trip_id)
+        if t is None:
+            return None, 0      # no live update for this trip: the timetable stands
+        if t["cancelled"]:
+            return {"dep_s": None, "delay": None, "live": True, "cancelled": True}, 0
+        midnight = int(datetime.combine(day, datetime.min.time(), self.tz).timestamp())
+        exact = next((u for u in t["stops"]
+                      if u["stop_id"] == stop_id or (seq is not None and u["seq"] == seq)), None)
+        if exact:
+            if exact["skipped"]:
+                return {"dep_s": None, "delay": None, "live": True, "cancelled": True}, 0
+            if exact["time"] is not None:
+                return {"dep_s": exact["time"] - midnight, "delay": None, "live": True,
+                        "cancelled": False}, 0
+            if exact["delay"] is not None and sched_dep_s is not None:
+                return {"dep_s": sched_dep_s + exact["delay"], "delay": exact["delay"],
+                        "live": True, "cancelled": False}, 0
+        # Not listed at this stop: carry the latest known delay forward along the trip.
+        before = [u for u in t["stops"] if u["delay"] is not None
+                  and (seq is None or u["seq"] is None or u["seq"] <= seq)]
+        delay = before[-1]["delay"] if before else t["delay"]
+        if delay is None or sched_dep_s is None:
+            return None, 0
+        return {"dep_s": sched_dep_s + delay, "delay": delay, "live": True,
+                "cancelled": False}, 0
+
+
+def parse_trip_updates(content: bytes) -> dict:
+    """trip_id -> {"cancelled", "delay", "stops": [{stop_id, seq, time, delay, skipped}]}"""
+    from google.transit import gtfs_realtime_pb2
+
+    msg = gtfs_realtime_pb2.FeedMessage()
+    msg.ParseFromString(content)
+    canceled = gtfs_realtime_pb2.TripDescriptor.CANCELED
+    skipped = gtfs_realtime_pb2.TripUpdate.StopTimeUpdate.SKIPPED
+    out: dict[str, dict] = {}
+    for ent in msg.entity:
+        if not ent.HasField("trip_update"):
+            continue
+        tu = ent.trip_update
+        trip_id = tu.trip.trip_id
+        if not trip_id:
+            continue
+        stops = []
+        for u in tu.stop_time_update:
+            ev = u.departure if u.HasField("departure") else (
+                u.arrival if u.HasField("arrival") else None)
+            stops.append({
+                "stop_id": u.stop_id or None,
+                "seq": u.stop_sequence if u.HasField("stop_sequence") else None,
+                "time": (ev.time or None) if ev is not None else None,
+                "delay": (ev.delay if ev is not None and ev.HasField("delay") else None),
+                "skipped": u.schedule_relationship == skipped,
+            })
+        out[trip_id] = {
+            "cancelled": tu.trip.schedule_relationship == canceled,
+            "delay": tu.delay if tu.HasField("delay") else None,
+            "stops": stops,
+        }
+    return out
+
+
+class CombinedRealtime:
+    """The agency's own feed when we can read it; Transitland's departures otherwise."""
+
+    def __init__(self, direct: DirectTripUpdates | None, transitland: TransitlandRealtime | None):
+        self.direct = direct
+        self.transitland = transitland
+
+    def available(self) -> bool:
+        return bool((self.direct and self.direct.feeds)
+                    or (self.transitland and self.transitland.available()))
+
+    def free(self, feed: str, stop_id: str) -> bool:
+        """True if checking this stop costs no Transitland call."""
+        if self.direct and self.direct.has(feed):
+            return True
+        return bool(self.transitland and self.transitland.free(feed, stop_id))
+
+    def lookup(self, feed: str, stop_id: str, trip_id: str, seq: int | None,
+               sched_dep_s: int | None, day: date) -> tuple[dict | None, int]:
+        if self.direct and self.direct.has(feed):
+            info, calls = self.direct.lookup(feed, stop_id, trip_id, seq, sched_dep_s, day)
+            if self.direct.has(feed):     # the download worked: trust its answer
+                return info, calls
+        if self.transitland:
+            return self.transitland.lookup(feed, stop_id, trip_id, seq, sched_dep_s, day)
+        return None, 0

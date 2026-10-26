@@ -460,13 +460,13 @@ class LivePlanner:
             for ride in c.rides:
                 if not self.agencies.get(ride.feed, {}).get("has_realtime"):
                     continue
-                if self.live_calls >= self.cfg.max_live_calls and not self.realtime.cached(
+                # Per-search cap applies only to checks that cost a Transitland call.
+                if self.live_calls >= self.cfg.max_live_calls and not self.realtime.free(
                         ride.feed, ride.board_stop):
                     continue
-                deps, fetched = self.realtime.stop_departures(ride.feed, ride.board_stop,
-                                                              self.today)
-                self.live_calls += int(fetched)
-                hit = (deps or {}).get(ride.trip_id)
+                hit, calls = self.realtime.lookup(ride.feed, ride.board_stop, ride.trip_id,
+                                                  ride.board_seq, ride.dep, self.today)
+                self.live_calls += calls
                 if hit:
                     ride.live = hit.get("live", False)
                     ride.cancelled = hit.get("cancelled", False)
