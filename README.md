@@ -13,8 +13,9 @@ connection works, and **how to pay** each leg.
 The home page is a **leave-now trip planner on a map**: type where you're going (or use
 your location), and it shows every good way to get there in the next hour — direct
 trips first, one change only when it saves time, never a wait of more than 10 minutes
-at the start or at a change — with live departure times where the agency publishes
-them. The assistant chat sits in a drawer beside the map.
+at a change — with live departure times where the agency publishes them. It uses each
+agency's closest stops (up to about a mile away) and shows how much walking each trip
+involves. The assistant chat sits in a drawer beside the map.
 
 > **Unofficial.** This is an independent project. It is **not affiliated with,
 > endorsed by, sponsored by, or operated by** WMATA or any other transit agency.
@@ -183,7 +184,7 @@ To add one, copy `agencies/_template.toml` — see [agencies/README.md](agencies
 | `transfers_at(place, day?, time?)` | Other systems within walking distance + whether the connection works then |
 | `how_to_pay(agency)` | Payment methods, where to buy, app, SmarTrip/contactless, transfers |
 | `plan_connection(origin, destination, when?)` | Systems per leg, transfer hub, days it works, fares — via the configured engine |
-| `plan_trip_now(origin, destination)` | The map planner's leave-now options with live times (waits of 10 minutes or less) |
+| `plan_trip_now(origin, destination)` | The map planner's leave-now options for the next hour, with live times and walking minutes |
 | `estimate_trip_cost(origin, destination, when?, rider_category?)` | Per-leg fares and total |
 
 Resources: `transit://region/agencies`, `transit://wmata/freshness`,

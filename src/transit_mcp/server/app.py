@@ -162,11 +162,13 @@ def _place(db: Database, text: str):
 
 @mcp.tool()
 def plan_trip_now(origin: str, destination: str) -> dict:
-    """Leave-now trip options with LIVE departures, like the site's map: stops within
-    a 4-minute walk (0.3 km) of each end, direct trips first and one transfer only when
-    needed; any option with a wait over 10 minutes at the start or a transfer is left
-    out. Use this when the rider wants to go now; use plan_connection for general
-    "how would I get there" or a later day.
+    """Leave-now trip options with LIVE departures, like the site's map: trips leaving
+    in the next hour from each agency's closest stops (up to about a mile's walk; the
+    walking time is part of each option), direct trips first and one transfer only when
+    needed, and transfers only between stops within 0.3 km with a wait of 10 minutes or
+    less. Tell the rider how much walking each option involves. Use this when the rider
+    wants to go now; use plan_connection for general "how would I get there" or a later
+    day.
 
     Args:
         origin: An address, landmark, station, or "lat,lon".
@@ -210,13 +212,13 @@ def plan_trip_now(origin: str, destination: str) -> dict:
                     f"stops to {leg['alight']['name']}, arrive {clock(leg['alight']['expected'])}")
         return {"leave_at": clock(opt["leave_at"]), "arrive_at": clock(opt["arrive_at"]),
                 "minutes": round(opt["duration_s"] / 60), "transfers": opt["transfers"],
-                "wait_minutes": round(opt["wait_s"] / 60), "live": opt["live"],
+                "wait_minutes": round(opt["wait_s"] / 60),
+                "walk_minutes": round(opt["walk_s"] / 60), "live": opt["live"],
                 "fare_estimate": opt["fare_estimate"], "steps": steps}
 
     return {
         "from": o.label, "to": d.label,
         "options": [brief(x) for x in result["options"]],
-        "later_options": [brief(x) for x in result.get("later_options", [])],
         "notice": result.get("notice"),
         "note": "Departure times marked (live) include real-time updates; others are the "
                 "timetable. Riders can see these options on the site's map.",

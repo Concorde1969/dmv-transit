@@ -1,16 +1,19 @@
 """Leave-now trip planner for the map: real stops, today's timetable, live departures.
 
 Flow (the site owner's design):
-1. Find boardable stops within ``TRIP_STOP_RADIUS_M`` (0.3 km) of the start and the end.
+1. Find the closest boardable stops of every agency near the start and the end (up to
+   ``TRIP_STOPS_PER_AGENCY`` each, within ``TRIP_MAX_WALK_M``, about a mile); walking
+   time to and from them counts toward each option's arrival time and is shown.
 2. From today's GTFS timetable (local database), find **direct** trips — a trip that
-   leaves a start stop soon and later calls at an end stop.
+   leaves a start stop within the next ``TRIP_WINDOW_MIN`` (60 min) and later calls at
+   an end stop.
 3. Only when needed (no direct trip, or a much faster option exists), find **one-
    transfer** trips: ride to a stop, walk within the same stop cluster (every pair of
    stops in a cluster is < 0.3 km apart, see ``ingest/gtfs/clusters.py``), ride on.
 4. Check **live departures** (Transitland, merged GTFS-realtime) for the boarding stops
    of the best options, on feeds that have realtime; delays carry forward along a trip.
-5. Throw out any option that needs a wait of more than ``TRIP_MAX_WAIT_MIN`` (10 min)
-   at the start stop or at a transfer, or a connection that can't be made.
+5. Throw out any option with a wait of more than ``TRIP_MAX_TRANSFER_WAIT_MIN`` (10 min)
+   at a transfer, a connection that can't be made, or a vehicle that has already left.
 
 Times are seconds since local midnight of today's service day (trips belonging to
 yesterday's service, e.g. 25:10:00, are shifted by −24 h). Results carry epoch
@@ -33,6 +36,17 @@ DAY = 86_400
 _DAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 ROUTE_MODES = {0: "tram", 1: "subway", 2: "rail", 3: "bus", 4: "ferry", 5: "cable_tram",
                6: "aerial", 7: "funicular", 11: "trolleybus", 12: "monorail"}
+
+
+# A stop time as zero-padded "HH:MM:SS" text (some feeds write "9:05:00"), so SQLite
+# can compare it with the search window.
+_DEP_TEXT = ("(CASE WHEN length(d) = 7 THEN '0' || d ELSE d END)"
+             .replace("d", "COALESCE(NULLIF(st.departure_time, ''), st.arrival_time)"))
+
+
+def hms(seconds: int) -> str:
+    seconds = max(0, seconds)
+    return f"{seconds // 3600:02d}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}"
 
 
 def tsec(t: str | None) -> int | None:
@@ -120,20 +134,22 @@ class Candidate:
 
 @dataclass
 class LiveSettings:
-    radius_m: int = 300
-    max_wait_s: int = 600
+    max_walk_m: int = 1600        # farthest start/end stop considered (straight line)
+    stops_per_feed: int = 25      # closest stops of each agency at each end
+    max_wait_s: int = 600         # longest wait at a transfer
     min_transfer_s: int = 60
     window_s: int = 3600
     max_ride_s: int = 3 * 3600
     walk_m_per_min: float = 70.0
     detour: float = 1.25          # walking distance vs straight line
     max_options: int = 6
-    transfer_only_if_faster_s: int = 600
+    transfer_only_if_faster_s: int = 300   # on top of the 5 min each transfer costs
     max_live_calls: int = 8
 
     @classmethod
     def from_settings(cls, s) -> LiveSettings:
-        return cls(radius_m=s.trip_stop_radius_m, max_wait_s=s.trip_max_wait_min * 60,
+        return cls(max_walk_m=s.trip_max_walk_m, stops_per_feed=s.trip_stops_per_agency,
+                   max_wait_s=s.trip_max_transfer_wait_min * 60,
                    window_s=s.trip_window_min * 60, walk_m_per_min=s.trip_walk_m_per_min,
                    max_live_calls=s.trip_max_live_calls)
 
@@ -155,6 +171,8 @@ class LivePlanner:
         self._services: dict[tuple[str, date], set[str]] = {}
         self._cluster: dict[tuple[str, str], int] | None = None
         self._stop_cache: dict[tuple[str, str], dict] = {}
+        self._trip_calls: dict[tuple[str, str], list[Call]] = {}
+        self._boardings: dict[str, list[Call]] = {}
         self.live_calls = 0
 
     # -- reference data ----------------------------------------------------------------
@@ -200,7 +218,8 @@ class LivePlanner:
         return int(math.ceil(meters * self.cfg.detour / self.cfg.walk_m_per_min * 60))
 
     def stops_near(self, p: Point) -> list[NearStop]:
-        r = self.cfg.radius_m
+        """The closest stops of each agency, nearest first."""
+        r = self.cfg.max_walk_m
         dlat = r / 111_320.0
         dlon = r / (111_320.0 * max(math.cos(math.radians(p.lat)), 0.1))
         out = []
@@ -220,16 +239,30 @@ class LivePlanner:
                 out.append(NearStop(row["feed_id"], row["stop_id"],
                                     row["parent_name"] or row["name"], row["lat"], row["lon"],
                                     self.walk_s(d)))
-        return out
+        out.sort(key=lambda s: s.walk_s)
+        kept: dict[str, int] = defaultdict(int)
+        nearest = []
+        for stop in out:
+            if kept[stop.feed] < self.cfg.stops_per_feed:
+                kept[stop.feed] += 1
+                nearest.append(stop)
+        return nearest
 
     # -- timetable queries ---------------------------------------------------------------
-    def calls_at(self, feed: str, stop_ids: list[str]) -> list[Call]:
-        """Every call at these stops today (incl. yesterday's after-midnight trips)."""
+    def calls_at(self, feed: str, stop_ids: list[str],
+                 dep_range: tuple[int, int] | None = None) -> list[Call]:
+        """Calls at these stops today (incl. yesterday's after-midnight trips), optionally
+        only those departing within ``dep_range`` (seconds since midnight)."""
         if not stop_ids:
             return []
         today = self.services(feed, self.today)
         yday = self.services(feed, self.today - timedelta(days=1))
         out: list[Call] = []
+        when, args = "", []
+        if dep_range:   # today's times, or yesterday's after-midnight times (+24 h)
+            lo, hi = dep_range
+            when = f"AND ({_DEP_TEXT} BETWEEN ? AND ? OR {_DEP_TEXT} BETWEEN ? AND ?)"
+            args = [hms(lo), hms(hi), hms(lo + DAY), hms(hi + DAY)]
         for i in range(0, len(stop_ids), 500):
             chunk = stop_ids[i:i + 500]
             for r in self.db.conn.execute(
@@ -239,13 +272,23 @@ class LivePlanner:
                   FROM gtfs_stop_times st
                   JOIN gtfs_trips t ON t.feed_id = st.feed_id AND t.trip_id = st.trip_id
                  WHERE st.feed_id = ? AND st.stop_id IN ({','.join('?' * len(chunk))})
-                """, (feed, *chunk),
+                       {when}
+                """, (feed, *chunk, *args),
             ):
-                out.extend(self._to_calls(feed, r, today, yday))
+                out.extend(self._to_calls(feed, r, today, yday, dep_range))
         return out
 
     def calls_of_trips(self, feed: str, trip_ids: list[str]) -> dict[str, list[Call]]:
-        """All calls of these trips, in stop order (service day already decided)."""
+        """All calls of these trips, in stop order (service day already decided).
+        Cached for the search: direct and transfer searches ask for the same trips."""
+        missing = [t for t in dict.fromkeys(trip_ids) if (feed, t) not in self._trip_calls]
+        for t in missing:
+            self._trip_calls[(feed, t)] = []
+        for tid, calls in self._fetch_trips(feed, missing).items():
+            self._trip_calls[(feed, tid)] = calls
+        return {t: self._trip_calls[(feed, t)] for t in trip_ids}
+
+    def _fetch_trips(self, feed: str, trip_ids: list[str]) -> dict[str, list[Call]]:
         today = self.services(feed, self.today)
         yday = self.services(feed, self.today - timedelta(days=1))
         out: dict[str, list[Call]] = defaultdict(list)
@@ -266,14 +309,20 @@ class LivePlanner:
             calls.sort(key=lambda c: (c.dep, c.seq))
         return out
 
-    def _to_calls(self, feed, r, today: set[str], yday: set[str]):
+    def _to_calls(self, feed, r, today: set[str], yday: set[str],
+                  dep_range: tuple[int, int] | None = None):
+        sid = r["service_id"]
+        if sid not in today and sid not in yday:
+            return
         arr, dep = tsec(r["arrival_time"]), tsec(r["departure_time"])
         if arr is None and dep is None:
             return
         arr = arr if arr is not None else dep
         dep = dep if dep is not None else arr
         for shift, services in ((0, today), (-DAY, yday)):
-            if r["service_id"] in services:
+            if dep_range and not dep_range[0] <= dep + shift <= dep_range[1]:
+                continue
+            if sid in services:
                 yield Call(feed, r["trip_id"], r["stop_id"], int(r["stop_sequence"]),
                            arr + shift, dep + shift, r["route_id"], r["headsign"],
                            r["shape_id"])
@@ -283,51 +332,59 @@ class LivePlanner:
         o_stops, d_stops = self.stops_near(origin), self.stops_near(destination)
         base = {"origin": _pt(origin), "destination": _pt(destination),
                 "now": self.midnight_epoch + self.now_s,
-                "radius_m": self.cfg.radius_m, "max_wait_min": self.cfg.max_wait_s // 60}
+                "window_min": self.cfg.window_s // 60,
+                "max_transfer_wait_min": self.cfg.max_wait_s // 60}
         if not o_stops or not d_stops:
             where = "start" if not o_stops else "destination"
-            return {**base, "options": [], "later_options": [],
-                    "notice": f"No transit stop within {self.cfg.radius_m} m of your {where}."}
+            return {**base, "options": [],
+                    "notice": f"No bus or train stop within about a mile of your {where}."}
         if haversine_m(origin.lat, origin.lon, destination.lat, destination.lon) < 400:
-            return {**base, "options": [], "later_options": [],
+            return {**base, "options": [],
                     "notice": "Your destination is a short walk away."}
 
         direct = self._direct(o_stops, d_stops)
-        # "Is there a good direct trip?" counts only ones the rider can actually catch.
-        best_direct = min((c.arrive for c in direct if self._feasible(c) == "ok"),
+        # "Is there a good direct trip?" counts only ones the rider can actually catch,
+        # and compares like the ranking does (a long walk counts against a direct trip).
+        best_direct = min((self._score(c) for c in direct if self._feasible(c) == "ok"),
                           default=None)
         transfers = self._one_transfer(o_stops, d_stops)
         if best_direct is not None:
-            transfers = [c for c in transfers
-                         if c.arrive <= best_direct - self.cfg.transfer_only_if_faster_s]
+            transfers = [c for c in transfers if self._score(c)
+                         <= best_direct - self.cfg.transfer_only_if_faster_s]
         groups = self._groups(direct + transfers)
 
         # Live times for the next few departures of the most promising route choices.
         self._apply_realtime([c for g in groups[: self.cfg.max_options * 2] for c in g[:3]])
-        good, later = [], []
+        good = []
         for g in groups:
             chosen = next((c for c in g if self._feasible(c) == "ok"), None)
             if chosen:
                 good.append(chosen)
-            elif len(later) < 2:
-                waiting = next((c for c in g if self._feasible(c) == "long_wait"), None)
-                if waiting:
-                    later.append(waiting)
         good = sorted(self._drop_dominated(good), key=self._score)[: self.cfg.max_options]
         result = {**base, "options": [self._describe(c) for c in good],
-                  "later_options": [] if good else [self._describe(c) for c in later],
                   "live_checks": self.live_calls,
                   "live_available": self.realtime is not None and self.realtime.available()}
         if not good:
-            result["notice"] = (f"No trip leaves within {self.cfg.max_wait_s // 60} minutes "
-                                "of you reaching a stop.")
+            result["notice"] = (f"No trips in the next {self.cfg.window_s // 60} minutes "
+                                "from stops near you.")
         return result
 
     def _window(self, walk_s: int) -> tuple[int, int]:
-        # Scheduled times a little outside the 0–10 min wait still qualify here: a late
-        # bus may become catchable once live times are applied (then re-checked).
+        # Starts a little before the rider can reach the stop: a late bus may become
+        # catchable once live times are applied (then re-checked).
         start = self.now_s + walk_s
-        return start - 300, start + self.cfg.max_wait_s + 300
+        return start - 300, start + self.cfg.window_s
+
+    def _board(self, feed: str, o_walk: dict[str, int]) -> list[Call]:
+        """Departures from the start stops the rider can reach in time (cached)."""
+        if feed not in self._boardings:
+            lo = self.now_s - 300
+            hi = self.now_s + max(o_walk.values()) + self.cfg.window_s
+            self._boardings[feed] = [
+                c for c in self.calls_at(feed, list(o_walk), (lo, hi))
+                if self._window(o_walk[c.stop_id])[0] <= c.dep
+                <= self._window(o_walk[c.stop_id])[1]]
+        return self._boardings[feed]
 
     def _direct(self, o_stops, d_stops) -> list[Candidate]:
         out = []
@@ -336,17 +393,14 @@ class LivePlanner:
         for feed in set(o_by) & set(d_by):
             o_walk = {s.stop_id: s.walk_s for s in o_by[feed]}
             d_walk = {s.stop_id: s.walk_s for s in d_by[feed]}
-            board = [c for c in self.calls_at(feed, list(o_walk))
-                     if self._window(o_walk[c.stop_id])[0] <= c.dep
-                     <= self._window(o_walk[c.stop_id])[1]]
+            board = self._board(feed, o_walk)
             if not board:
                 continue
-            alight: dict[str, list[Call]] = defaultdict(list)
-            for c in self.calls_at(feed, list(d_walk)):
-                alight[c.trip_id].append(c)
+            trips = self.calls_of_trips(feed, [b.trip_id for b in board])
             for b in board:
-                for a in alight.get(b.trip_id, ()):
-                    if a.seq > b.seq and 0 < a.arr - b.dep <= self.cfg.max_ride_s:
+                for a in trips[b.trip_id]:
+                    if (a.stop_id in d_walk and a.seq > b.seq
+                            and 0 < a.arr - b.dep <= self.cfg.max_ride_s):
                         out.append(Candidate(
                             [_ride(b, a)], o_walk[b.stop_id], d_walk[a.stop_id]))
         return out
@@ -357,12 +411,11 @@ class LivePlanner:
         down: list[tuple[Call, Call, int]] = []      # (board call, later call, walk_start)
         for feed, stops in o_by.items():
             o_walk = {s.stop_id: s.walk_s for s in stops}
-            board = [c for c in self.calls_at(feed, list(o_walk))
-                     if self._window(o_walk[c.stop_id])[0] <= c.dep
-                     <= self._window(o_walk[c.stop_id])[1]]
+            board = self._board(feed, o_walk)
             first = {}
-            for b in board:  # one boarding per trip: the earliest-reachable start stop
-                if b.trip_id not in first or b.dep < first[b.trip_id].dep:
+            for b in board:  # one boarding per trip: the stop that lets the rider leave latest
+                cur = first.get(b.trip_id)
+                if cur is None or b.dep - o_walk[b.stop_id] > cur.dep - o_walk[cur.stop_id]:
                     first[b.trip_id] = b
             trips = self.calls_of_trips(feed, list(first))
             for tid, b in first.items():
@@ -376,11 +429,13 @@ class LivePlanner:
         up: dict[int, list[tuple[Call, Call, int]]] = defaultdict(list)
         for feed, stops in d_by.items():
             d_walk = {s.stop_id: s.walk_s for s in stops}
-            arrive = [c for c in self.calls_at(feed, list(d_walk))
-                      if self.now_s < c.arr <= latest + self.cfg.max_ride_s]
+            horizon = latest + self.cfg.max_ride_s
+            arrive = [c for c in self.calls_at(feed, list(d_walk), (self.now_s, horizon + 3600))
+                      if self.now_s < c.arr <= horizon]
             last = {}
-            for a in arrive:
-                if a.trip_id not in last or a.arr < last[a.trip_id].arr:
+            for a in arrive:  # one end stop per trip: the one that gets the rider there first
+                cur = last.get(a.trip_id)
+                if cur is None or a.arr + d_walk[a.stop_id] < cur.arr + d_walk[cur.stop_id]:
                     last[a.trip_id] = a
             trips = self.calls_of_trips(feed, list(last))
             for tid, a in last.items():
@@ -414,7 +469,9 @@ class LivePlanner:
 
     @staticmethod
     def _score(c: Candidate) -> int:
-        return c.arrive + 300 * (len(c.rides) - 1) + (c.walk_start_s + c.walk_end_s) // 2
+        # Earliest arrival, with each transfer counted as 5 extra minutes and walking
+        # counted twice (riders would rather wait than walk far).
+        return c.arrive + 300 * (len(c.rides) - 1) + c.walk_start_s + c.walk_end_s
 
     def _groups(self, cands: list[Candidate], per_group: int = 4) -> list[list[Candidate]]:
         """Candidates grouped by route choice (e.g. Blue Line → Silver Line), each group in
@@ -478,11 +535,8 @@ class LivePlanner:
     def _feasible(self, c: Candidate) -> str:
         if any(r.cancelled for r in c.rides):
             return "cancelled"
-        wait = c.rides[0].dep_eff - (self.now_s + c.walk_start_s)
-        if wait < 0:
+        if c.rides[0].dep_eff < self.now_s + c.walk_start_s:
             return "missed"
-        if wait > self.cfg.max_wait_s:
-            return "long_wait"
         for prev, nxt, walk in zip(c.rides, c.rides[1:], c.transfer_walk_s):
             slack = nxt.dep_eff - (prev.arr_eff + walk)
             if slack < self.cfg.min_transfer_s:

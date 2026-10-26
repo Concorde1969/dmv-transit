@@ -190,6 +190,7 @@ button, input, textarea { font: inherit; color: inherit; }
 .walk-mins { display: inline-flex; align-items: center; gap: 3px; color: var(--ink-2);
   font-size: 15px; font-weight: 600; }
 .chev { color: var(--ink-3); }
+.walk-note { color: var(--ink-2); font-weight: 600; }
 
 .live-tag, .sched-tag {
   display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 650;

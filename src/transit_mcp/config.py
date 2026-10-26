@@ -102,8 +102,12 @@ class Settings(BaseSettings):
     # --- Leave-now trip planner for the map (planning/live.py) ---
     # Self-hosted basemap (Protomaps extract; see deploy/map/fetch-basemap.sh).
     map_tiles_path: Path = Field(default=Path("./data/map/dmv.pmtiles"), alias="MAP_TILES_PATH")
-    trip_stop_radius_m: int = Field(default=300, alias="TRIP_STOP_RADIUS_M")
-    trip_max_wait_min: int = Field(default=10, alias="TRIP_MAX_WAIT_MIN")
+    # Start/end stops: each agency's closest stops, up to about a mile's walk.
+    trip_max_walk_m: int = Field(default=1600, alias="TRIP_MAX_WALK_M")
+    trip_stops_per_agency: int = Field(default=25, alias="TRIP_STOPS_PER_AGENCY")
+    # Longest wait at a transfer (transfers are always within one 0.3 km stop cluster).
+    trip_max_transfer_wait_min: int = Field(default=10, alias="TRIP_MAX_TRANSFER_WAIT_MIN")
+    # Departures in this many minutes are offered.
     trip_window_min: int = Field(default=60, alias="TRIP_WINDOW_MIN")
     # Gentle walking pace (m/min) for walk times shown to riders.
     trip_walk_m_per_min: float = Field(default=70.0, alias="TRIP_WALK_M_PER_MIN")

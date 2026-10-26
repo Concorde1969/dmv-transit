@@ -354,19 +354,13 @@ function render() {
   const plan = state.plan;
   if (!plan) return;
   if (!plan.options?.length) {
-    const later = plan.later_options || [];
-    const nextTxt = later.length ? ` The next trip leaves at ${clock(later[0].leave_at)}.` : "";
-    const btn = later.length ? `<div><button class="btn quiet" id="showLater" type="button">Show later trips</button></div>` : "";
-    showNotice((plan.notice || "No trips found.") + nextTxt, btn);
-    if (later.length) $("showLater").addEventListener("click", () => {
-      plan.options = later; plan.later_options = []; state.selected = 0; render(); drawPlan(); startLive();
-    });
+    showNotice(plan.notice || "No trips found.");
     return;
   }
   if (state.view === "detail" && state.selected != null) return renderDetail(plan.options[state.selected]);
   const n = plan.options.length;
   const liveNote = plan.live_available === false ? " Live times are paused; showing the timetable." : "";
-  results.innerHTML = `<div class="status-line">${plural(n, "way", "ways")} to go, leaving within ${plan.max_wait_min} minutes.${liveNote}</div>`
+  results.innerHTML = `<div class="status-line">${plural(n, "way", "ways")} to go in the next ${plan.window_min} minutes. Trips may include walking to and from stops; walking time is shown on each trip.${liveNote}</div>`
     + plan.options.map((opt, i) => optionCard(opt, i)).join("");
   results.querySelectorAll(".option").forEach((el) => el.addEventListener("click", () => {
     const i = +el.dataset.i;
@@ -382,20 +376,26 @@ function countdown(opt) {
   return { cls: "", n: `${m}`, u: `min, leave by ${clock(opt.leave_at)}` };
 }
 
+function walkLegs(opt) {
+  return opt.legs.filter((l) => l.mode === "walk").map((l) => l.duration_s);
+}
+
 function optionCard(opt, i) {
   const c = countdown(opt);
   const rs = rides(opt);
   const pills = rs.map(pill).join(ICONS.chev);
   const walk = mins(opt.walk_s);
+  const longWalk = walkLegs(opt).find((s) => s >= 600);
   const changes = opt.transfers ? plural(opt.transfers, "change", "changes") : "No changes";
   const late = rs.find((l) => l.live && l.delay_s >= 120);
   const tag = opt.live ? `<span class="live-tag">Live</span>` : `<span class="sched-tag">Scheduled</span>`;
   return `<button class="option" type="button" data-i="${i}" aria-pressed="${i === state.selected}"
       aria-label="Option ${i + 1}: ${c.n === "Now" ? "leave now" : `leave in ${esc(c.n)} minutes, by ${clock(opt.leave_at)}`}. ${esc(rs.map(routeLabel).join(" then "))}. Arrive ${clock(opt.arrive_at)}.">
     <div class="count ${c.cls}" data-leave="${opt.leave_at}"><span class="n">${esc(c.n)}</span><span class="u">${esc(c.u)}</span></div>
-    <div class="pills"><span class="walk-mins">${ICONS.walk}${walk}</span>${ICONS.chev}${pills}</div>
+    <div class="pills"><span class="walk-mins" aria-label="${walk} minutes walking">${ICONS.walk}${walk} min</span>${ICONS.chev}${pills}</div>
     <div class="meta">Arrive <strong>${clock(opt.arrive_at)}</strong>, ${mins(opt.duration_s)} min. ${changes}. ${tag}
       ${late ? `<span class="late">${mins(late.delay_s)} min late</span>` : ""}
+      ${longWalk ? `<br><span class="walk-note">Includes a ${mins(longWalk)}-minute walk</span>` : ""}
       ${opt.fare_estimate != null ? `<br>About $${opt.fare_estimate.toFixed(2)}` : ""}</div>
   </button>`;
 }

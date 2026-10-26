@@ -74,13 +74,36 @@ def test_direct_trip_leaving_soon(net):
     assert ride["board"]["name"] == "Stop A" and ride["alight"]["name"] == "Stop C"
     assert ride["color"] == "#C8102E" and ride["stops"] == 2
     assert 0 <= opt["wait_s"] <= 600 and opt["live"] is False
+    assert res["window_min"] == 60
     assert opt["legs"][0]["mode"] == "walk" and opt["legs"][-1]["mode"] == "walk"
 
 
-def test_long_wait_at_the_start_is_thrown_out(net):
+def test_later_departures_in_the_next_hour_are_offered(net):
     _trip(net, "bus", "t1", "R1", "WK", [("A", "08:25:00"), ("C", "08:40:00")])  # 25 min
-    res = plan(net, END_DIRECT, window_s=7200)
-    assert res["options"] == [] and "No trip leaves within 10 minutes" in res["notice"]
+    _trip(net, "bus", "t2", "R1", "WK", [("A", "09:30:00"), ("C", "09:45:00")])  # too late
+    (opt,) = plan(net, END_DIRECT)["options"]
+    assert opt["id"] == "bus:t1" and opt["wait_s"] > 20 * 60
+
+
+def test_nothing_in_the_next_hour(net):
+    _trip(net, "bus", "t2", "R1", "WK", [("A", "09:30:00"), ("C", "09:45:00")])
+    res = plan(net, END_DIRECT)
+    assert res["options"] == [] and "No trips in the next 60 minutes" in res["notice"]
+
+
+def test_stops_farther_than_300_m_are_used_with_their_walk(net):
+    _trip(net, "bus", "t1", "R1", "WK", [("A", "08:20:00"), ("C", "08:35:00")])
+    far_start = Point(38.9005, -77.0200, "About 870 m east of stop A")
+    p = LivePlanner(net, cfg=LiveSettings(), now=NOW)
+    (opt,) = p.plan(far_start, END_DIRECT)["options"]
+    assert opt["legs"][0]["mode"] == "walk" and 12 * 60 < opt["legs"][0]["duration_s"] < 20 * 60
+    assert opt["walk_s"] >= opt["legs"][0]["duration_s"]
+
+
+def test_only_each_agencys_closest_stops(net):
+    p = LivePlanner(net, cfg=LiveSettings(stops_per_feed=1, max_walk_m=10_000), now=NOW)
+    near = p.stops_near(START)
+    assert sorted((s.feed, s.stop_id) for s in near) == [("bus", "A"), ("rail", "X")]
 
 
 def test_missed_bus_is_thrown_out(net):
@@ -154,11 +177,12 @@ def test_live_delay_moves_times_and_is_labelled(net):
     assert rt.calls == [("bus", "A")]
 
 
-def test_live_delay_can_push_a_trip_past_the_wait_limit(net):
+def test_a_very_late_bus_is_still_offered_at_its_live_time(net):
     _trip(net, "bus", "t1", "R1", "WK", [("A", "08:06:00"), ("C", "08:20:00")])
     rt = FakeRealtime({("bus", "A"): {"t1": {"dep_s": 8 * 3600 + 19 * 60, "delay": 780,
                                               "live": True, "cancelled": False}}})
-    assert plan(net, END_DIRECT, realtime=rt, agencies=AGENCIES)["options"] == []
+    (opt,) = plan(net, END_DIRECT, realtime=rt, agencies=AGENCIES)["options"]
+    assert opt["depart_at"] == int(datetime(2026, 10, 26, 8, 19, tzinfo=TZ).timestamp())
 
 
 def test_cancelled_trip_is_dropped(net):
@@ -178,7 +202,7 @@ def test_no_live_calls_for_feeds_without_realtime(net):
 
 def test_no_stops_nearby(net):
     res = plan(net, Point(39.5, -76.0))
-    assert res["options"] == [] and "No transit stop within 300 m" in res["notice"]
+    assert res["options"] == [] and "within about a mile" in res["notice"]
 
 
 def test_parse_transitland_departures():
@@ -196,3 +220,14 @@ def test_parse_transitland_departures():
                          "cancelled": False}
     assert out["t2"]["live"] is False and out["t2"]["dep_s"] is None
     assert out["t3"]["cancelled"] is True
+
+
+def test_transfer_trip_gets_off_where_the_rider_arrives_soonest(net):
+    # Y2 comes first on the train but is ~800 m from the end; Y is next to it.
+    net.conn.execute("INSERT INTO gtfs_stops (feed_id, stop_id, name, lat, lon) VALUES "
+                     "('rail', 'Y2', 'Station Y2', 38.9530, -77.0000)")
+    _trip(net, "bus", "t1", "R1", "WK", [("A", "08:05:00"), ("B", "08:15:00")])
+    _trip(net, "rail", "t2", "R2", "WK", [("X", "08:22:00"), ("Y2", "08:30:00"),
+                                          ("Y", "08:35:00")])
+    (opt,) = plan(net, END_TRANSFER)["options"]
+    assert opt["legs"][-2]["alight"]["name"] == "Station Y"
