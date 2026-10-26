@@ -46,6 +46,18 @@ def test_geocoder_without_key_does_nothing():
     assert Geocoder(None).search("Union Station") == []
 
 
+class FakeLive:
+    """Gives exact times only (like WMATA's feed): 2 minutes after the timetable."""
+
+    def available(self):
+        return True
+
+    def lookup(self, feed, stop_id, trip_id, seq, sched, day):
+        if sched is None:
+            return None, 0
+        return {"dep_s": sched + 120, "delay": None, "live": True, "cancelled": False}, 0
+
+
 @pytest.fixture
 def client(isolated_settings, monkeypatch):
     from transit_mcp.chat import app as app_mod
@@ -72,6 +84,7 @@ def client(isolated_settings, monkeypatch):
                 "live_checks": 2, "origin": {"label": origin.label}}
 
     monkeypatch.setattr(trip_api.TripService, "plan", fake_plan)
+    monkeypatch.setattr(trip_api, "build_realtime", lambda *a, **k: FakeLive())
     with TestClient(app_mod.app) as c:
         yield c
 
@@ -114,3 +127,14 @@ def test_live_endpoint_skips_feeds_without_realtime(client):
     r = client.post("/api/trip/live", json={"rides": [
         {"agency": "loudoun", "stop_id": "s1", "trip_id": "t1"}]})
     assert r.status_code == 200 and json.loads(r.text)["rides"] == []
+
+
+def test_live_endpoint_works_out_delay_from_exact_times(client):
+    client.post("/api/trip/live", json={"rides": []})        # creates the service
+    svc = client.app.state.trips
+    svc.agencies = {**svc.agencies, "bus": {"name": "Bus", "has_realtime": True}}
+    sched = 1_793_037_000
+    r = client.post("/api/trip/live", json={"rides": [
+        {"agency": "bus", "stop_id": "A", "trip_id": "t1", "scheduled": sched}]})
+    (ride,) = r.json()["rides"]
+    assert ride["live"] and ride["delay_s"] == 120 and ride["expected"] == sched + 120

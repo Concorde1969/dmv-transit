@@ -160,6 +160,41 @@ def run_checks(settings: Settings | None = None, *, check_planner: bool = True) 
             if status == WARN else None,
         ))
 
+    # Map trip planner
+    missing = [name for name, value in (("GEOCODE_API_KEY", settings.geocode_api_key),
+                                        ("TRANSITLAND_API_KEY", settings.transitland_api_key))
+               if not value]
+    checks.append(Check(
+        "Map planner keys", WARN if missing else OK,
+        f"{', '.join(missing)} empty — "
+        + ("typed addresses can't be found" if "GEOCODE_API_KEY" in missing else
+           "live times only for agencies with their own realtime feed")
+        if missing else "set",
+        "Put the missing key(s) in .env (see .env.example)." if missing else None,
+    ))
+    if facts is not None:
+        from transit_mcp.api_budget import ApiBudget
+
+        try:
+            budget = ApiBudget.transitland(None, settings, shared=True)
+            used = budget.used()
+            checks.append(Check(
+                "Transitland calls", WARN if budget.remaining() <= 0 else OK,
+                f"{used:,} of {budget.limit:,} used this month"
+                + (" — live times paused until next month" if budget.remaining() <= 0
+                   else ""),
+            ))
+        except Exception:  # noqa: BLE001 - older database without the table
+            pass
+    map_file = Path(settings.map_tiles_path)
+    checks.append(Check(
+        "Map", OK if map_file.is_file() else WARN,
+        f"{map_file.stat().st_size / 1e6:,.0f} MB basemap" if map_file.is_file()
+        else f"no basemap at {map_file} — the map shows a plain background",
+        None if map_file.is_file() else
+        "Run deploy/map/fetch-basemap.ps1 (PC) or deploy/map/fetch-basemap.sh (server).",
+    ))
+
     if check_planner:
         from transit_mcp.planning import get_planner
 

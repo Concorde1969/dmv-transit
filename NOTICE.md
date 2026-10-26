@@ -62,14 +62,16 @@ disk and is included in its automatic snapshots.
 
 Routes, stops and schedules come only from GTFS static feeds. WMATA's rail and bus feeds
 are used under the WMATA Developer License Agreement (above); the feeds for VRE,
-Fairfax Connector, ART, DASH, CUE, Loudoun County Transit, OmniRide, and Virginia Breeze
-are published by those agencies (or their sponsors, e.g. Virginia DRPT) under the GTFS
-specification. Feeds are located through [Transitland](https://www.transit.land/) (its
-public `transitland-atlas` registry, or its API when `TRANSITLAND_API_KEY` is set); a
-feed is downloaded from Transitland's own copy only when Transitland's license data
-allows redistribution, otherwise from the official URL Transitland lists. Fairfax
-Connector's GTFS-realtime service alerts are read from the URL Transitland lists. This
-project:
+Fairfax Connector, ART, DASH, CUE, Loudoun County Transit, OmniRide, Virginia Breeze,
+the Maryland Transit Administration (local and commuter bus, Metro SubwayLink, Light
+RailLink, MARC), Annapolis Transit, Harbor Connector, Potomac Valley Transit, Amtrak,
+FlixBus and the combined intercity-bus feed are published by those operators (or their
+sponsors, e.g. Virginia DRPT) under the GTFS specification, each under its own terms.
+Feeds are located through [Transitland](https://www.transit.land/) (its public
+`transitland-atlas` registry first, its API only as a fallback) and downloaded from the
+official URL Transitland lists; Transitland's own copy is used only when that fails and
+Transitland's license data allows redistribution. Fairfax Connector's GTFS-realtime
+service alerts are read from the URL Transitland lists. This project:
 
 - caches each feed locally and records its `feed_publisher_name` / `feed_publisher_url`
   from `feed_info.txt` for attribution;
@@ -77,10 +79,40 @@ project:
   recording its source URL and fetch time) so a local scheduling engine can read it;
   this archive is a local cache and is not redistributed;
 - fetches each feed at most once per ingest run;
-- does not load `shapes.txt`;
+- loads `shapes.txt` simplified (to about 10 m) only to draw routes on the map;
 - scrapes a small set of each agency's public fare / how-to-pay pages under the same
   rules as the WMATA pages above (rate-limited, descriptive User-Agent, source URL and
   timestamp stored).
+
+## Live departure times
+
+The map planner reads live departure times from each agency's own GTFS-realtime
+TripUpdates feed at the URL Transitland lists (WMATA's with the operator's WMATA key),
+downloading each feed at most every 30 seconds while someone is planning a trip, and
+from Transitland's departures API (Explorer plan, non-commercial use) for feeds it
+can't read directly. Live times are shown to the rider who asked, not stored or
+republished as a feed.
+
+## Geocoding and the map
+
+- Typed addresses are turned into map points by [geocode.maps.co](https://geocode.maps.co/)
+  (free plan, non-commercial use), called from the server only; results are cached for
+  24 hours.
+- The map shows data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright)
+  (Open Database License), from a regional extract of the
+  [Protomaps](https://protomaps.com/) basemap build hosted on our own server. The map
+  credits OpenStreetMap on screen.
+- Map software: [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js) (BSD-3-Clause),
+  [PMTiles](https://github.com/protomaps/PMTiles) (BSD-3-Clause) and the Protomaps
+  basemap styles, fonts and sprites (BSD-3-Clause / OFL), vendored at pinned versions
+  under `src/transit_mcp/chat/static/map/`.
+- **Location privacy.** "My location" uses the browser's location only after the
+  visitor allows it, and only to find nearby stops. The trip search log keeps start and
+  end points rounded to about 100 meters, never typed addresses or exact locations.
+- Before any commercial use of the site, check the Transitland and geocode.maps.co plan
+  terms — the current plans are for non-commercial use.
+
+## Editorial content
 
 Agency "role", "strengths", and fare-vending summaries in this project are editorial
 descriptions written for this tool, not official statements from any agency. Fares and

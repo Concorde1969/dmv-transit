@@ -228,8 +228,11 @@ def trip_live(request: Request, body: LiveBody) -> JSONResponse:
         sched = r.scheduled - midnight if r.scheduled else None
         hit, _ = svc.realtime.lookup(r.agency, r.stop_id, r.trip_id, None, sched, now.date())
         if hit:
+            delay = hit["delay"]
+            if delay is None and hit["dep_s"] is not None and sched is not None:
+                delay = hit["dep_s"] - sched       # feeds that give times, not delays
             out.append({"trip_id": r.trip_id, "live": hit["live"],
-                        "cancelled": hit["cancelled"], "delay_s": hit["delay"],
+                        "cancelled": hit["cancelled"], "delay_s": delay,
                         "expected": midnight + hit["dep_s"] if hit["dep_s"] is not None
                         else None})
     return JSONResponse({"rides": out, "live_available": svc.realtime.available()})

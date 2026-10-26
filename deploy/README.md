@@ -37,13 +37,14 @@ PowerShell, using your signed-in AWS CLI profile — `aws login`):
 | dmvtransit.com domain | $16 / year |
 | Lightsail DNS zone | free |
 | Anthropic API | depends on use — **capped by the limits below** |
-| WMATA API, agency GTFS feeds | free |
+| WMATA API, agency GTFS and GTFS-realtime feeds | free |
+| Transitland (Explorer plan, live times for some agencies) and geocode.maps.co | free plans — the app stays under Transitland's 5,000 calls/month on its own (`TRANSITLAND_MONTHLY_BUDGET`) |
 
-Why 2 GB: the nightly data load includes WMATA's Metrobus schedule (4+ million
-timetable rows). It is processed in a streaming way (the heaviest step peaked at about
-110 MB measured locally) and the database is about 650 MB on disk; with Ubuntu and
-Docker (~400 MB) that leaves comfortable headroom. The first full load takes roughly
-6–10 minutes.
+Why 2 GB: the nightly data load covers 21 GTFS feeds, including WMATA's Metrobus
+schedule (4+ million timetable rows). It is processed in a streaming way (the heaviest
+step peaked at about 270 MB measured locally) and the database is about 900 MB on
+disk, plus about 600 MB for the map; with Ubuntu and Docker (~400 MB) that leaves
+comfortable headroom. The first full load takes roughly 15–20 minutes.
 
 ## 0. Before you start
 
@@ -84,7 +85,15 @@ notices.) Watch the first data load — `full refresh finished` means it's ready
 powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 'cd ~/dmvtransit && docker compose logs --tail 40 scheduler'
 ```
 
-Then open `https://<test hostname>` and ask a question.
+Download the regional map (about 600 MB, a few minutes; re-run a few times a year to
+refresh it):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 'bash ~/dmvtransit/deploy/map/fetch-basemap.sh'
+```
+
+Then open `https://<test hostname>`, plan a trip on the map and ask the assistant a
+question.
 
 ## 3. Register the domain
 
@@ -162,8 +171,15 @@ edit the server's `.env` (`~/dmvtransit/.env`) through Lightsail's browser SSH a
 powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 'cd ~/dmvtransit && docker compose exec -T scheduler transit-mcp ingest all'
 ```
 
-**Add the CUE schedule** (CUE isn't listed in Transitland and blocks automated
-downloads). Download CUE's `google_transit.zip` in your browser, then:
+**Check this month's Transitland calls** (the planner falls back to scheduled times
+once `TRANSITLAND_MONTHLY_BUDGET` is used up):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 'cd ~/dmvtransit && docker compose exec -T app transit-mcp doctor'
+```
+
+**Add a feed by hand** (if an agency's download stops working). Download its
+`google_transit.zip` in your browser, then (swap `cue` for the agency's slug):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 -Upload $HOME\Downloads\google_transit.zip -To '~/dmvtransit/feeds/cue/google_transit.zip'
@@ -251,5 +267,8 @@ what visitors typed: keep them private (the folder is git-ignored).
 - Visitors see plain-language messages only; technical details go to the server logs.
 - No IP addresses are stored: the chat log uses anonymous visitor IDs, the app's
   per-request log is off, and Caddy's access log masks addresses to their network.
+- Location: the browser asks before sharing it, it is used only to find nearby stops,
+  and map searches are logged with points rounded to about 100 meters. The geocoder and
+  Transitland keys stay on the server; browsers only talk to dmvtransit.com.
 - Secrets live only in `~/dmvtransit/.env` (`chmod 600`), never in the image or Git.
 - Containers run as a non-root user; Ubuntu installs security updates automatically.
