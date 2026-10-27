@@ -97,6 +97,12 @@ async def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon() -> FileResponse:
+    return FileResponse(STATIC_DIR / "brand" / "favicon.ico",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
+
 @app.api_route("/tiles/dmv.pmtiles", methods=["GET", "HEAD"])
 async def basemap(request: Request):
     """The self-hosted basemap (one PMTiles file; the browser reads byte ranges)."""

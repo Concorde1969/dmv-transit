@@ -1,22 +1,25 @@
 /* DMV Transit - map-first trip planner.
-   Palette from DC Metro's own materials: coffered concrete, pylon bronze, signal green. */
+   Palette from the D.C. Transit streetcar livery (1956-73): turquoise body, mint-cream
+   band, white roof, orange pinstripe; brand green and cream from the logo. */
 :root {
-  --concrete: #ECE8E1;      /* map ground and page */
-  --panel: #FFFFFF;
-  --panel-2: #F6F3EE;       /* quiet fills inside the panel */
-  --ink: #20242A;
-  --ink-2: #4F5560;
-  --ink-3: #737985;
-  --rule: #DDD7CD;
-  --bronze: #8C5E2A;        /* brand: Metro pylon bronze */
-  --bronze-tint: #F3EADF;
-  --action: #1E6E62;        /* primary buttons */
-  --action-deep: #154F46;
+  --ground: #E7EEE6;        /* map ground and page */
+  --panel: #FAFBF6;         /* roof white */
+  --panel-2: #E6EFE4;       /* mint-cream band: quiet fills */
+  --ink: #1B2621;
+  --ink-2: #4A5651;
+  --ink-3: #6A7671;
+  --rule: #D3DDD2;
+  --brand: #064F30;         /* logo green */
+  --brand-cream: #EDEBE0;   /* logo lettering */
+  --teal: #2FA898;          /* D.C. Transit turquoise, for large fills */
+  --stripe: #DE6A3A;        /* the orange pinstripe */
+  --action: #0F7368;        /* turquoise deepened for white text (5.7:1) */
+  --action-deep: #0A5A51;
   --live: #1F7A45;          /* live departure signal */
   --live-tint: #E3F1E8;
-  --late: #A4461B;
-  --late-tint: #F8E6DC;
-  --focus: #1E6E62;
+  --late: #B04A1E;
+  --late-tint: #FBE9DF;
+  --focus: #0F7368;
 
   --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "SF Pro Text",
           "Helvetica Neue", Arial, sans-serif;
@@ -32,7 +35,7 @@ body {
   font-size: 18px;
   line-height: 1.5;
   color: var(--ink);
-  background: var(--concrete);
+  background: var(--ground);
   -webkit-text-size-adjust: 100%;
   overflow: hidden;
 }
@@ -60,7 +63,7 @@ button, input, textarea { font: inherit; color: inherit; }
 }
 .dest-pin {
   width: 34px; height: 34px; border-radius: 50% 50% 50% 4px; transform: rotate(-45deg);
-  background: var(--bronze); border: 4px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,.3);
+  background: var(--stripe); border: 4px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,.3);
 }
 .stop-tag {
   background: #fff; color: var(--ink); border-radius: 10px; padding: 4px 9px;
@@ -79,29 +82,28 @@ button, input, textarea { font: inherit; color: inherit; }
   border: 0; background: var(--panel); color: var(--ink); font-weight: 650;
   box-shadow: var(--shadow-panel); cursor: pointer;
 }
-.ask-btn svg { color: var(--bronze); }
+.ask-btn svg { color: var(--action); }
 .ask-btn:hover { background: var(--panel-2); }
 
 /* ---------- planner panel ---------- */
 .panel {
   position: fixed; z-index: 4; top: 14px; left: 14px;
   max-height: calc(100vh - 28px);
-  width: min(440px, calc(100vw - 28px));
+  width: min(660px, calc(100vw - 28px));
   display: flex; flex-direction: column;
   background: var(--panel); border-radius: var(--r-panel); box-shadow: var(--shadow-panel);
   overflow: hidden;
 }
+/* Logo-green header with the streetcar's orange pinstripe beneath it. */
 .brand {
-  display: flex; align-items: center; gap: 12px; padding: 18px 22px 6px;
+  display: flex; align-items: center; gap: 12px; padding: 12px 22px 10px;
+  background: var(--brand); border-bottom: 4px solid var(--stripe);
+  box-shadow: inset 0 -7px 0 -4px var(--brand-cream);
 }
-.brand-mark {
-  width: 34px; height: 34px; border-radius: 10px; background: var(--bronze);
-  display: grid; place-items: center; color: #fff; flex: none;
-}
-.brand-name { font-weight: 700; font-size: 19px; letter-spacing: -0.01em; }
+.brand-logo { display: block; width: 132px; height: auto; }
 .unofficial {
-  margin-left: auto; font-size: 13px; font-weight: 650; color: var(--bronze);
-  background: var(--bronze-tint); padding: 4px 10px; border-radius: 999px;
+  margin-left: auto; font-size: 13px; font-weight: 650; color: var(--brand-cream);
+  border: 1.5px solid rgba(237, 235, 224, .55); padding: 3px 10px; border-radius: 999px;
 }
 .where {
   padding: 8px 22px 16px;
@@ -119,7 +121,7 @@ button, input, textarea { font: inherit; color: inherit; }
 .field:focus-within { border-color: var(--action); background: #fff; }
 .field .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }
 .field .dot.from { background: #2D6CDF; box-shadow: 0 0 0 4px rgba(45,108,223,.18); }
-.field .dot.to { background: var(--bronze); border-radius: 4px; }
+.field .dot.to { background: var(--stripe); border-radius: 4px; }
 .field input {
   flex: 1; min-width: 0; border: 0; background: transparent; outline: none;
   font-size: 19px; padding: 14px 0;
@@ -161,8 +163,8 @@ button, input, textarea { font: inherit; color: inherit; }
   width: 100%; text-align: left; margin-top: 10px; padding: 16px 16px 14px;
   border: 2px solid var(--rule); border-radius: 18px; background: #fff; cursor: pointer;
 }
-.option:hover { border-color: #C9C1B4; }
-.option[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 6px 18px -10px rgba(32,36,42,.5); }
+.option:hover { border-color: #AFC4B8; }
+.option[aria-pressed="true"] { border-color: var(--action); box-shadow: 0 6px 18px -10px rgba(15,115,104,.6); }
 
 /* The countdown: the one big thing. */
 .count { grid-row: span 2; display: flex; flex-direction: column; justify-content: center; }
@@ -191,6 +193,7 @@ button, input, textarea { font: inherit; color: inherit; }
   font-size: 15px; font-weight: 600; }
 .chev { color: var(--ink-3); }
 .walk-note { color: var(--ink-2); font-weight: 600; }
+.wait-note { color: var(--late); font-weight: 600; }
 
 .live-tag, .sched-tag {
   display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 650;
@@ -302,6 +305,8 @@ details.trace summary { cursor: pointer; }
   .ask-btn { min-height: 48px; }
   .option { grid-template-columns: 80px 1fr; }
   .use-loc-text, .fine-long { display: none; }
+  .brand { padding: 8px 18px 8px; }
+  .brand-logo { width: 96px; }
   .field .use-loc { min-width: 44px; justify-content: center; }
   .fields .swap { right: 52px; }
   .fine { padding: 8px 18px 10px; }

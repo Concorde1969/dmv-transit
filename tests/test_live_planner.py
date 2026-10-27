@@ -111,7 +111,7 @@ def test_missed_bus_is_thrown_out(net):
     assert plan(net, END_DIRECT)["options"] == []
 
 
-def test_one_transfer_within_a_cluster(net):
+def test_one_transfer_between_stops_under_300_m(net):
     _trip(net, "bus", "t1", "R1", "WK", [("A", "08:05:00"), ("B", "08:15:00")])
     _trip(net, "rail", "t2", "R2", "WK", [("X", "08:22:00"), ("Y", "08:35:00")])
     res = plan(net, END_TRANSFER)
@@ -123,10 +123,24 @@ def test_one_transfer_within_a_cluster(net):
         "10", "Red"]
 
 
-def test_long_wait_at_a_transfer_is_thrown_out(net):
+def test_long_wait_at_a_transfer_is_offered_when_nothing_else_works(net):
     _trip(net, "bus", "t1", "R1", "WK", [("A", "08:05:00"), ("B", "08:15:00")])
     _trip(net, "rail", "t2", "R2", "WK", [("X", "08:45:00"), ("Y", "08:58:00")])  # 28 min
-    assert plan(net, END_TRANSFER)["options"] == []
+    (opt,) = plan(net, END_TRANSFER)["options"]
+    assert opt["transfers"] == 1 and opt["legs"][2]["wait_s"] > 25 * 60
+
+
+def test_short_transfers_are_preferred_over_long_waits(net):
+    net.conn.execute("INSERT INTO gtfs_routes (feed_id, route_id, short_name, route_type) "
+                     "VALUES ('rail', 'R3', 'Orange', 1)")
+    _trip(net, "bus", "t1", "R1", "WK", [("A", "08:05:00"), ("B", "08:15:00")])
+    _trip(net, "rail", "t2", "R2", "WK", [("X", "08:45:00"), ("Y", "08:58:00")])  # long wait
+    _trip(net, "bus", "t3", "R1", "WK", [("A", "08:35:00"), ("B", "08:45:00")])
+    _trip(net, "rail", "t6", "R3", "WK", [("X", "08:52:00"), ("Y", "09:10:00")])  # short wait
+    (opt,) = plan(net, END_TRANSFER)["options"]
+    assert [leg["route_short_name"] for leg in opt["legs"] if leg["mode"] == "ride"] == [
+        "10", "Orange"]
+    assert opt["legs"][2]["wait_s"] <= 10 * 60
 
 
 def test_transfer_options_only_when_they_help(net):
@@ -231,3 +245,10 @@ def test_transfer_trip_gets_off_where_the_rider_arrives_soonest(net):
                                           ("Y", "08:35:00")])
     (opt,) = plan(net, END_TRANSFER)["options"]
     assert opt["legs"][-2]["alight"]["name"] == "Station Y"
+
+
+def test_no_transfer_between_stops_over_300_m_apart(net):
+    net.conn.execute("UPDATE gtfs_stops SET lat = 38.9440 WHERE feed_id = 'rail' AND stop_id = 'X'")
+    _trip(net, "bus", "t1", "R1", "WK", [("A", "08:05:00"), ("B", "08:15:00")])
+    _trip(net, "rail", "t2", "R2", "WK", [("X", "08:22:00"), ("Y", "08:35:00")])
+    assert plan(net, END_TRANSFER)["options"] == []          # B to X is now ~0.45 km

@@ -8,12 +8,14 @@ Flow (the site owner's design):
    leaves a start stop within the next ``TRIP_WINDOW_MIN`` (60 min) and later calls at
    an end stop.
 3. Only when needed (no direct trip, or a much faster option exists), find **one-
-   transfer** trips: ride to a stop, walk within the same stop cluster (every pair of
-   stops in a cluster is < 0.3 km apart, see ``ingest/gtfs/clusters.py``), ride on.
+   transfer** trips: ride to a stop, walk to another stop less than 0.3 km away (any
+   agency), ride on.
 4. Check **live departures** (Transitland, merged GTFS-realtime) for the boarding stops
    of the best options, on feeds that have realtime; delays carry forward along a trip.
-5. Throw out any option with a wait of more than ``TRIP_MAX_TRANSFER_WAIT_MIN`` (10 min)
-   at a transfer, a connection that can't be made, or a vehicle that has already left.
+5. Throw out connections that can't be made and vehicles that have already left.
+   Options whose transfers are all short (``TRIP_SHORT_TRANSFER_MIN``, 10 min) come first;
+   options with a longer wait at a transfer (up to ``TRIP_MAX_TRANSFER_WAIT_MIN``) are
+   shown only when there is nothing better, so the rider can decide.
 
 Times are seconds since local midnight of today's service day (trips belonging to
 yesterday's service, e.g. 25:10:00, are shifted by −24 h). Results carry epoch
@@ -136,7 +138,9 @@ class Candidate:
 class LiveSettings:
     max_walk_m: int = 1600        # farthest start/end stop considered (straight line)
     stops_per_feed: int = 25      # closest stops of each agency at each end
-    max_wait_s: int = 600         # longest wait at a transfer
+    transfer_m: int = 300         # farthest walk between two vehicles (straight line)
+    short_transfer_s: int = 600   # transfer waits up to this are preferred
+    max_wait_s: int = 7200        # longest wait at a transfer considered at all
     min_transfer_s: int = 60
     window_s: int = 3600
     max_ride_s: int = 3 * 3600
@@ -149,6 +153,7 @@ class LiveSettings:
     @classmethod
     def from_settings(cls, s) -> LiveSettings:
         return cls(max_walk_m=s.trip_max_walk_m, stops_per_feed=s.trip_stops_per_agency,
+                   short_transfer_s=s.trip_short_transfer_min * 60,
                    max_wait_s=s.trip_max_transfer_wait_min * 60,
                    window_s=s.trip_window_min * 60, walk_m_per_min=s.trip_walk_m_per_min,
                    max_live_calls=s.trip_max_live_calls)
@@ -169,7 +174,6 @@ class LivePlanner:
         self.now_s = int((self.now - midnight).total_seconds())
         self.midnight_epoch = int(midnight.timestamp())
         self._services: dict[tuple[str, date], set[str]] = {}
-        self._cluster: dict[tuple[str, str], int] | None = None
         self._stop_cache: dict[tuple[str, str], dict] = {}
         self._trip_calls: dict[tuple[str, str], list[Call]] = {}
         self._boardings: dict[str, list[Call]] = {}
@@ -192,12 +196,6 @@ class LivePlanner:
                     base.discard(r[0])
             self._services[key] = base
         return self._services[key]
-
-    def cluster_of(self, feed: str, stop_id: str) -> int | None:
-        if self._cluster is None:
-            self._cluster = {(r[0], r[1]): r[2] for r in self.db.conn.execute(
-                "SELECT feed_id, stop_id, cluster_id FROM cluster_stops")}
-        return self._cluster.get((feed, stop_id))
 
     def stop(self, feed: str, stop_id: str) -> dict:
         key = (feed, stop_id)
@@ -333,7 +331,7 @@ class LivePlanner:
         base = {"origin": _pt(origin), "destination": _pt(destination),
                 "now": self.midnight_epoch + self.now_s,
                 "window_min": self.cfg.window_s // 60,
-                "max_transfer_wait_min": self.cfg.max_wait_s // 60}
+                "short_transfer_min": self.cfg.short_transfer_s // 60}
         if not o_stops or not d_stops:
             where = "start" if not o_stops else "destination"
             return {**base, "options": [],
@@ -357,10 +355,15 @@ class LivePlanner:
         self._apply_realtime([c for g in groups[: self.cfg.max_options * 2] for c in g[:3]])
         good = []
         for g in groups:
-            chosen = next((c for c in g if self._feasible(c) == "ok"), None)
+            # The first departure with short transfers, else the first one that works.
+            chosen = (next((c for c in g if self._feasible(c) == "ok"), None)
+                      or next((c for c in g if self._feasible(c) == "long_transfer_wait"), None))
             if chosen:
                 good.append(chosen)
-        good = sorted(self._drop_dominated(good), key=self._score)[: self.cfg.max_options]
+        # Long waits at a transfer only when no option has short ones.
+        short = [c for c in good if self._feasible(c) == "ok"]
+        good = sorted(self._drop_dominated(short or good),
+                      key=self._score)[: self.cfg.max_options]
         result = {**base, "options": [self._describe(c) for c in good],
                   "live_checks": self.live_calls,
                   "live_available": self.realtime is not None and self.realtime.available()}
@@ -425,8 +428,8 @@ class LivePlanner:
         if not down:
             return []
         latest = max(c.arr for _, c, _ in down) + self.cfg.max_wait_s
-        # Upstream of every trip reaching an end stop, indexed by cluster.
-        up: dict[int, list[tuple[Call, Call, int]]] = defaultdict(list)
+        # Upstream of every trip reaching an end stop, indexed by stop.
+        up: dict[tuple[str, str], list[tuple[Call, Call, int]]] = defaultdict(list)
         for feed, stops in d_by.items():
             d_walk = {s.stop_id: s.walk_s for s in stops}
             horizon = latest + self.cfg.max_ride_s
@@ -441,31 +444,87 @@ class LivePlanner:
             for tid, a in last.items():
                 for c in trips.get(tid, ()):
                     if c.seq < a.seq and self.now_s <= c.dep <= latest:
-                        cl = self.cluster_of(feed, c.stop_id)
-                        if cl is not None:
-                            up[cl].append((c, a, d_walk[a.stop_id]))
+                        up[(feed, c.stop_id)].append((c, a, d_walk[a.stop_id]))
+        if not up:
+            return []
+        near = self._transfer_index(list(up), {(b.feed, x.stop_id) for b, x, _ in down})
+        onward: dict[tuple[str, str], list] = {}
         out = []
         for b, x, walk_start in down:
-            cl = self.cluster_of(b.feed, x.stop_id)
-            if cl is None or cl not in up:
-                continue
-            for y, a, walk_end in up[cl]:
-                if (b.feed, b.route_id) == (y.feed, y.route_id):
+            key = (b.feed, x.stop_id)
+            if key not in onward:   # every onward departure within 0.3 km, in time order
+                onward[key] = sorted(((walk, *u) for stop, walk in near.get(key, ())
+                                      for u in up[stop]), key=lambda e: e[1].dep)
+            taken = set()   # per onward route, only the first vehicle that can be caught
+            for walk, y, a, walk_end in onward[key]:
+                if y.dep > x.arr + self.cfg.max_wait_s + 600:
+                    break
+                route = (y.feed, y.route_id)
+                if route == (b.feed, b.route_id) or route in taken:
                     continue
-                walk = self._transfer_walk(b.feed, x.stop_id, y.feed, y.stop_id)
                 slack = y.dep - (x.arr + walk)
                 if self.cfg.min_transfer_s <= slack <= self.cfg.max_wait_s + 300:
+                    taken.add(route)
                     out.append(Candidate([_ride(b, x), _ride(y, a)], walk_start, walk_end,
                                          [walk]))
         return out
 
-    def _transfer_walk(self, f1, s1, f2, s2) -> int:
-        if (f1, s1) == (f2, s2):
-            return 0
-        a, b = self.stop(f1, s1), self.stop(f2, s2)
-        if a["lat"] is None or b["lat"] is None:
-            return 300
-        return max(60, self.walk_s(haversine_m(a["lat"], a["lon"], b["lat"], b["lon"])))
+    def _transfer_index(self, onward_stops: list[tuple[str, str]],
+                        arrival_stops: set[tuple[str, str]]
+                        ) -> dict[tuple[str, str], list[tuple[tuple[str, str], int]]]:
+        """For each stop a rider may get off at: the onward stops less than
+        ``transfer_m`` away (any agency), with the walk time. Grid lookup, ~0.3 km cells."""
+        self._load_stops(onward_stops + list(arrival_stops))
+        cell_lat = self.cfg.transfer_m / 111_320.0
+        grid: dict[tuple[int, int], list[tuple[str, str]]] = defaultdict(list)
+
+        def cell(s: dict) -> tuple[int, int]:
+            lon_deg = cell_lat / max(math.cos(math.radians(s["lat"])), 0.1)
+            return int(s["lat"] // cell_lat), int(s["lon"] // lon_deg)
+
+        for key in onward_stops:
+            s = self.stop(*key)
+            if s["lat"] is not None:
+                grid[cell(s)].append(key)
+        out = {}
+        for key in arrival_stops:
+            s = self.stop(*key)
+            if s["lat"] is None:
+                continue
+            ci, cj = cell(s)
+            found = []
+            for di in (-1, 0, 1):
+                for dj in (-1, 0, 1):
+                    for other in grid.get((ci + di, cj + dj), ()):
+                        o = self.stop(*other)
+                        d = haversine_m(s["lat"], s["lon"], o["lat"], o["lon"])
+                        if d <= self.cfg.transfer_m:
+                            found.append((other, 0 if other == key else max(60, self.walk_s(d))))
+            out[key] = found
+        return out
+
+    def _load_stops(self, keys: list[tuple[str, str]]) -> None:
+        """Fill the stop cache for many stops at once."""
+        by_feed: dict[str, list[str]] = defaultdict(list)
+        for feed, stop_id in keys:
+            if (feed, stop_id) not in self._stop_cache:
+                by_feed[feed].append(stop_id)
+        for feed, ids in by_feed.items():
+            ids = list(dict.fromkeys(ids))
+            for i in range(0, len(ids), 500):
+                chunk = ids[i:i + 500]
+                for r in self.db.conn.execute(
+                    f"""
+                    SELECT s.stop_id, s.name, s.lat, s.lon, s.code, p.name AS parent_name
+                      FROM gtfs_stops s
+                      LEFT JOIN gtfs_stops p ON p.feed_id = s.feed_id
+                                            AND p.stop_id = s.parent_station
+                     WHERE s.feed_id = ? AND s.stop_id IN ({','.join('?' * len(chunk))})
+                    """, (feed, *chunk)):
+                    self._stop_cache[(feed, r["stop_id"])] = dict(r)
+            for stop_id in ids:
+                self._stop_cache.setdefault((feed, stop_id), {
+                    "stop_id": stop_id, "name": stop_id, "lat": None, "lon": None})
 
     @staticmethod
     def _score(c: Candidate) -> int:
@@ -490,7 +549,8 @@ class LivePlanner:
                     seen.add(c.rides[0].dep)
                     kept.append(c)
             groups.append(kept[:per_group])
-        catchable = {id(g): min((self._score(c) for c in g if self._feasible(c) == "ok"),
+        catchable = {id(g): min((self._score(c) for c in g
+                                 if self._feasible(c) in ("ok", "long_transfer_wait")),
                                 default=None) for g in groups}
         return sorted(groups, key=lambda g: (catchable[id(g)] is None,
                                              catchable[id(g)] or min(map(self._score, g))))
@@ -537,13 +597,16 @@ class LivePlanner:
             return "cancelled"
         if c.rides[0].dep_eff < self.now_s + c.walk_start_s:
             return "missed"
+        long_wait = False
         for prev, nxt, walk in zip(c.rides, c.rides[1:], c.transfer_walk_s):
             slack = nxt.dep_eff - (prev.arr_eff + walk)
             if slack < self.cfg.min_transfer_s:
                 return "missed_connection"
             if slack > self.cfg.max_wait_s:
-                return "long_transfer_wait"
-        return "ok"
+                return "missed_connection"     # outside the search: treat as not working
+            if slack > self.cfg.short_transfer_s:
+                long_wait = True
+        return "long_transfer_wait" if long_wait else "ok"
 
     # -- output ------------------------------------------------------------------------------
     def _epoch(self, s: int) -> int:

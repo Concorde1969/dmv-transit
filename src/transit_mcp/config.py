@@ -105,8 +105,10 @@ class Settings(BaseSettings):
     # Start/end stops: each agency's closest stops, up to about a mile's walk.
     trip_max_walk_m: int = Field(default=1600, alias="TRIP_MAX_WALK_M")
     trip_stops_per_agency: int = Field(default=25, alias="TRIP_STOPS_PER_AGENCY")
-    # Longest wait at a transfer (transfers are always within one 0.3 km stop cluster).
-    trip_max_transfer_wait_min: int = Field(default=10, alias="TRIP_MAX_TRANSFER_WAIT_MIN")
+    # Transfers are always between stops < 0.3 km apart. Options whose transfer waits
+    # are all this short come first; longer waits (up to the max) only when nothing better.
+    trip_short_transfer_min: int = Field(default=10, alias="TRIP_SHORT_TRANSFER_MIN")
+    trip_max_transfer_wait_min: int = Field(default=120, alias="TRIP_MAX_TRANSFER_WAIT_MIN")
     # Departures in this many minutes are offered.
     trip_window_min: int = Field(default=60, alias="TRIP_WINDOW_MIN")
     # Gentle walking pace (m/min) for walk times shown to riders.

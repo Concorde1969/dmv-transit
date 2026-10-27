@@ -12,8 +12,9 @@ connection works, and **how to pay** each leg.
 
 The home page is a **leave-now trip planner on a map**: type where you're going (or use
 your location), and it shows every good way to get there in the next hour — direct
-trips first, one change only when it saves time, never a wait of more than 10 minutes
-at a change — with live departure times where the agency publishes them. It uses each
+trips first, one change only when it saves time, and changes with a wait of 10
+minutes or less preferred (a longer wait is offered only when nothing better works) —
+with live departure times where the agency publishes them. It uses each
 agency's closest stops (up to about a mile away) and shows how much walking each trip
 involves. The assistant chat sits in a drawer beside the map.
 
@@ -108,9 +109,10 @@ shows which source each feed used). Every Transitland API call is counted agains
 `TRANSITLAND_MONTHLY_BUDGET` (4,500 of the Explorer plan's 5,000), after which the
 planner shows scheduled times.
 
-Nearby stops of every agency are grouped into **clusters** — every pair of stops in a
-cluster is less than 0.3 km apart — and the planner only suggests a change between two
-stops of the same cluster, so every transfer is a short walk.
+The planner only suggests a change between two stops less than 0.3 km apart (of any
+agency), so every transfer is a short walk. Nearby stops are also grouped into
+**clusters** (every pair in a cluster is less than 0.3 km apart) for the assistant's
+"what connects here" answers.
 
 ## Command line
 

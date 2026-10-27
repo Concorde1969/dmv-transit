@@ -58,14 +58,16 @@ function luminance(hex) {
 function textOn(bg) {
   if (!/^#[0-9a-f]{6}$/i.test(bg || "")) return "#ffffff";
   const L = luminance(bg);
-  return (1.05 / (L + 0.05)) >= ((L + 0.05) / (luminance("#20242A") + 0.05)) ? "#ffffff" : "#20242A";
+  return (1.05 / (L + 0.05)) >= ((L + 0.05) / (luminance("#1B2621") + 0.05)) ? "#ffffff" : "#1B2621";
 }
 
 function pill(leg) {
   const style = `background:${esc(leg.color)};color:${textOn(leg.color)}`;
   if (isRail(leg)) {
-    const bullet = esc((leg.route_short_name || routeLabel(leg)).slice(0, 2));
-    return `<span class="pill rail" style="${style}"><span class="bullet">${bullet}</span>${esc(routeLabel(leg))}</span>`;
+    // Metro-style line letters ("R", "OR") get a bullet; other trains a train icon.
+    const short = (leg.route_short_name || "").trim();
+    const mark = short && short.length <= 2 ? `<span class="bullet">${esc(short)}</span>` : ICONS.rail;
+    return `<span class="pill rail" style="${style}">${mark}${esc(routeLabel(leg))}</span>`;
   }
   return `<span class="pill" style="${style}">${ICONS.bus}${esc(routeLabel(leg))}</span>`;
 }
@@ -79,17 +81,17 @@ async function initMap() {
   const glyphs = `${ORIGIN}/static/map/fonts/{fontstack}/{range}.pbf`;
   let style = {
     version: 8, glyphs, sources: {},
-    layers: [{ id: "bg", type: "background", paint: { "background-color": "#ECE8E1" } }],
+    layers: [{ id: "bg", type: "background", paint: { "background-color": "#E7EEE6" } }],
   };
   if (tiles && window.pmtiles && window.basemaps) {
     const protocol = new pmtiles.Protocol();
     maplibregl.addProtocol("pmtiles", protocol.tile);
-    // Protomaps "light", warmed toward the site's concrete-and-bronze palette.
+    // Protomaps "light", tinted toward the D.C. Transit mint and turquoise.
     const flavor = {
       ...basemaps.namedFlavor("light"),
-      background: "#ECE8E1", earth: "#EFEBE4", water: "#BCD2D8",
-      park_a: "#DCE5D1", park_b: "#D3DFC6", wood_a: "#DCE5D1", wood_b: "#D3DFC6",
-      buildings: "#E1DBD0", pedestrian: "#E9E4DB",
+      background: "#E7EEE6", earth: "#EEF2EB", water: "#B4D9D3",
+      park_a: "#D4E6D2", park_b: "#C9DFC6", wood_a: "#D4E6D2", wood_b: "#C9DFC6",
+      buildings: "#DDE3DA", pedestrian: "#E8EDE5",
     };
     style = {
       version: 8, glyphs, sprite: `${ORIGIN}/static/map/sprites/light`,
@@ -117,7 +119,7 @@ function applyPadding() {
   if (!map) return;
   map.setPadding(isPhone()
     ? { top: 70, bottom: Math.round(innerHeight * 0.55), left: 20, right: 20 }
-    : { top: 80, bottom: 40, left: 480, right: 80 });
+    : { top: 80, bottom: 40, left: Math.round($("panel").getBoundingClientRect().right) + 40, right: 80 });
 }
 
 function addTripLayers() {
@@ -134,14 +136,14 @@ function addTripLayers() {
     paint: { "line-color": ["get", "color"], "line-width": 7 } });
   map.addLayer({ id: "trip-walk", type: "line", source: "trip", filter: ["==", ["get", "kind"], "walk"],
     layout: { "line-cap": "round", "line-join": "round" },
-    paint: { "line-color": "#4F5560", "line-width": 4, "line-dasharray": [0.1, 1.8] } });
+    paint: { "line-color": "#4A5651", "line-width": 4, "line-dasharray": [0.1, 1.8] } });
   map.addLayer({ id: "stops-dot", type: "circle", source: "stops",
     paint: { "circle-radius": 7, "circle-color": "#ffffff", "circle-stroke-width": 4,
              "circle-stroke-color": ["get", "color"] } });
   map.addLayer({ id: "stops-label", type: "symbol", source: "stops",
     layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Medium"], "text-size": 14,
               "text-offset": [0, 1.3], "text-anchor": "top", "text-max-width": 12 },
-    paint: { "text-color": "#20242A", "text-halo-color": "#ffffff", "text-halo-width": 2 } });
+    paint: { "text-color": "#1B2621", "text-halo-color": "#ffffff", "text-halo-width": 2 } });
   if (state.plan) drawPlan();
 }
 
@@ -386,6 +388,7 @@ function optionCard(opt, i) {
   const pills = rs.map(pill).join(ICONS.chev);
   const walk = mins(opt.walk_s);
   const longWalk = walkLegs(opt).find((s) => s >= 600);
+  const longWait = opt.legs.find((l) => l.transfer && l.wait_s > (state.plan.short_transfer_min || 10) * 60);
   const changes = opt.transfers ? plural(opt.transfers, "change", "changes") : "No changes";
   const late = rs.find((l) => l.live && l.delay_s >= 120);
   const tag = opt.live ? `<span class="live-tag">Live</span>` : `<span class="sched-tag">Scheduled</span>`;
@@ -396,6 +399,7 @@ function optionCard(opt, i) {
     <div class="meta">Arrive <strong>${clock(opt.arrive_at)}</strong>, ${mins(opt.duration_s)} min. ${changes}. ${tag}
       ${late ? `<span class="late">${mins(late.delay_s)} min late</span>` : ""}
       ${longWalk ? `<br><span class="walk-note">Includes a ${mins(longWalk)}-minute walk</span>` : ""}
+      ${longWait ? `<br><span class="wait-note">Includes a ${mins(longWait.wait_s)}-minute wait at ${esc(longWait.to.name)}</span>` : ""}
       ${opt.fare_estimate != null ? `<br>About $${opt.fare_estimate.toFixed(2)}` : ""}</div>
   </button>`;
 }
