@@ -201,6 +201,12 @@ def trip(request: Request, body: TripRequestBody) -> JSONResponse:
         log.exception("trip planning failed")
         return JSONResponse({"options": [], "notice": "Sorry — something went wrong "
                              "planning that trip. Please try again."}, status_code=500)
+    reports = getattr(request.app.state, "reports", None)
+    if reports is not None:
+        try:   # recent rider reports about these lines and stops
+            reports.attach(result["options"], hours=svc.settings.reports_show_hours)
+        except Exception:  # noqa: BLE001 - trips still work without them
+            log.exception("attaching rider reports failed")
     latency = int((time.monotonic() - started) * 1000)
     chatlog = getattr(request.app.state, "chatlog", None)
     if chatlog is not None:

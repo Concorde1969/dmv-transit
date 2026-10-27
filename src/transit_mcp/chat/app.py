@@ -7,6 +7,7 @@ health endpoint (see :mod:`transit_mcp.chat.guard`).
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import mimetypes
@@ -29,9 +30,13 @@ from transit_mcp.chat.guard import (
     trim_history,
 )
 from transit_mcp.chat.mcp_bridge import McpBridge
+from transit_mcp.chat.reports_api import process_reports
+from transit_mcp.chat.reports_api import router as reports_router
+from transit_mcp.chat.trip_api import agency_info
 from transit_mcp.chat.trip_api import router as trip_router
 from transit_mcp.chatlog import ChatLog, TurnRecord, device_class
 from transit_mcp.config import get_settings
+from transit_mcp.reports import ReportStore
 
 STATIC_DIR = Path(__file__).parent / "static"
 # Browsers only run module scripts served as JavaScript; Windows' registry may not
@@ -74,6 +79,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if settings.anthropic_api_key
         else None
     )
+
+    app.state.reports = None
+    app.state.report_limiter = RateLimiter(settings.reports_rate_per_minute,
+                                           settings.reports_rate_per_day)
+    app.state.report_cap = DailyCap(settings.reports_daily_limit, settings.timezone)
+    if settings.reports_enabled:
+        try:
+            app.state.reports = ReportStore.from_settings(settings)
+            app.state.report_agencies = {s: a["name"] for s, a in agency_info(settings).items()}
+            asyncio.get_running_loop().create_task(process_reports(app))  # any left waiting
+        except Exception:  # noqa: BLE001 - the site works without rider reports
+            log.exception("rider reports unavailable")
+            app.state.reports = None
     try:
         yield
     finally:
@@ -90,6 +108,7 @@ app = FastAPI(title="DMV Regional Transportation Assistant", lifespan=lifespan,
               docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 app.include_router(trip_router)
+app.include_router(reports_router)
 
 
 @app.get("/")

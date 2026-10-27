@@ -78,7 +78,7 @@ Three layers, each swappable on its own (details in
                                          heuristic | python | process | http
                                                       │  TripRequest / TripPlan
                                                       ▼
-                                   MCP server (15 tools) ──► web chat (Claude)
+                                   MCP server (17 tools) ──► web chat (Claude)
                                                          └─► any MCP client
 ```
 
@@ -113,6 +113,18 @@ The planner only suggests a change between two stops less than 0.3 km apart (of 
 agency), so every transfer is a short walk. Nearby stops are also grouped into
 **clusters** (every pair in a cluster is less than 0.3 km apart) for the assistant's
 "what connects here" answers.
+
+### Rider reports (crowdsourced)
+
+Riders can warn each other from the map page (**Report an issue**): the station and
+line (if any), where the trip started and ended, the date, and what happened in their
+own words. Each report is saved in the transit database (`rider_reports`) and checked
+by a small Claude model (`REPORTS_MODEL`, default `claude-haiku-5-5`), which holds back
+off-topic or abusive posts, sorts it (delay, crowding, elevator...), writes a short
+neutral summary and notes the agencies, lines and stations. Published reports show on
+matching trip options for `REPORTS_SHOW_HOURS` (3) and the assistant can look them up;
+both always label them as unverified rider reports. Review them with
+`transit-mcp reports list|hide|publish|delete`.
 
 ## Command line
 
@@ -186,6 +198,7 @@ To add one, copy `agencies/_template.toml` — see [agencies/README.md](agencies
 | `transfers_at(place, day?, time?)` | Other systems within walking distance + whether the connection works then |
 | `how_to_pay(agency)` | Payment methods, where to buy, app, SmarTrip/contactless, transfers |
 | `plan_connection(origin, destination, when?)` | Systems per leg, transfer hub, days it works, fares — via the configured engine |
+| `get_rider_reports(station?, line?, days?)` | Recent unverified reports from riders on the site (delays, crowding, elevators, tips) |
 | `plan_trip_now(origin, destination)` | The map planner's leave-now options for the next 3 hours, with live times and walking minutes |
 | `estimate_trip_cost(origin, destination, when?, rider_category?)` | Per-leg fares and total |
 

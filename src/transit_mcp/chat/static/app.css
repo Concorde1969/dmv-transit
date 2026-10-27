@@ -28,6 +28,13 @@
   --shadow-panel: 0 18px 40px -18px rgba(32, 36, 42, 0.45), 0 2px 6px rgba(32, 36, 42, 0.08);
 }
 
+/* The logo's brush script (Kaushan Script, SIL Open Font License: fonts/KaushanScript-OFL.txt). */
+@font-face {
+  font-family: "Kaushan Script";
+  src: url("/static/fonts/KaushanScript-Regular.ttf") format("truetype");
+  font-display: swap;
+}
+
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body {
@@ -101,10 +108,21 @@ button, input, textarea { font: inherit; color: inherit; }
   box-shadow: inset 0 -7px 0 -4px var(--brand-cream);
 }
 .brand-logo { display: block; width: 132px; height: auto; }
+.brand-side {
+  margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+  text-align: right;
+}
 .unofficial {
-  margin-left: auto; font-size: 13px; font-weight: 650; color: var(--brand-cream);
+  font-size: 13px; font-weight: 650; color: var(--brand-cream);
   border: 1.5px solid rgba(237, 235, 224, .55); padding: 3px 10px; border-radius: 999px;
 }
+.credit {
+  margin: 0; font-family: "Kaushan Script", var(--font); font-size: 19px; line-height: 1.2;
+  color: var(--brand-cream);
+}
+.credit a { color: var(--brand-cream); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.credit a:hover { color: #fff; }
+.credit a:focus-visible { outline-color: var(--brand-cream); }
 .where {
   padding: 8px 22px 16px;
 }
@@ -193,6 +211,8 @@ button, input, textarea { font: inherit; color: inherit; }
   font-size: 15px; font-weight: 600; }
 .chev { color: var(--ink-3); }
 .walk-note { color: var(--ink-2); font-weight: 600; }
+.report-note { color: var(--late); font-weight: 600; }
+.report-note svg, .trip-reports h3 svg { vertical-align: -2px; margin-right: 5px; }
 .wait-note { color: var(--late); font-weight: 600; }
 
 .live-tag, .sched-tag {
@@ -292,6 +312,45 @@ details.trace summary { cursor: pointer; }
 .chat-error { margin: 0 0 14px; padding: 12px 14px; border-radius: 12px;
   background: var(--late-tint); color: var(--late); }
 
+/* ---------- rider reports ---------- */
+.report-btn svg { color: var(--stripe); }
+.report-body { flex: 1; overflow: auto; padding: 4px 20px 20px; }
+.recent h3, .trip-reports h3 { font-size: 17px; margin: 14px 0 8px; }
+.recent-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.recent-item {
+  padding: 10px 12px 10px 14px; border-radius: 12px; background: var(--panel-2);
+  border-left: 5px solid var(--teal); line-height: 1.35;
+}
+.recent-item.sev-minor { border-left-color: var(--stripe); }
+.recent-item.sev-major { border-left-color: var(--late); background: var(--late-tint); }
+.recent-item .cat { display: block; font-size: 13px; font-weight: 700; color: var(--ink-2); }
+.recent-item .what { display: block; font-size: 16px; }
+.recent-item small { display: block; color: var(--ink-3); font-size: 13.5px; margin-top: 2px; }
+.recent-empty { color: var(--ink-2); font-size: 15px; }
+.report-form { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--rule); }
+.report-intro { margin: 0 0 12px; color: var(--ink-2); font-size: 16px; }
+.report-form .row { display: grid; gap: 4px; margin-bottom: 12px; position: relative; }
+.report-form .row.two { grid-template-columns: 1fr 1fr; gap: 12px; }
+.report-form .row.two > div { display: grid; gap: 4px; }
+.report-form label { font-weight: 650; font-size: 16px; }
+.report-form .opt { font-weight: 400; color: var(--ink-3); }
+.report-form input, .report-form textarea {
+  width: 100%; min-height: 48px; padding: 10px 12px; border-radius: 12px;
+  border: 2px solid var(--rule); background: #fff; font-size: 17px;
+}
+.report-form textarea { resize: vertical; min-height: 150px; line-height: 1.45; }
+.report-form input:focus, .report-form textarea:focus { border-color: var(--action); outline: none; }
+.count-left { font-size: 13.5px; color: var(--ink-3); justify-self: end; }
+.report-fine { font-size: 13.5px; color: var(--ink-3); margin: 0 0 10px; line-height: 1.45; }
+.report-status { margin: 0 0 10px; font-weight: 600; font-size: 15.5px; }
+.report-status:empty { display: none; }
+.report-status.ok { color: var(--live); }
+.report-status.err { color: var(--late); }
+.report-form .btn { width: 100%; }
+.trip-reports { margin: 4px 4px 12px; }
+.trip-reports h3 { color: var(--late); }
+.trip-reports .report-fine { margin-top: 6px; }
+
 /* ---------- phones: bottom sheet ---------- */
 @media (max-width: 720px) {
   body { font-size: 17px; }
@@ -307,6 +366,11 @@ details.trace summary { cursor: pointer; }
   .use-loc-text, .fine-long { display: none; }
   .brand { padding: 8px 18px 8px; }
   .brand-logo { width: 96px; }
+  .credit { font-size: 16px; }
+  .brand-side { gap: 5px; }
+  .report-btn-text { display: none; }
+  .report-btn { padding: 0 14px; }
+  .report-form .row.two { grid-template-columns: 1fr; }
   .field .use-loc { min-width: 44px; justify-content: center; }
   .fields .swap { right: 52px; }
   .fine { padding: 8px 18px 10px; }

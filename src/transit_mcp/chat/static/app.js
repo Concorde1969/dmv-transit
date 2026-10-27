@@ -2,6 +2,7 @@
 // Data: /api/geocode, /api/trip, /api/trip/live (chat/trip_api.py). Map: MapLibre GL with a
 // self-hosted Protomaps basemap (/tiles/dmv.pmtiles); all files are served by this site.
 import * as ML from "/static/map/vendor/maplibre-gl.mjs";
+import { ago, reportItem } from "/static/reports.js";
 
 const maplibregl = ML.default || ML;
 const $ = (id) => document.getElementById(id);
@@ -41,6 +42,7 @@ function routeLabel(leg) {
 const ICONS = {
   bus: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="14" rx="3"/><path d="M4 11h16M8 21v-4M16 21v-4"/></svg>',
   rail: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="14" rx="4"/><path d="M5 11h14M8 21l2-4M16 21l-2-4"/></svg>',
+  alert: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg>',
   walk: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13" cy="4" r="2"/><path d="M10 22l2-7-3-3 1-5 4 3 3 1M9 12l-3 3"/></svg>',
   chev: '<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
   back: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>',
@@ -404,6 +406,7 @@ function optionCard(opt, i) {
       ${late ? `<span class="late">${mins(late.delay_s)} min late</span>` : ""}
       ${longWalk ? `<br><span class="walk-note">Includes a ${mins(longWalk)}-minute walk</span>` : ""}
       ${longWait ? `<br><span class="wait-note">Includes a ${mins(longWait.wait_s)}-minute wait at ${esc(longWait.to.name)}</span>` : ""}
+      ${opt.reports?.length ? `<br><span class="report-note">${ICONS.alert}Rider report, ${esc(ago(opt.reports[0].minutes_ago))}: ${esc(opt.reports[0].summary)}</span>` : ""}
       ${opt.fare_estimate != null ? `<br>About $${opt.fare_estimate.toFixed(2)}` : ""}</div>
   </button>`;
 }
@@ -442,11 +445,18 @@ function renderDetail(opt) {
         <div class="rail-col"><span class="node"></span>${i < steps.length - 1 ? '<span class="stem"></span>' : ""}</div>
         <div class="body"><div class="title">${esc(s.title)}</div>${s.sub ? `<div class="sub">${s.html ? s.sub : esc(s.sub)}</div>` : ""}</div>
       </li>`).join("")}</ol>
+    ${opt.reports?.length ? `<section class="trip-reports" aria-label="Rider reports">
+      <h3>${ICONS.alert}What other riders reported</h3>
+      <ul class="recent-list">${opt.reports.map(reportItem).join("")}</ul>
+      <p class="report-fine">Shared by riders on this site, not checked by any transit agency.</p>
+    </section>` : ""}
     <div class="detail-actions">
       <button class="btn quiet" id="askTrip" type="button">Ask about this trip</button>
+      <button class="btn quiet" id="reportTrip" type="button">Report a problem</button>
     </div>
   </div>`;
   $("backBtn").addEventListener("click", () => { state.view = "list"; render(); });
+  $("reportTrip").addEventListener("click", () => window.dmvReports?.open());
   $("askTrip").addEventListener("click", () => {
     const desc = rides(opt).map((l) => `${l.agency_name} ${routeLabel(l)} from ${l.board.name} to ${l.alight.name}`).join(", then ");
     window.dmvChat?.ask(`I'm about to take ${desc}. How do I pay, and is there anything I should know?`);

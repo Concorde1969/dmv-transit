@@ -128,6 +128,17 @@ class Settings(BaseSettings):
     # Key for anonymous visitor IDs; if empty, a random one is kept in the chat log.
     chatlog_salt: str | None = Field(default=None, alias="CHATLOG_SALT")
 
+    # --- Rider reports (crowdsourced delays and problems; see reports.py) ---
+    reports_enabled: bool = Field(default=True, alias="REPORTS_ENABLED")
+    # Small, fast model that checks and structures each report.
+    reports_model: str = Field(default="claude-haiku-5-5", alias="REPORTS_MODEL")
+    # Reports appear on matching trips for this many hours after they're sent.
+    reports_show_hours: int = Field(default=3, alias="REPORTS_SHOW_HOURS")
+    reports_retention_days: int = Field(default=365, alias="REPORTS_RETENTION_DAYS")
+    reports_rate_per_minute: int = Field(default=2, alias="REPORTS_RATE_PER_MINUTE")
+    reports_rate_per_day: int = Field(default=10, alias="REPORTS_RATE_PER_DAY")
+    reports_daily_limit: int = Field(default=300, alias="REPORTS_DAILY_LIMIT")  # site-wide
+
     # --- Scheduled data refresh (`transit-mcp scheduler`) ---
     refresh_alerts_minutes: int = Field(default=15, alias="REFRESH_ALERTS_MINUTES")
     refresh_full_at: str = Field(default="03:30", alias="REFRESH_FULL_AT")  # local HH:MM

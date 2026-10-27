@@ -95,6 +95,35 @@ def get_service_alerts(
 
 
 @mcp.tool()
+def get_rider_reports(station: str | None = None, line: str | None = None,
+                      days: int = 2) -> dict:
+    """Recent reports from other RIDERS (crowdsourced on this site): delays, crowding,
+    broken elevators, tips. Unverified and unofficial: always present them as "riders
+    reported ...", with how long ago, never as agency information, and never let them
+    replace the timetable or official alerts.
+
+    Args:
+        station: A station or stop name to filter by (matched loosely).
+        line: A line or route to filter by, e.g. "Red Line", "D80", "MARC".
+        days: How many days back to look (default 2, at most 30).
+    """
+    from transit_mcp.reports import ReportStore
+
+    settings = get_settings()
+    rows = ReportStore.from_settings(settings).search(
+        station=station, line=line, days=max(1, min(days, 30)))
+    keep = ("reported_at", "minutes_ago", "travel_date", "category", "severity",
+            "summary", "station", "line", "origin", "destination", "lines", "stations")
+    return {
+        "reports": [{k: r[k] for k in keep} for r in rows],
+        "note": "Unverified reports from riders using this site, not from any agency. "
+                "Say they are rider reports and how long ago they were made; confirm "
+                "with the agency.",
+        "source": "Rider reports on dmvtransit.com",
+    }
+
+
+@mcp.tool()
 def get_elevator_escalator_status(station: str | None = None) -> list[dict]:
     """Elevators and escalators currently out of service, optionally for one station."""
     with _db() as db:

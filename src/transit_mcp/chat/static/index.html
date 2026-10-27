@@ -11,6 +11,7 @@
 <link rel="icon" href="/static/brand/icon-192.png" type="image/png" sizes="192x192" />
 <link rel="apple-touch-icon" href="/static/brand/icon-180.png" />
 <link rel="stylesheet" href="/static/map/vendor/maplibre-gl.css" />
+<link rel="preload" href="/static/fonts/KaushanScript-Regular.ttf" as="font" type="font/ttf" crossorigin />
 <link rel="stylesheet" href="/static/app.css" />
 </head>
 <body>
@@ -18,6 +19,10 @@
 <div id="map" role="region" aria-label="Map"></div>
 
 <div class="topbar">
+  <button class="ask-btn report-btn" id="reportBtn" type="button" aria-controls="reportDrawer" aria-expanded="false">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg>
+    <span class="report-btn-text">Report an issue</span>
+  </button>
   <button class="ask-btn" id="askBtn" type="button" aria-controls="drawer" aria-expanded="false">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.5 7.2L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>
     Ask the assistant
@@ -27,7 +32,12 @@
 <section class="panel" id="panel" aria-label="Trip planner">
   <div class="brand">
     <img class="brand-logo" src="/static/brand/logo.png" width="132" height="94" alt="DMV Transit" />
-    <span class="unofficial" title="Not affiliated with WMATA or any transit agency">Unofficial</span>
+    <div class="brand-side">
+      <span class="unofficial" title="Not affiliated with WMATA or any transit agency">Unofficial</span>
+      <p class="credit">Created by Kaleb Neal <span aria-hidden="true">&mdash;</span>
+        <a href="https://www.linkedin.com/in/kaleb-neal" target="_blank" rel="noopener noreferrer"
+           aria-label="Kaleb Neal on LinkedIn (opens in a new tab)">LinkedIn</a></p>
+    </div>
   </div>
 
   <form class="where" id="whereForm" autocomplete="off" role="search">
@@ -89,7 +99,9 @@
       keep: your questions and answers, map searches rounded to about 100 meters, the
       kind of device, and an anonymous code that tells one visitor's chats apart without
       identifying you, for up to one year. We don't keep names or IP addresses; email
-      addresses and phone numbers are removed automatically.</p>
+      addresses and phone numbers are removed automatically. Rider reports you send are
+      shown to other riders and the assistant for a few hours, and kept for up to one
+      year with the same anonymous code.</p>
     </div>
   </div>
   <div class="composer">
@@ -99,9 +111,63 @@
   </div>
 </aside>
 
+<aside class="drawer" id="reportDrawer" aria-labelledby="reportTitle" aria-hidden="true">
+  <div class="drawer-head">
+    <h2 id="reportTitle">Tell other riders</h2>
+    <button class="icon-btn close" id="closeReport" type="button" aria-label="Close the report form">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="report-body">
+    <section class="recent" aria-labelledby="recentTitle">
+      <h3 id="recentTitle">Latest from riders</h3>
+      <ul class="recent-list" id="recentReports"><li class="recent-empty">Loading&hellip;</li></ul>
+    </section>
+
+    <form class="report-form" id="reportForm" novalidate>
+      <p class="report-intro">Seen a delay, a crowded train, a broken elevator or something
+      riders should know? Tell everyone here.</p>
+      <div class="row">
+        <label for="rStation">Station or stop <span class="opt">(if any)</span></label>
+        <input id="rStation" name="station" maxlength="120" autocomplete="off" placeholder="e.g. Union Station" />
+      </div>
+      <div class="row">
+        <label for="rLine">Line or route <span class="opt">(if any)</span></label>
+        <input id="rLine" name="line" maxlength="120" autocomplete="off" placeholder="e.g. Red Line, D80, MARC" />
+      </div>
+      <div class="row two">
+        <div>
+          <label for="rOrigin">Trip from</label>
+          <input id="rOrigin" name="origin" maxlength="120" required autocomplete="off" placeholder="Where you started" />
+        </div>
+        <div>
+          <label for="rDestination">Trip to</label>
+          <input id="rDestination" name="destination" maxlength="120" required autocomplete="off" placeholder="Where you were going" />
+        </div>
+      </div>
+      <div class="row">
+        <label for="rDate">Date of travel</label>
+        <input id="rDate" name="travel_date" type="date" required />
+      </div>
+      <div class="row">
+        <label for="rText">What happened?</label>
+        <textarea id="rText" name="text" rows="7" minlength="10" maxlength="2000" required
+                  placeholder="Describe the delay or problem, or share a tip for other riders."></textarea>
+        <span class="count-left" id="rCount" aria-live="polite"></span>
+      </div>
+      <p class="report-fine">Other riders and the assistant will see your report, marked as
+      a rider report (not checked by any transit agency). Please leave out names, phone
+      numbers and other personal details.</p>
+      <p class="report-status" id="reportStatus" role="status" aria-live="polite"></p>
+      <button class="btn primary" id="reportSend" type="submit">Send report</button>
+    </form>
+  </div>
+</aside>
+
 <script src="/static/map/vendor/pmtiles.js"></script>
 <script src="/static/map/vendor/basemaps.js"></script>
 <script type="module" src="/static/app.js"></script>
 <script type="module" src="/static/chat.js"></script>
+<script type="module" src="/static/reports.js"></script>
 </body>
 </html>

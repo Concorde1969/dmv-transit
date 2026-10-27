@@ -146,16 +146,18 @@ function autosize() {
 }
 
 function open() {
+  window.dmvReports?.close(true);
   drawer.classList.add("open");
   drawer.setAttribute("aria-hidden", "false");
   askBtn.setAttribute("aria-expanded", "true");
   setTimeout(() => input.focus(), 50);
 }
-function close() {
+function close(quiet = false) {
+  if (!drawer.classList.contains("open")) return;
   drawer.classList.remove("open");
   drawer.setAttribute("aria-hidden", "true");
   askBtn.setAttribute("aria-expanded", "false");
-  askBtn.focus();
+  if (!quiet) askBtn.focus();
 }
 
 input.addEventListener("input", autosize);
@@ -164,7 +166,7 @@ input.addEventListener("keydown", (e) => {
 });
 sendBtn.addEventListener("click", () => send(input.value));
 askBtn.addEventListener("click", () => (drawer.classList.contains("open") ? close() : open()));
-$("closeDrawer").addEventListener("click", close);
+$("closeDrawer").addEventListener("click", () => close());
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && drawer.classList.contains("open")) close(); });
 $("resetChat").addEventListener("click", async () => {
   try {
@@ -187,4 +189,5 @@ for (const s of SUGGESTIONS) {
 window.dmvChat = {
   ask(text) { open(); send(text); },
   about() { open(); intro.hidden = false; $("aboutText").hidden = false; },
+  close,
 };

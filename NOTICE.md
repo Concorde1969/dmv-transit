@@ -43,6 +43,20 @@ Developer License Agreement yourself — terms may have changed.
   used only to ground a language model's answers — not republished as a stand-alone
   copy of WMATA's website.
 
+## Rider reports
+
+Rider reports are written by visitors to the site, not by any transit agency, and are
+shown as unverified. Before saving, email addresses and phone numbers are removed;
+visitors are identified only by the anonymous ID described below. Each report is sent to
+Anthropic's API once to check and summarize it. Reports are kept for
+`REPORTS_RETENTION_DAYS` (365 by default) and can be removed with
+`transit-mcp reports delete`.
+
+## Fonts
+
+The credit line uses Kaushan Script by Pablo Impallari and Igino Marini, licensed under
+the SIL Open Font License 1.1 (`src/transit_mcp/chat/static/fonts/KaushanScript-OFL.txt`).
+
 ## Chat logs and privacy
 
 The public site saves each conversation for review (`src/transit_mcp/chatlog.py`):

@@ -233,6 +233,21 @@ Automatic snapshots are deleted with the instance; manual snapshots are not.
   can be re-downloaded anyway; the things worth protecting are `.env`, the
   certificates and the chat log (all inside the snapshot).
 
+## Rider reports
+
+Riders' reports (Report an issue on the map page) are stored in the transit database
+and checked by `REPORTS_MODEL` before other riders see them. Limits: 2 a minute and 10 a
+day per visitor, 300 a day for the whole site (`REPORTS_*` in the server's `.env`). To
+review or remove one:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 'cd ~/dmvtransit && docker compose exec -T app transit-mcp reports list --days 2'
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 'cd ~/dmvtransit && docker compose exec -T app transit-mcp reports hide 42'
+```
+
 ## Chat log
 
 The site saves each question with its answer, the data tools used, timing, token

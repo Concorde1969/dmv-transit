@@ -59,7 +59,21 @@ class Scheduler:
 
         result = run_all(self.settings)
         self._prune_chatlog()
+        self._prune_reports()
         return result
+
+    def _prune_reports(self) -> None:
+        """Nightly: delete rider reports past the retention period."""
+        from transit_mcp.reports import ReportStore
+
+        try:
+            n = ReportStore.from_settings(self.settings).prune(
+                self.settings.reports_retention_days)
+            if n:
+                log.info("rider reports: removed %d older than %d days",
+                         n, self.settings.reports_retention_days)
+        except Exception:  # noqa: BLE001 - retried tomorrow night
+            log.exception("rider report cleanup failed")
 
     def _prune_chatlog(self) -> None:
         """Nightly: delete chat-log rows past the retention period."""

@@ -245,6 +245,29 @@ def _cmd_chatlog(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_reports(args: argparse.Namespace) -> int:
+    from transit_mcp.reports import ReportStore
+
+    settings = get_settings()
+    store = ReportStore.from_settings(settings)
+    if args.reports_cmd == "list":
+        rows = store.list_all(args.days)
+        if args.status:
+            rows = [r for r in rows if r["status"] == args.status]
+        sys.stdout.buffer.write(json.dumps(rows, indent=2).encode("utf-8"))
+        print()
+    elif args.reports_cmd in ("hide", "publish"):
+        status = "hidden" if args.reports_cmd == "hide" else "published"
+        ok = store.set_status(args.id, status)
+        print(f"Report {args.id} {'is now ' + status if ok else 'not found'}.")
+    elif args.reports_cmd == "delete":
+        print(f"Report {args.id} {'deleted' if store.delete(args.id) else 'not found'}.")
+    elif args.reports_cmd == "prune":
+        n = store.prune(settings.reports_retention_days)
+        print(f"Removed {n} report(s) older than {settings.reports_retention_days} days.")
+    return 0
+
+
 def _cmd_planner(args: argparse.Namespace) -> int:
     from transit_mcp.planning import TripPlan, TripRequest, get_planner
     from transit_mcp.planning.request import UnresolvedPlace, build_request
@@ -375,6 +398,18 @@ def build_parser() -> argparse.ArgumentParser:
     who.add_argument("--visitor")
     clsub.add_parser("prune", help="Delete chats older than CHATLOG_RETENTION_DAYS")
     cl.set_defaults(func=_cmd_chatlog)
+
+    rp = sub.add_parser("reports", help="Review rider reports (list, hide, publish, delete)")
+    rpsub = rp.add_subparsers(dest="reports_cmd", required=True)
+    rl = rpsub.add_parser("list", help="Reports from the last N days (JSON)")
+    rl.add_argument("--days", type=int, default=7)
+    rl.add_argument("--status", choices=["pending", "published", "hidden"])
+    for name, helptext in (("hide", "Stop showing a report"),
+                           ("publish", "Show a report that was held back"),
+                           ("delete", "Delete a report")):
+        rpsub.add_parser(name, help=helptext).add_argument("id", type=int)
+    rpsub.add_parser("prune", help="Delete reports older than REPORTS_RETENTION_DAYS")
+    rp.set_defaults(func=_cmd_reports)
 
     pl = sub.add_parser("planner", help="Work with trip-planning engines")
     plsub = pl.add_subparsers(dest="planner_cmd", required=True)
