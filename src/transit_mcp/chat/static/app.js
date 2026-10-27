@@ -362,7 +362,7 @@ function render() {
   if (state.view === "detail" && state.selected != null) return renderDetail(plan.options[state.selected]);
   const n = plan.options.length;
   const liveNote = plan.live_available === false ? " Live times are paused; showing the timetable." : "";
-  results.innerHTML = `<div class="status-line">${plural(n, "way", "ways")} to go in the next ${plan.window_min} minutes. Trips may include walking to and from stops; walking time is shown on each trip.${liveNote}</div>`
+  results.innerHTML = `<div class="status-line">${plural(n, "way", "ways")} to go in the next ${span(plan.window_min)}. Trips may include walking to and from stops; walking time is shown on each trip.${liveNote}</div>`
     + plan.options.map((opt, i) => optionCard(opt, i)).join("");
   results.querySelectorAll(".option").forEach((el) => el.addEventListener("click", () => {
     const i = +el.dataset.i;
@@ -376,6 +376,10 @@ function countdown(opt) {
   const m = Math.round((opt.leave_at - nowS()) / 60);
   if (m <= 0) return { cls: "now", n: "Now", u: "Leave now" };
   return { cls: "", n: `${m}`, u: `min, leave by ${clock(opt.leave_at)}` };
+}
+
+function span(minutes) {
+  return minutes >= 120 && minutes % 60 === 0 ? `${minutes / 60} hours` : `${minutes} minutes`;
 }
 
 function walkLegs(opt) {

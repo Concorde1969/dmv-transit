@@ -89,6 +89,8 @@ def test_nothing_in_the_next_hour(net):
     _trip(net, "bus", "t2", "R1", "WK", [("A", "09:30:00"), ("C", "09:45:00")])
     res = plan(net, END_DIRECT)
     assert res["options"] == [] and "No trips in the next 60 minutes" in res["notice"]
+    res = plan(net, Point(38.9200, -77.0300), now=NOW.replace(hour=5), window_s=3 * 3600)
+    assert "No trips in the next 3 hours" in res["notice"]
 
 
 def test_stops_farther_than_300_m_are_used_with_their_walk(net):

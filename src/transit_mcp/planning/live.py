@@ -369,7 +369,7 @@ class LivePlanner:
                   "live_checks": self.live_calls,
                   "live_available": self.realtime is not None and self.realtime.available()}
         if not good:
-            result["notice"] = (f"No trips in the next {self.cfg.window_s // 60} minutes "
+            result["notice"] = (f"No trips in the next {_span(self.cfg.window_s)} "
                                 "from stops near you.")
         return result
 
@@ -719,6 +719,13 @@ class LivePlanner:
 
 
 # -- helpers ---------------------------------------------------------------------------------
+def _span(seconds: int) -> str:
+    minutes = seconds // 60
+    if minutes >= 120 and minutes % 60 == 0:
+        return f"{minutes // 60} hours"
+    return f"{minutes} minutes"
+
+
 def _by_feed(stops: list[NearStop]) -> dict[str, list[NearStop]]:
     out: dict[str, list[NearStop]] = defaultdict(list)
     for s in stops:
