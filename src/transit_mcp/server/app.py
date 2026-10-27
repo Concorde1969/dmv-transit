@@ -163,7 +163,7 @@ def _place(db: Database, text: str):
 @mcp.tool()
 def plan_trip_now(origin: str, destination: str) -> dict:
     """Leave-now trip options with LIVE departures, like the site's map: trips leaving
-    in the next hour from each agency's closest stops (up to about a mile's walk; the
+    in the next 3 hours from each agency's closest stops (up to about a mile's walk; the
     walking time is part of each option), direct trips first and one transfer only when
     needed, and transfers only between stops within 0.3 km. Options with short transfer
     waits (10 minutes or less) come first; a trip with a longer wait is offered only when

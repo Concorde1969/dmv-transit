@@ -5,7 +5,7 @@ Flow (the site owner's design):
    ``TRIP_STOPS_PER_AGENCY`` each, within ``TRIP_MAX_WALK_M``, about a mile); walking
    time to and from them counts toward each option's arrival time and is shown.
 2. From today's GTFS timetable (local database), find **direct** trips — a trip that
-   leaves a start stop within the next ``TRIP_WINDOW_MIN`` (60 min) and later calls at
+   leaves a start stop within the next ``TRIP_WINDOW_MIN`` (3 hours) and later calls at
    an end stop.
 3. Only when needed (no direct trip, or a much faster option exists), find **one-
    transfer** trips: ride to a stop, walk to another stop less than 0.3 km away (any
@@ -147,6 +147,7 @@ class LiveSettings:
     walk_m_per_min: float = 70.0
     detour: float = 1.25          # walking distance vs straight line
     max_options: int = 6
+    departures_per_route: int = 4  # per route, direction and start stop
     transfer_only_if_faster_s: int = 300   # on top of the 5 min each transfer costs
     max_live_calls: int = 8
 
@@ -383,10 +384,19 @@ class LivePlanner:
         if feed not in self._boardings:
             lo = self.now_s - 300
             hi = self.now_s + max(o_walk.values()) + self.cfg.window_s
-            self._boardings[feed] = [
-                c for c in self.calls_at(feed, list(o_walk), (lo, hi))
-                if self._window(o_walk[c.stop_id])[0] <= c.dep
-                <= self._window(o_walk[c.stop_id])[1]]
+            reachable = sorted(
+                (c for c in self.calls_at(feed, list(o_walk), (lo, hi))
+                 if self._window(o_walk[c.stop_id])[0] <= c.dep
+                 <= self._window(o_walk[c.stop_id])[1]), key=lambda c: c.dep)
+            # Only the next few departures of each route and direction at each stop: a
+            # later bus on the same line never gets the rider there sooner.
+            seen: dict[tuple, int] = defaultdict(int)
+            self._boardings[feed] = []
+            for c in reachable:
+                key = (c.route_id, c.headsign, c.stop_id)
+                if seen[key] < self.cfg.departures_per_route:
+                    seen[key] += 1
+                    self._boardings[feed].append(c)
         return self._boardings[feed]
 
     def _direct(self, o_stops, d_stops) -> list[Candidate]:
