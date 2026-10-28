@@ -315,3 +315,83 @@ def test_google_address_names_are_never_kept_in_the_search_log():
     assert place_name("Watergate", "premise", "suggestion") is None
     assert place_name("Union Station, Washington", "transit_station",
                       "suggestion") == "Union Station, Washington"
+
+
+def _places(seen, reply=None, budget=None):
+    from transit_mcp.geocode import PlaceSearch
+
+    def handler(request: httpx.Request):
+        seen.append(request)
+        if reply is not None:
+            return reply
+        if request.url.path.endswith(":autocomplete"):
+            return httpx.Response(200, json={"suggestions": [
+                {"placePrediction": {
+                    "placeId": "ChIJ_capital_hilton", "types": ["lodging", "establishment"],
+                    "text": {"text": "Capital Hilton, 16th Street Northwest, Washington, DC, USA"},
+                    "structuredFormat": {
+                        "mainText": {"text": "Capital Hilton"},
+                        "secondaryText": {"text": "16th Street Northwest, Washington, DC, USA"}}}},
+                {"queryPrediction": {"text": {"text": "capital hilton restaurants"}}}]})
+        return httpx.Response(200, json={
+            "id": "ChIJ_capital_hilton", "types": ["lodging", "establishment"],
+            "displayName": {"text": "Capital Hilton"},
+            "formattedAddress": "1001 16th St NW, Washington, DC 20036, USA",
+            "location": {"latitude": 38.9026, "longitude": -77.0365}})
+    return PlaceSearch("P-KEY", budget=budget,
+                       http=httpx.Client(transport=httpx.MockTransport(handler)))
+
+
+def test_places_suggestions_then_the_picked_place():
+    seen = []
+    p = _places(seen, budget=FakeBudget(10))
+    (hit,) = p.autocomplete("capital hil", "session-1234")
+    assert hit == {"label": "Capital Hilton", "sub": "16th Street Northwest, Washington, DC",
+                   "place_id": "ChIJ_capital_hilton", "kind": "lodging",
+                   "full_label": "Capital Hilton, 16th Street Northwest, Washington, DC, USA"}
+    req = seen[0]
+    body = json.loads(req.content)
+    assert req.headers["X-Goog-Api-Key"] == "P-KEY" and "P-KEY" not in str(req.url)
+    assert body["sessionToken"] == "session-1234" and body["includedRegionCodes"] == ["us"]
+    assert body["locationRestriction"]["rectangle"]["low"]["latitude"] == 37.4
+    place = p.details("ChIJ_capital_hilton", "session-1234")
+    assert place["label"] == "Capital Hilton" and place["kind"] == "lodging"
+    assert (place["lat"], place["lon"]) == (38.9026, -77.0365)
+    assert seen[1].headers["X-Goog-FieldMask"] == "id,displayName,formattedAddress,location,types"
+    assert seen[1].url.params["sessionToken"] == "session-1234"
+    assert p.details("../../etc", None) is None and len(seen) == 2   # bad IDs never sent
+    assert p.budget.left == 8
+
+
+def test_places_errors_never_show_the_key():
+    from transit_mcp.geocode import BudgetSpent, GeocodeError
+
+    denied = httpx.Response(403, json={"error": {"status": "PERMISSION_DENIED",
+                                                 "message": "Places API (New) is not enabled"}})
+    with pytest.raises(GeocodeError) as err:
+        _places([], reply=denied).autocomplete("union station")
+    assert str(err.value) == "places: HTTP 403 PERMISSION_DENIED"
+    seen = []
+    with pytest.raises(BudgetSpent):
+        _places(seen, budget=FakeBudget(0)).autocomplete("union station")
+    assert seen == []
+
+
+def test_suggestions_fall_back_to_geocoding_when_places_fails():
+    from transit_mcp.chat.trip_api import _suggest
+
+    denied = httpx.Response(403, json={"error": {"status": "PERMISSION_DENIED"}})
+
+    class Svc:
+        places = _places([], reply=denied)
+        geocoder = _geocoder([])
+        places_paused_until = 0.0
+
+    svc = Svc()
+    found, via = _suggest(svc, "Capitol Hilton DC", None)
+    assert via == "geocode" and found[0]["label"].startswith("Capital Hilton")
+    assert svc.places_paused_until > 0                    # not retried for a while
+    svc.places = _places([])
+    assert _suggest(svc, "capital hil", None)[1] == "geocode"
+    svc.places_paused_until = 0.0
+    assert _suggest(svc, "capital hil", None)[1] == "places"

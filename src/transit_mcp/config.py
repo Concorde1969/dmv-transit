@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     # Google bills per request: at most this many a month (searches and reverse lookups).
     google_geocoding_monthly_budget: int = Field(default=9000,
                                                  alias="GOOGLE_GEOCODING_MONTHLY_BUDGET")
+    # Suggestions as the rider types come from Google Places Autocomplete (same key;
+    # "Places API (New)" must be enabled for it), else from the Geocoding API.
+    google_places_monthly_budget: int = Field(default=9000,
+                                              alias="GOOGLE_PLACES_MONTHLY_BUDGET")
     geocode_api_key: str | None = Field(default=None, alias="GEOCODE_API_KEY")
 
     # Storage

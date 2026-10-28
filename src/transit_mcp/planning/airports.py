@@ -51,7 +51,7 @@ class AirportLink:
         """What the trip step shows. ``end``: "origin" (terminal -> station) or
         "destination" (station -> terminal)."""
         return {"code": self.code, "name": self.name, "mode": self.mode,
-                "station": self.station_name,
+                "station": self.station_name, "terminal": list(self.terminal),
                 "text": self.to_station if end == "origin" else self.from_station,
                 "source": self.source}
 

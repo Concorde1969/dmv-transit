@@ -40,6 +40,7 @@ PowerShell, using your signed-in AWS CLI profile — `aws login`):
 | WMATA API, agency GTFS and GTFS-realtime feeds | free |
 | Transitland (Explorer plan, live times for some agencies) | free plan — the app stays under Transitland's 5,000 calls/month on its own (`TRANSITLAND_MONTHLY_BUDGET`) |
 | Google Geocoding API (address search) | billed per request by Google — the app stops at `GOOGLE_GEOCODING_MONTHLY_BUDGET` (default 9,000) a month; searches are cached for a day |
+| Google Places Autocomplete + Place Details (suggestions while typing) | billed by Google per request / per session — the app stops at `GOOGLE_PLACES_MONTHLY_BUDGET` (default 9,000) a month, then uses the Geocoding API |
 
 Why 2 GB: the nightly data load covers 21 GTFS feeds, including WMATA's Metrobus
 schedule (4+ million timetable rows). It is processed in a streaming way (the heaviest

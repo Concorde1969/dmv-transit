@@ -134,3 +134,25 @@ def test_headway_trips_become_one_trip_per_run(tmp_db):
     assert db.conn.execute("SELECT service_id FROM gtfs_trips WHERE trip_id = "
                            "'loop@08:40:00'").fetchone()[0] == "S"
     assert expand_frequencies(db, "sh") == 0              # already expanded
+
+
+def test_one_train_listed_by_two_feeds_is_shown_once(net):  # noqa: F811
+    # Amtrak's feed also lists the MARC trains: same times, stops a few meters apart.
+    net.conn.executemany("INSERT INTO gtfs_stops (feed_id, stop_id, name, lat, lon) "
+                         "VALUES (?, ?, ?, ?, ?)",
+                         [("amtrak", "AX", "Amtrak X", 38.9405, -77.0106),
+                          ("amtrak", "AY", "Amtrak Y", 38.9606, -77.0001)])
+    net.conn.execute("INSERT INTO gtfs_calendar (feed_id, service_id, monday, tuesday, "
+                     "wednesday, thursday, friday, start_date, end_date) VALUES "
+                     "('amtrak', 'WK', 1, 1, 1, 1, 1, '20260101', '20271231')")
+    net.conn.execute("INSERT INTO gtfs_routes (feed_id, route_id, long_name, route_type) "
+                     "VALUES ('amtrak', 'CR', 'Commuter Rail', 2)")
+    _trip(net, "bus", "t1", "R1", "WK", [("A", "08:05:00"), ("B", "08:15:00")])
+    _trip(net, "rail", "t2", "R2", "WK", [("X", "08:22:00"), ("Y", "08:35:00")])
+    _trip(net, "amtrak", "a2", "CR", "WK", [("AX", "08:22:00"), ("AY", "08:35:00")])
+    net.commit()
+    agencies = {"bus": {"mode": "bus"}, "rail": {"mode": "commuter_rail"},
+                "amtrak": {"mode": "intercity_rail"}}
+    p = LivePlanner(net, cfg=LiveSettings(), now=NOW, airports=(), agencies=agencies)
+    (opt,) = p.plan(START, Point(38.9600, -77.0000))["options"]
+    assert [leg["agency"] for leg in opt["legs"] if leg["mode"] == "ride"] == ["bus", "rail"]

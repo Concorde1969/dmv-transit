@@ -424,8 +424,40 @@ class LivePlanner:
                 good.append(chosen)
         # Long waits at a transfer only when no option has short ones.
         short = [c for c in good if self._feasible(c) == "ok"]
-        return sorted(self._drop_dominated(short or good),
-                      key=self._score)[: self.cfg.max_options]
+        kept: list[Candidate] = []
+        for c in sorted(self._drop_dominated(short or good), key=self._score):
+            twin = next((i for i, k in enumerate(kept) if self._same_vehicles(c, k)), None)
+            if twin is None:
+                kept.append(c)
+            elif self._listing_rank(c) < self._listing_rank(kept[twin]):
+                kept[twin] = c
+        return kept[: self.cfg.max_options]
+
+    def _same_vehicles(self, a: Candidate, b: Candidate) -> bool:
+        """The same trip listed by two feeds — Amtrak's GTFS also lists the MARC trains
+        it runs: every ride leaves and arrives within 2 minutes of the other's, from and
+        to stops within a short walk."""
+        if len(a.rides) != len(b.rides):
+            return False
+        for r1, r2 in zip(a.rides, b.rides):
+            if (r1.feed, r1.trip_id) == (r2.feed, r2.trip_id):
+                continue
+            if abs(r1.dep - r2.dep) > 120 or abs(r1.arr - r2.arr) > 120:
+                return False
+            for s1, s2 in ((self.stop(r1.feed, r1.board_stop), self.stop(r2.feed, r2.board_stop)),
+                           (self.stop(r1.feed, r1.alight_stop),
+                            self.stop(r2.feed, r2.alight_stop))):
+                if s1["lat"] is None or s2["lat"] is None or haversine_m(
+                        s1["lat"], s1["lon"], s2["lat"], s2["lon"]) > self.cfg.transfer_m:
+                    return False
+        return True
+
+    def _listing_rank(self, c: Candidate) -> tuple[int, int]:
+        """Which listing of the same trip to show: the operating agency's own feed over an
+        intercity feed's copy, then the one with live times."""
+        intercity = sum(str(self.agencies.get(r.feed, {}).get("mode") or "")
+                        .startswith("intercity") for r in c.rides)
+        return intercity, -sum(r.live for r in c.rides)
 
     def _window(self, walk_s: int) -> tuple[int, int]:
         # Starts a little before the rider can reach the stop: a late bus may become

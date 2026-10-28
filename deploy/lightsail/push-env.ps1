@@ -45,7 +45,8 @@ $local = Read-EnvFile $localEnv
 
 $fill = @{ SITE_DOMAIN = $SiteDomain.Trim(); ACME_EMAIL = $AcmeEmail.Trim() }
 foreach ($name in 'ANTHROPIC_API_KEY', 'WMATA_API_KEY', 'TRANSITLAND_API_KEY',
-                 'GOOGLE_GEOCODING_API_KEY', 'GOOGLE_GEOCODING_MONTHLY_BUDGET', 'GEOCODE_API_KEY') {
+                 'GOOGLE_GEOCODING_API_KEY', 'GOOGLE_GEOCODING_MONTHLY_BUDGET',
+                 'GOOGLE_PLACES_MONTHLY_BUDGET', 'GEOCODE_API_KEY') {
     if ($local[$name]) { $fill[$name] = $local[$name] }
 }
 $missing = @('ANTHROPIC_API_KEY', 'WMATA_API_KEY') | Where-Object { -not $fill[$_] }

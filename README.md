@@ -102,7 +102,7 @@ cited and stale data is flagged.
 | Fares, how to pay, how to ride | The agency's own **fare / rider web pages**, plus WMATA's station-to-station fare data (checked against wmata.com/pay.html) |
 | Disruptions | WMATA real-time incidents, agencies' GTFS-realtime alerts, and their service-alert / service-change web pages — always shown *alongside* the GTFS schedule, never instead of it |
 | Live departure times (map planner) | The agency's own **GTFS-realtime TripUpdates** feed at the URL Transitland lists (WMATA rail and bus, VRE, Fairfax Connector, MARC, ART); Transitland's departures API for the rest. Otherwise scheduled times, labelled "Scheduled" |
-| Addresses → map points | [Google Geocoding API](https://developers.google.com/maps/documentation/geocoding) (or [geocode.maps.co](https://geocode.maps.co/) without a Google key), called from the server (the key never reaches browsers) |
+| Addresses → map points | Suggestions while typing from [Google Places Autocomplete](https://developers.google.com/maps/documentation/places/web-service/place-autocomplete) (place picked → Place Details for its location), else the [Google Geocoding API](https://developers.google.com/maps/documentation/geocoding) (or [geocode.maps.co](https://geocode.maps.co/) without a Google key); all called from the server (the key never reaches browsers) |
 | The map | [OpenStreetMap](https://www.openstreetmap.org/copyright) data in a self-hosted [Protomaps](https://protomaps.com/) extract, drawn with MapLibre GL |
 
 Web pages are never used for routes or schedules. Each feed is downloaded from the

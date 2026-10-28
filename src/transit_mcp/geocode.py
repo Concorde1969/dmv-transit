@@ -238,3 +238,131 @@ def _short_label(display_name: str) -> str:
     keep = [p for p in parts if not p.isdigit() and p not in ("United States",
                                                               "United States of America")]
     return ", ".join(keep[:3]) if keep else display_name
+
+
+PLACES_URL = "https://places.googleapis.com/v1"
+_PLACE_ID = re.compile(r"^[A-Za-z0-9_-]{10,400}$")
+SESSION_TOKEN = re.compile(r"^[A-Za-z0-9-]{8,64}$")
+# Asking for the name (a "Pro" field) when a place is picked makes the typing requests
+# before it in the same session free (Google's session pricing).
+_DETAIL_FIELDS = "id,displayName,formattedAddress,location,types"
+
+
+class PlaceSearch:
+    """Google Places Autocomplete (New) for the address box, and Place Details for the
+    suggestion a rider picks (suggestions carry no coordinates). Same key as the
+    Geocoding API, sent in a header; every request counts against
+    ``GOOGLE_PLACES_MONTHLY_BUDGET``. A browser-made session token ties one round of
+    typing to its pick."""
+
+    def __init__(self, api_key: str | None, *, http: httpx.Client | None = None,
+                 budget=None, max_entries: int = 2000):
+        self.api_key = api_key
+        self.budget = budget
+        self.http = http or httpx.Client(timeout=8.0)
+        self._cache: OrderedDict[tuple, tuple[float, object]] = OrderedDict()
+        self._max = max_entries
+        self._lock = threading.Lock()
+
+    @classmethod
+    def from_settings(cls, settings, *, http: httpx.Client | None = None) -> PlaceSearch:
+        budget = None
+        if settings.google_geocoding_api_key:
+            from transit_mcp.api_budget import ApiBudget
+
+            budget = ApiBudget(service="google_places",
+                               monthly_limit=settings.google_places_monthly_budget,
+                               timezone=settings.timezone, db_path=settings.db_path)
+        return cls(settings.google_geocoding_api_key, http=http, budget=budget)
+
+    @property
+    def available(self) -> bool:
+        return bool(self.api_key)
+
+    def _call(self, method: str, path: str, *, cache_key: tuple, ttl: int,
+              body: dict | None = None, params: dict | None = None,
+              fields: str | None = None):
+        with self._lock:
+            hit = self._cache.get(cache_key)
+            if hit and time.time() - hit[0] < ttl:
+                self._cache.move_to_end(cache_key)
+                return hit[1]
+        if self.budget is not None and not self.budget.try_spend():
+            raise BudgetSpent(f"places: monthly budget of {self.budget.limit:,} requests used")
+        headers = {"X-Goog-Api-Key": self.api_key}
+        if fields:
+            headers["X-Goog-FieldMask"] = fields
+        try:
+            r = self.http.request(method, f"{PLACES_URL}{path}", json=body, params=params,
+                                  headers=headers)
+            if r.status_code >= 400:
+                try:
+                    status = r.json().get("error", {}).get("status") or ""
+                except ValueError:
+                    status = ""
+                raise GeocodeError(f"places: HTTP {r.status_code} {status}".strip())
+            data = r.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise GeocodeError(f"places: {type(exc).__name__}") from None
+        with self._lock:
+            self._cache[cache_key] = (time.time(), data)
+            while len(self._cache) > self._max:
+                self._cache.popitem(last=False)
+        return data
+
+    def autocomplete(self, query: str, session: str | None = None,
+                     limit: int = 6) -> list[dict]:
+        q = " ".join(query.split())[:200]
+        if not self.api_key or len(q) < 3:
+            return []
+        body = {"input": q, "includedRegionCodes": ["us"], "languageCode": "en",
+                "locationRestriction": {"rectangle": {
+                    "low": {"latitude": REGION["south"], "longitude": REGION["west"]},
+                    "high": {"latitude": REGION["north"], "longitude": REGION["east"]}}}}
+        if session and SESSION_TOKEN.match(session):
+            body["sessionToken"] = session
+        # Suggestions change little: a short cache spares repeat typing of the same text.
+        data = self._call("POST", "/places:autocomplete", cache_key=("ac", q.lower()),
+                          ttl=600, body=body)
+        out = []
+        for s in data.get("suggestions") or []:
+            p = s.get("placePrediction")
+            if not p or not p.get("placeId"):
+                continue
+            fmt = p.get("structuredFormat") or {}
+            main = ((fmt.get("mainText") or {}).get("text")
+                    or (p.get("text") or {}).get("text") or "")
+            sub = (fmt.get("secondaryText") or {}).get("text") or ""
+            sub = re.sub(r",?\s*(USA|United States)$", "", sub).strip()
+            types = p.get("types") or []
+            specific = [t for t in types if t not in _GENERIC]
+            out.append({"label": main, "sub": sub, "place_id": p["placeId"],
+                        "full_label": (p.get("text") or {}).get("text"),
+                        "kind": (specific or types or [None])[0]})
+            if len(out) >= limit:
+                break
+        return out
+
+    def details(self, place_id: str, session: str | None = None) -> dict | None:
+        """Where a picked suggestion is: lat/lon, a label, its kind (None if unknown or
+        outside the region)."""
+        if not self.api_key or not _PLACE_ID.match(place_id or ""):
+            return None
+        params = {"sessionToken": session} if session and SESSION_TOKEN.match(session) else None
+        data = self._call("GET", f"/places/{place_id}", cache_key=("pd", place_id),
+                          ttl=_CACHE_S, params=params, fields=_DETAIL_FIELDS)
+        try:
+            lat = float(data["location"]["latitude"])
+            lon = float(data["location"]["longitude"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        if not in_region(lat, lon):
+            return None
+        types = data.get("types") or []
+        specific = [t for t in types if t not in _GENERIC]
+        address = _google_short(data.get("formattedAddress") or "")
+        name = (data.get("displayName") or {}).get("text")
+        named = bool(_NAMED & set(types))
+        return {"lat": lat, "lon": lon, "label": (name if named and name else address or name),
+                "full_label": data.get("formattedAddress"),
+                "kind": (specific or types or [None])[0]}

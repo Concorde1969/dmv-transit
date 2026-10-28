@@ -141,6 +141,16 @@ function addTripLayers() {
   map.addLayer({ id: "trip-walk", type: "line", source: "trip", filter: ["==", ["get", "kind"], "walk"],
     layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": "#4A5651", "line-width": 4, "line-dasharray": [0.1, 1.8] } });
+  map.addLayer({ id: "trip-shuttle-casing", type: "line", source: "trip", filter: ["==", ["get", "kind"], "shuttle"],
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": "#ffffff", "line-width": 11 } });
+  map.addLayer({ id: "trip-shuttle", type: "line", source: "trip", filter: ["==", ["get", "kind"], "shuttle"],
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": SHUTTLE_COLOR, "line-width": 6, "line-dasharray": [2, 1.2] } });
+  map.addLayer({ id: "trip-shuttle-label", type: "symbol", source: "trip", filter: ["==", ["get", "kind"], "shuttle"],
+    layout: { "symbol-placement": "line-center", "text-field": ["get", "name"], "text-font": ["Noto Sans Medium"],
+              "text-size": 14, "text-offset": [0, -1.1] },
+    paint: { "text-color": "#1B2621", "text-halo-color": "#ffffff", "text-halo-width": 2 } });
   map.addLayer({ id: "stops-dot", type: "circle", source: "stops",
     paint: { "circle-radius": 7, "circle-color": "#ffffff", "circle-stroke-width": 4,
              "circle-stroke-color": ["get", "color"] } });
@@ -151,6 +161,7 @@ function addTripLayers() {
   if (state.plan) drawPlan();
 }
 
+const SHUTTLE_COLOR = "#0F7368";
 const line = (coords, props) => ({ type: "Feature", properties: props, geometry: { type: "LineString", coordinates: coords } });
 const pt = (p) => [p.lon, p.lat];
 
@@ -159,7 +170,21 @@ function optionFeatures(opt) {
   const o = state.plan.origin, d = state.plan.destination;
   let prev = pt(o);
   for (const leg of opt.legs) {
-    if (leg.mode === "walk") {
+    if (leg.mode === "walk" && leg.airport?.mode === "shuttle") {
+      // The airport shuttle between the terminal and the rail station, then any walk.
+      const a = leg.airport, terminal = [a.terminal[1], a.terminal[0]];
+      const name = `Free ${a.code} shuttle`;
+      stops.push({ type: "Feature", properties: { name: `${a.name} terminal`, color: SHUTTLE_COLOR }, geometry: { type: "Point", coordinates: terminal } });
+      if (leg.to) {   // terminal -> station
+        feats.push(line([prev, terminal], { kind: "walk" }));
+        feats.push(line([terminal, pt(leg.to)], { kind: "shuttle", name }));
+        prev = pt(leg.to);
+      } else {        // station -> terminal
+        feats.push(line([leg.from ? pt(leg.from) : prev, terminal], { kind: "shuttle", name }));
+        feats.push(line([terminal, pt(d)], { kind: "walk" }));
+        prev = pt(d);
+      }
+    } else if (leg.mode === "walk") {
       const target = leg.to ? pt(leg.to) : pt(d);
       const from = leg.from ? pt(leg.from) : prev;
       feats.push(line([from, target], { kind: "walk" }));
@@ -212,6 +237,10 @@ function drawPlan() {
 // ------------------------------------------------------------------ search
 const fromInput = $("fromInput"), toInput = $("toInput"), suggest = $("suggest");
 let activeField = null, suggestItems = [], suggestIndex = -1, searchTimer;
+// One round of typing and its pick share a token (Google bills them as one session).
+let placesSession = null;
+const newSession = () => (crypto.randomUUID ? crypto.randomUUID()
+  : Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join(""));
 
 function showSuggestions(field, items, credit = "") {
   activeField = field; suggestItems = items; suggestIndex = -1;
@@ -238,7 +267,8 @@ function onType(field) {
   }
   searchTimer = setTimeout(async () => {
     try {
-      const r = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+      placesSession ||= newSession();
+      const r = await fetch(`/api/geocode?q=${encodeURIComponent(q)}&session=${placesSession}`);
       const data = await r.json();
       // Google results bring their own second line; geocode.maps.co ones get one here.
       const items = (data.results || []).map((x) => ({ ...x, sub: "sub" in x ? x.sub : x.full_label && x.full_label !== x.label ? x.full_label.split(",").slice(-4, -2).join(",").trim() : "" }));
@@ -250,11 +280,24 @@ function onType(field) {
   }, 380);
 }
 
-function pick(i) {
+async function pick(i) {
   const it = suggestItems[i];
   if (!it || it.disabled) return;
   const field = activeField;
   hideSuggestions();
+  if (!it.me && it.place_id && it.lat == null) {
+    // A Places suggestion: ask where it is (this also closes the typing session).
+    try {
+      const r = await fetch(`/api/place?id=${encodeURIComponent(it.place_id)}&session=${placesSession || ""}`);
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.message);
+      Object.assign(it, { lat: data.lat, lon: data.lon, kind: it.kind || data.kind });
+    } catch (err) {
+      showSuggestions(field, [{ label: err.message || "Couldn't find that place. Please try another suggestion.", disabled: true }]);
+      return;
+    }
+  }
+  placesSession = null;
   if (field === fromInput) {
     if (it.me) { state.from = null; fromInput.value = "My location"; }
     else { state.from = { lat: it.lat, lon: it.lon, label: it.label, source: "suggestion", kind: it.kind }; fromInput.value = it.label; }

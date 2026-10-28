@@ -30,7 +30,13 @@ from transit_mcp.chat.analytics import nearest_stops, search_row
 from transit_mcp.chat.guard import RateLimiter
 from transit_mcp.chatlog import device_class
 from transit_mcp.db.database import Database
-from transit_mcp.geocode import BudgetSpent, GeocodeError, Geocoder, in_region
+from transit_mcp.geocode import (
+    BudgetSpent,
+    GeocodeError,
+    Geocoder,
+    PlaceSearch,
+    in_region,
+)
 from transit_mcp.ingest.http import HttpClient
 from transit_mcp.ingest.transitland import _secret, atlas_file_for, feed_record
 from transit_mcp.planning.live import LivePlanner, LiveSettings, Point
@@ -136,6 +142,8 @@ class TripService:
         self.agencies = agency_info(settings)
         self.http = httpx.Client(timeout=8.0)
         self.geocoder = Geocoder.from_settings(settings, http=self.http)
+        self.places = PlaceSearch.from_settings(settings, http=self.http)
+        self.places_paused_until = 0.0   # after Places fails, use the geocoder a while
         self.trip_limiter = RateLimiter(settings.trip_rate_per_minute, settings.trip_rate_per_day)
         self.geo_limiter = RateLimiter(40, 1000)
         self.event_limiter = RateLimiter(60, 3000)
@@ -169,19 +177,31 @@ def _ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def _suggest(svc: TripService, q: str, session: str | None) -> tuple[list[dict], str]:
+    """Suggestions from Places Autocomplete; the geocoder when Places isn't working."""
+    if svc.places.available and time.time() >= svc.places_paused_until:
+        try:
+            return svc.places.autocomplete(q, session), "places"
+        except GeocodeError as exc:   # incl. its budget: fall back for 10 minutes
+            log.warning("places autocomplete failed, using geocoding: %s", exc)
+            svc.places_paused_until = time.time() + 600
+    return svc.geocoder.search(q), "geocode"
+
+
 @router.get("/api/geocode")
-def geocode(request: Request, q: str = "") -> JSONResponse:
+def geocode(request: Request, q: str = "", session: str | None = None) -> JSONResponse:
     svc = _service(request)
     if svc.geo_limiter.check(_ip(request)):
         return JSONResponse({"results": [], "message": PLEASE_WAIT}, status_code=429)
-    if not svc.geocoder.available:
+    if not svc.geocoder.available and not svc.places.available:
         return JSONResponse({"results": [], "message": "Address search isn't set up yet."},
                             status_code=503)
     try:
         started = time.monotonic()
-        found = svc.geocoder.search(q)
+        found, via = _suggest(svc, q, session)
         _event(request, "address_search", detail={
-            "results": len(found), "ms": int((time.monotonic() - started) * 1000)})
+            "results": len(found), "via": via,
+            "ms": int((time.monotonic() - started) * 1000)})
         return JSONResponse({"results": found, "attribution": svc.geocoder.attribution})
     except BudgetSpent as exc:
         log.warning("geocode paused: %s", exc)
@@ -191,6 +211,23 @@ def geocode(request: Request, q: str = "") -> JSONResponse:
         log.warning("geocode failed: %s", exc)
         return JSONResponse({"results": [], "message": "Address search is busy. "
                              "Please try again in a moment."}, status_code=502)
+
+
+@router.get("/api/place")
+def place(request: Request, id: str = "", session: str | None = None) -> JSONResponse:
+    """Where a picked Places suggestion is (suggestions carry no coordinates)."""
+    svc = _service(request)
+    if svc.geo_limiter.check(_ip(request)):
+        return JSONResponse({"message": PLEASE_WAIT}, status_code=429)
+    try:
+        found = svc.places.details(id, session)
+    except GeocodeError as exc:
+        log.warning("place details failed: %s", exc)
+        found = None
+    if not found:
+        return JSONResponse({"message": "Couldn't find that place. Please try another "
+                             "suggestion."}, status_code=404)
+    return JSONResponse(found)
 
 
 @router.get("/api/reverse")

@@ -121,7 +121,11 @@ republished as a feed.
 
 ## Geocoding and the map
 
-- Typed addresses are turned into map points by the
+- Suggestions while typing come from
+  [Google Places Autocomplete](https://developers.google.com/maps/documentation/places/web-service/place-autocomplete),
+  and a picked suggestion's location from Place Details (capped at
+  `GOOGLE_PLACES_MONTHLY_BUDGET` requests a month). Without Places, typed addresses are
+  turned into map points by the
   [Google Geocoding API](https://developers.google.com/maps/documentation/geocoding)
   (or [geocode.maps.co](https://geocode.maps.co/) when no Google key is set), called
   from the server only; results are cached for 24 hours. Suggestions from Google are
