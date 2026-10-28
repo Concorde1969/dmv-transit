@@ -58,7 +58,8 @@ CREATE TABLE IF NOT EXISTS turns (
     nudged             INTEGER NOT NULL DEFAULT 0
 );
 -- Map trip searches. Coordinates are rounded to 3 decimals (~100 m); typed addresses
--- are not stored.
+-- are not stored, only names of landmarks picked from suggestions (see place_name).
+-- More columns are added by ChatLog._add_columns (TRIP_COLUMNS).
 CREATE TABLE IF NOT EXISTS trip_searches (
     id          INTEGER PRIMARY KEY,
     ts          TEXT NOT NULL,
@@ -71,11 +72,62 @@ CREATE TABLE IF NOT EXISTS trip_searches (
     notice      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_trip_searches_ts ON trip_searches(ts);
+-- What visitors do on the page: options opened, address searches (result counts only),
+-- drawers opened, page visits (referring site's name only).
+CREATE TABLE IF NOT EXISTS events (
+    id           INTEGER PRIMARY KEY,
+    ts           TEXT NOT NULL,
+    visitor_id   TEXT NOT NULL,
+    event        TEXT NOT NULL,
+    search_id    TEXT,
+    option_index INTEGER,
+    detail_json  TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
 CREATE INDEX IF NOT EXISTS idx_turns_ts ON turns(ts);
 CREATE INDEX IF NOT EXISTS idx_turns_conversation ON turns(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_turns_visitor ON turns(visitor_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_last ON conversations(last_at);
 """
+
+# Extra trip_searches columns (added to older databases on open).
+TRIP_COLUMNS = {
+    "search_id": "TEXT", "device": "TEXT", "outcome": "TEXT",
+    "origin_source": "TEXT", "dest_source": "TEXT",      # my_location | suggestion | link
+    "origin_kind": "TEXT", "dest_kind": "TEXT",          # geocoder type, e.g. station
+    "origin_place": "TEXT", "dest_place": "TEXT",        # landmark names only
+    "origin_stop": "TEXT", "origin_stop_agency": "TEXT", "origin_stop_m": "INTEGER",
+    "dest_stop": "TEXT", "dest_stop_agency": "TEXT", "dest_stop_m": "INTEGER",
+    "origin_station": "TEXT", "origin_station_m": "INTEGER",
+    "dest_station": "TEXT", "dest_station_m": "INTEGER",
+    "distance_km": "REAL", "window_min": "INTEGER",
+    "best_minutes": "INTEGER", "best_leave_in_min": "INTEGER", "best_walk_min": "INTEGER",
+    "best_wait_min": "INTEGER", "best_transfers": "INTEGER", "best_routes": "TEXT",
+    "agencies": "TEXT", "n_live": "INTEGER", "n_with_reports": "INTEGER",
+    "options_json": "TEXT",
+}
+TRIP_FIELDS = ("ts", "visitor_id", "origin_lat", "origin_lon", "dest_lat", "dest_lon",
+               "n_options", "live_checks", "latency_ms", "notice", *TRIP_COLUMNS)
+
+# Geocoder result types that are homes, buildings or streets: their names are not kept.
+_ADDRESS_KINDS = {
+    "house", "residential", "building", "apartments", "detached", "semidetached_house",
+    "terrace", "yes", "dormitory", "bungalow", "cabin", "farm", "garage", "garages",
+    "houseboat", "static_caravan", "hut", "road", "street", "postcode", "house_number",
+    "address", "living_street", "service", "unclassified", "residential_road", "tertiary",
+    "secondary", "primary", "trunk", "motorway", "footway", "path", "track", "pedestrian",
+}
+
+
+def place_name(label: str | None, kind: str | None, source: str | None) -> str | None:
+    """A start/end name that is safe to keep: a landmark, station or area picked from
+    the suggestions — never a home or street address, a typed text or a shared link."""
+    if source != "suggestion" or not label or not kind:
+        return None
+    if kind.lower() in _ADDRESS_KINDS or re.match(r"\s*\d", label):
+        return None
+    return redact(label.strip())[:120]
+
 
 # --- redaction --------------------------------------------------------------------
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
@@ -145,7 +197,15 @@ class ChatLog:
         self.conn = sqlite3.connect(str(self.path), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        self._add_columns()
         self._salt = (salt or self._stored_salt()).encode("utf-8")
+
+    def _add_columns(self) -> None:
+        have = {r["name"] for r in self.conn.execute("PRAGMA table_info(trip_searches)")}
+        for name, decl in TRIP_COLUMNS.items():
+            if name not in have:
+                self.conn.execute(f"ALTER TABLE trip_searches ADD COLUMN {name} {decl}")
+        self.conn.commit()
 
     @classmethod
     def from_settings(cls, settings) -> ChatLog:
@@ -207,22 +267,38 @@ class ChatLog:
         except Exception:  # noqa: BLE001
             log.exception("could not write the chat log")
 
-    def safe_record_trip(self, *, visitor_id: str, origin: tuple[float, float],
-                         destination: tuple[float, float], n_options: int,
-                         live_checks: int, latency_ms: int, notice: str | None) -> None:
-        """Log a map trip search (coordinates rounded to ~100 m); never raises."""
+    def safe_record_search(self, row: dict) -> None:
+        """Log a map trip search; never raises. Coordinates are rounded to ~100 m here
+        whatever the caller passes."""
         try:
+            row = {k: v for k, v in row.items() if k in TRIP_FIELDS}
+            row.setdefault("ts", _now())
+            row.setdefault("n_options", 0)
+            for k in ("origin_lat", "origin_lon", "dest_lat", "dest_lon"):
+                if row.get(k) is not None:
+                    row[k] = round(float(row[k]), 3)
+            cols = list(row)
             with self._lock:
                 self.conn.execute(
-                    "INSERT INTO trip_searches (ts, visitor_id, origin_lat, origin_lon, "
-                    "dest_lat, dest_lon, n_options, live_checks, latency_ms, notice) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (_now(), visitor_id, round(origin[0], 3), round(origin[1], 3),
-                     round(destination[0], 3), round(destination[1], 3), n_options,
-                     live_checks, latency_ms, notice))
+                    f"INSERT INTO trip_searches ({', '.join(cols)}) "
+                    f"VALUES ({', '.join('?' * len(cols))})", [row[c] for c in cols])
                 self.conn.commit()
         except Exception:  # noqa: BLE001
             log.exception("could not write the trip log")
+
+    def safe_record_event(self, visitor_id: str, event: str, *, search_id: str | None = None,
+                          option_index: int | None = None, detail: dict | None = None) -> None:
+        """Log something a visitor did on the page; never raises."""
+        try:
+            with self._lock:
+                self.conn.execute(
+                    "INSERT INTO events (ts, visitor_id, event, search_id, option_index, "
+                    "detail_json) VALUES (?, ?, ?, ?, ?, ?)",
+                    (_now(), visitor_id, event[:40], search_id, option_index,
+                     json.dumps(detail or {}, ensure_ascii=False)[:2000]))
+                self.conn.commit()
+        except Exception:  # noqa: BLE001
+            log.exception("could not write the event log")
 
     # -- housekeeping ------------------------------------------------------------------
     def prune(self, older_than_days: int) -> int:
@@ -234,6 +310,7 @@ class ChatLog:
         with self._lock:
             n = self.conn.execute("DELETE FROM turns WHERE ts < ?", (cutoff,)).rowcount
             self.conn.execute("DELETE FROM trip_searches WHERE ts < ?", (cutoff,))
+            self.conn.execute("DELETE FROM events WHERE ts < ?", (cutoff,))
             self.conn.execute(
                 "DELETE FROM conversations WHERE id NOT IN "
                 "(SELECT DISTINCT conversation_id FROM turns)")
@@ -250,6 +327,9 @@ class ChatLog:
             n = self.conn.execute(f"DELETE FROM turns WHERE {col} = ?", (value,)).rowcount
             ccol = "id" if conversation else "visitor_id"
             self.conn.execute(f"DELETE FROM conversations WHERE {ccol} = ?", (value,))
+            if visitor:   # and their map searches and page activity
+                self.conn.execute("DELETE FROM trip_searches WHERE visitor_id = ?", (visitor,))
+                self.conn.execute("DELETE FROM events WHERE visitor_id = ?", (visitor,))
             self.conn.commit()
         return n
 
@@ -283,6 +363,82 @@ class ChatLog:
             r["seconds"] = round(r["latency_ms"] / 1000, 1) if r["latency_ms"] else ""
             w.writerow(r)
         return buf.getvalue()
+
+    def table_rows(self, table: str, since: str | None = None,
+                   until: str | None = None) -> Iterator[dict]:
+        """Rows of ``trip_searches`` or ``events`` (JSON columns decoded), oldest first,
+        with the weekday and hour added."""
+        if table not in ("trip_searches", "events"):
+            raise ValueError(table)
+        sql, params = f"SELECT * FROM {table} WHERE 1=1", []
+        if since:
+            sql += " AND ts >= ?"
+            params.append(since)
+        if until:
+            sql += " AND ts < ?"
+            params.append(until)
+        for r in self.conn.execute(sql + " ORDER BY ts, id", params):
+            row = dict(r)
+            when = datetime.fromisoformat(row["ts"])
+            row["weekday"], row["hour"] = when.strftime("%A"), when.hour
+            for key in ("options_json", "agencies", "detail_json"):
+                if key in row and row[key]:
+                    try:
+                        row[key] = json.loads(row[key])
+                    except ValueError:
+                        pass
+            yield row
+
+    def export_table_jsonl(self, table: str, since=None, until=None) -> str:
+        return "".join(json.dumps(r, ensure_ascii=False) + "\n"
+                       for r in self.table_rows(table, since, until))
+
+    def export_table_csv(self, table: str, since=None, until=None) -> str:
+        rows = list(self.table_rows(table, since, until))
+        if table == "trip_searches":
+            cols = ["ts", "weekday", "hour", *[c for c in TRIP_FIELDS if c != "ts"]]
+        else:
+            cols = ["ts", "weekday", "hour", "visitor_id", "event", "search_id",
+                    "option_index", "detail_json"]
+        buf = io.StringIO()
+        w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore", lineterminator="\n")
+        w.writeheader()
+        for r in rows:
+            for k, v in r.items():
+                if isinstance(v, (list, dict)):
+                    r[k] = json.dumps(v, ensure_ascii=False)
+            w.writerow(r)
+        return buf.getvalue()
+
+    def trip_stats(self, days: int = 7) -> dict:
+        since = (datetime.now() - timedelta(days=days)).isoformat(sep=" ", timespec="seconds")
+        rows = list(self.table_rows("trip_searches", since))
+        events = list(self.table_rows("events", since))
+        ok = [r for r in rows if (r.get("n_options") or 0) > 0]
+        lat = sorted(r["latency_ms"] for r in rows if r.get("latency_ms"))
+
+        def top(values, n=10):
+            return dict(Counter(v for v in values if v).most_common(n))
+
+        return {
+            "searches": len(rows),
+            "visitors": len({r["visitor_id"] for r in rows}),
+            "with_options": len(ok),
+            "outcomes": top((r.get("outcome") or ("ok" if r in ok else "no_options"))
+                            for r in rows),
+            "median_seconds": round(lat[len(lat) // 2] / 1000, 1) if lat else None,
+            "start_chosen_by": top(r.get("origin_source") for r in rows),
+            "top_start_stations": top(r.get("origin_station") for r in rows),
+            "top_end_stations": top(r.get("dest_station") for r in rows),
+            "top_station_pairs": top(f"{r['origin_station']} -> {r['dest_station']}"
+                                     for r in rows
+                                     if r.get("origin_station") and r.get("dest_station")),
+            "top_places": top([r.get("origin_place") for r in rows]
+                              + [r.get("dest_place") for r in rows]),
+            "top_best_routes": top(r.get("best_routes") for r in ok),
+            "busiest_hours": top(r["hour"] for r in rows),
+            "events": top((e["event"] for e in events), 20),
+        }
 
     def stats(self, days: int = 7) -> dict:
         since = (datetime.now() - timedelta(days=days)).isoformat(sep=" ", timespec="seconds")

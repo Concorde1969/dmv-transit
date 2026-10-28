@@ -329,16 +329,17 @@ class LivePlanner:
     # -- search ----------------------------------------------------------------------------
     def plan(self, origin: Point, destination: Point) -> dict:
         o_stops, d_stops = self.stops_near(origin), self.stops_near(destination)
+        self.ends = {"origin": o_stops, "destination": d_stops}   # for the search log
         base = {"origin": _pt(origin), "destination": _pt(destination),
                 "now": self.midnight_epoch + self.now_s,
                 "window_min": self.cfg.window_s // 60,
                 "short_transfer_min": self.cfg.short_transfer_s // 60}
         if not o_stops or not d_stops:
             where = "start" if not o_stops else "destination"
-            return {**base, "options": [],
+            return {**base, "options": [], "outcome": "no_stops",
                     "notice": f"No bus or train stop within about a mile of your {where}."}
         if haversine_m(origin.lat, origin.lon, destination.lat, destination.lon) < 400:
-            return {**base, "options": [],
+            return {**base, "options": [], "outcome": "short_walk",
                     "notice": "Your destination is a short walk away."}
 
         direct = self._direct(o_stops, d_stops)
@@ -366,6 +367,7 @@ class LivePlanner:
         good = sorted(self._drop_dominated(short or good),
                       key=self._score)[: self.cfg.max_options]
         result = {**base, "options": [self._describe(c) for c in good],
+                  "outcome": "ok" if good else "no_trips",
                   "live_checks": self.live_calls,
                   "live_available": self.realtime is not None and self.realtime.available()}
         if not good:

@@ -78,6 +78,11 @@ async def submit_report(request: Request, body: ReportBody,
         log.exception("saving a rider report failed")
         return JSONResponse({"ok": False, "message": "Sorry, your report couldn't be saved "
                              "just now. Please try again in a minute."}, status_code=503)
+    if chatlog is not None:
+        chatlog.safe_record_event(visitor, "report_sent", detail={
+            "report_id": report_id, "station_given": bool(body.station),
+            "line_given": bool(body.line), "chars": len(body.text),
+            "days_ago": (today - body.travel_date).days})
     background.add_task(process_reports, request.app)
     return JSONResponse({"ok": True, "id": report_id,
                          "message": "Thank you! Your report will help other riders."},

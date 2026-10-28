@@ -229,11 +229,20 @@ def _cmd_chatlog(args: argparse.Namespace) -> int:
     chatlog = ChatLog.from_settings(settings)
     try:
         if args.chatlog_cmd == "export":
-            export = chatlog.export_csv if args.format == "csv" else chatlog.export_jsonl
+            if args.table == "chats":
+                export = chatlog.export_csv if args.format == "csv" else chatlog.export_jsonl
+                text = export(args.since, args.until)
+            else:
+                table = "trip_searches" if args.table == "searches" else "events"
+                export = (chatlog.export_table_csv if args.format == "csv"
+                          else chatlog.export_table_jsonl)
+                text = export(table, args.since, args.until)
             # Binary write: identical bytes on Windows and Linux, UTF-8 regardless of console.
-            sys.stdout.buffer.write(export(args.since, args.until).encode("utf-8"))
+            sys.stdout.buffer.write(text.encode("utf-8"))
         elif args.chatlog_cmd == "stats":
-            print(json.dumps(chatlog.stats(args.days), indent=2))
+            out = {**chatlog.stats(args.days), "map": chatlog.trip_stats(args.days)}
+            sys.stdout.buffer.write(json.dumps(out, indent=2, ensure_ascii=False)
+                                    .encode("utf-8") + b"\n")
         elif args.chatlog_cmd == "delete":
             n = chatlog.delete(conversation=args.conversation, visitor=args.visitor)
             print(f"Deleted {n} question(s).")
@@ -384,15 +393,19 @@ def build_parser() -> argparse.ArgumentParser:
     chat.add_argument("--open", action="store_true", help="open the browser when ready")
     chat.set_defaults(func=_cmd_chat)
 
-    cl = sub.add_parser("chatlog", help="Review the saved chats (export, stats, delete)")
+    cl = sub.add_parser("chatlog", help="Review saved chats, map searches and page activity")
     clsub = cl.add_subparsers(dest="chatlog_cmd", required=True)
-    ex = clsub.add_parser("export", help="Write saved chats to stdout (CSV or JSON lines)")
+    ex = clsub.add_parser("export", help="Write saved data to stdout (CSV or JSON lines)")
+    ex.add_argument("--table", choices=["chats", "searches", "events"], default="chats",
+                    help="chats (questions and answers), searches (map trip searches and "
+                         "their results) or events (page activity)")
     ex.add_argument("--format", choices=["csv", "jsonl"], default="csv")
     ex.add_argument("--since", help="YYYY-MM-DD (inclusive)")
     ex.add_argument("--until", help="YYYY-MM-DD (exclusive)")
     st = clsub.add_parser("stats", help="Totals for the last N days (JSON)")
     st.add_argument("--days", type=int, default=7)
-    de = clsub.add_parser("delete", help="Delete one conversation or one visitor's chats")
+    de = clsub.add_parser("delete", help="Delete one conversation, or everything from one "
+                                         "visitor (chats, searches, page activity)")
     who = de.add_mutually_exclusive_group(required=True)
     who.add_argument("--conversation")
     who.add_argument("--visitor")

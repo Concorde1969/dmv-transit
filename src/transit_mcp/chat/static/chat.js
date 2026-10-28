@@ -1,4 +1,5 @@
 // The assistant drawer: questions answered by Claude from the agencies' data (/api/chat).
+import { track } from "/static/track.js";
 const $ = (id) => document.getElementById(id);
 const SUGGESTIONS = [
   "I've never used the Metro. How does it work?",
@@ -146,6 +147,7 @@ function autosize() {
 }
 
 function open() {
+  if (!drawer.classList.contains("open")) track("assistant_opened");
   window.dmvReports?.close(true);
   drawer.classList.add("open");
   drawer.setAttribute("aria-hidden", "false");

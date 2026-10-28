@@ -43,6 +43,18 @@ Developer License Agreement yourself — terms may have changed.
   used only to ground a language model's answers — not republished as a stand-alone
   copy of WMATA's website.
 
+## Map searches and page activity
+
+For each map search the site keeps: when it happened, the anonymous visitor ID, the
+kind of device, how the start and end were chosen (your location, a suggestion, a
+shared link), the start and end rounded to about 100 meters, the nearest stop and rail
+station to each, the names of landmarks, stations or areas picked from the suggestions
+(never street addresses, never typed text), and the trip options shown. It also keeps
+page activity: visits (the referring site's name only), address searches (how many
+results, not the text), which options and panels were opened, and whether location
+was allowed. All of it is kept for `CHATLOG_RETENTION_DAYS` and removed with a
+visitor's chats on request (`transit-mcp chatlog delete --visitor`).
+
 ## Rider reports
 
 Rider reports are written by visitors to the site, not by any transit agency, and are

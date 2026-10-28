@@ -1,4 +1,6 @@
 // Rider reports: a short form to warn other riders, and the latest reports (/api/reports).
+import { track } from "/static/track.js";
+
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -73,6 +75,7 @@ function say(msg, ok = false) {
 }
 
 function open() {
+  if (!drawer.classList.contains("open")) track("report_form_opened");
   window.dmvChat?.close?.(true);
   drawer.classList.add("open");
   drawer.setAttribute("aria-hidden", "false");

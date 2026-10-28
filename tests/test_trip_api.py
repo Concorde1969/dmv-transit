@@ -80,8 +80,11 @@ def client(isolated_settings, monkeypatch):
     init_db(settings.db_path)
 
     def fake_plan(self, origin, destination):
-        return {"options": [{"id": "x", "legs": []}], "later_options": [],
-                "live_checks": 2, "origin": {"label": origin.label}}
+        return ({"options": [{"id": "x", "legs": []}], "live_checks": 2, "outcome": "ok",
+                 "origin": {"label": origin.label}},
+                {"origin": {"stop": "Farragut North", "stop_agency": "wmata", "stop_m": 250,
+                            "station": "Farragut North", "station_m": 250},
+                 "destination": {"stop": "Pentagon", "stop_agency": "wmata", "stop_m": 80}})
 
     monkeypatch.setattr(trip_api.TripService, "plan", fake_plan)
     monkeypatch.setattr(trip_api, "build_realtime", lambda *a, **k: FakeLive())
@@ -138,3 +141,61 @@ def test_live_endpoint_works_out_delay_from_exact_times(client):
         {"agency": "bus", "stop_id": "A", "trip_id": "t1", "scheduled": sched}]})
     (ride,) = r.json()["rides"]
     assert ride["live"] and ride["delay_s"] == 120 and ride["expected"] == sched + 120
+
+
+def _rows(client, table="trip_searches"):
+    return list(client.app.state.chatlog.table_rows(table))
+
+
+def test_search_log_keeps_landmarks_and_stops_but_never_addresses(client):
+    body = {"from": {"lat": 38.902612, "lon": -77.036541, "label": "1001 16th St NW",
+                     "source": "suggestion", "kind": "house"},
+            "to": {"lat": 38.871048, "lon": -77.056084, "label": "The Pentagon",
+                   "source": "suggestion", "kind": "office"}}
+    r = client.post("/api/trip", json=body).json()
+    (row,) = _rows(client)
+    assert r["search_id"] == row["search_id"] and row["outcome"] == "ok"
+    assert row["origin_place"] is None and row["dest_place"] == "The Pentagon"
+    assert row["origin_station"] == "Farragut North" and row["dest_stop"] == "Pentagon"
+    assert row["origin_source"] == "suggestion" and row["distance_km"] > 3
+    assert row["weekday"] and row["hour"] is not None
+    assert b"1001 16th" not in client.app.state.chatlog.path.read_bytes()
+
+
+def test_typed_or_linked_names_are_not_kept(client):
+    _trip(client, to={"lat": 38.871, "lon": -77.056, "label": "Aunt May's house",
+                      "source": "link", "kind": None})
+    assert _rows(client)[0]["dest_place"] is None
+
+
+def test_refused_searches_are_logged_too(client):
+    _trip(client, to={"lat": 39.78, "lon": -89.65, "label": "Springfield"})
+    assert _rows(client)[0]["outcome"] == "outside_region"
+
+
+def test_page_events(client):
+    ok = client.post("/api/events", json={"event": "option_selected", "search_id": "abc",
+                                          "option_index": 2, "detail": {"view": "list"}})
+    bad = client.post("/api/events", json={"event": "anything_else"})
+    assert ok.json()["ok"] and not bad.json()["ok"]
+    (ev,) = _rows(client, "events")
+    assert ev["event"] == "option_selected" and ev["option_index"] == 2
+    assert ev["detail_json"] == {"view": "list"}
+
+
+def test_removal_request_clears_searches_and_events(client):
+    _trip(client)
+    client.post("/api/events", json={"event": "page_view"})
+    log = client.app.state.chatlog
+    visitor = _rows(client)[0]["visitor_id"]
+    log.delete(visitor=visitor)
+    assert _rows(client) == [] and _rows(client, "events") == []
+
+
+def test_trip_export_and_stats(client):
+    _trip(client)
+    log = client.app.state.chatlog
+    csv_text = log.export_table_csv("trip_searches")
+    assert "origin_station" in csv_text.splitlines()[0] and "Farragut North" in csv_text
+    stats = log.trip_stats(7)
+    assert stats["searches"] == 1 and stats["top_start_stations"] == {"Farragut North": 1}

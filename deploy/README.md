@@ -141,8 +141,11 @@ powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 'cd ~/dmvtr
 powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 'cd ~/dmvtransit && docker compose logs --tail 100 app'
 ```
 
-**Review chats** — every question and answer is saved for a year (see "Chat log" below).
-Download the last 30 days as a spreadsheet plus a detailed JSON file into `chat-exports\`:
+**Review usage** — every question and answer, every map search (start and end rounded
+to ~100 m, nearest stations, the options shown) and page activity (options opened,
+panels used, visits) is saved for a year (see "Chat log" below). Download the last 30
+days — `chats-`, `searches-` and `events-` files, each as a spreadsheet plus a detailed
+JSON file — into `chat-exports\`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File deploy\lightsail\download-chats.ps1

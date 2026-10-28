@@ -3,6 +3,7 @@
 // self-hosted Protomaps basemap (/tiles/dmv.pmtiles); all files are served by this site.
 import * as ML from "/static/map/vendor/maplibre-gl.mjs";
 import { ago, reportItem } from "/static/reports.js";
+import { track } from "/static/track.js";
 
 const maplibregl = ML.default || ML;
 const $ = (id) => document.getElementById(id);
@@ -12,12 +13,13 @@ const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const isPhone = () => matchMedia("(max-width: 720px)").matches;
 
 const state = {
-  from: null,            // {lat, lon, label} or null = "My location"
+  from: null,            // {lat, lon, label, source, kind} or null = "My location"
   to: null,
   me: null,              // last known position
   plan: null,
   selected: null,        // index into plan.options
   view: "list",          // list | detail
+  searchId: null,        // the server's ID for the last search (usage log)
 };
 let map, youMarker, destMarker, liveTimer;
 
@@ -252,10 +254,12 @@ function pick(i) {
   hideSuggestions();
   if (field === fromInput) {
     if (it.me) { state.from = null; fromInput.value = "My location"; }
-    else { state.from = { lat: it.lat, lon: it.lon, label: it.label }; fromInput.value = it.label; }
+    else { state.from = { lat: it.lat, lon: it.lon, label: it.label, source: "suggestion", kind: it.kind }; fromInput.value = it.label; }
+    track("suggestion_picked", { detail: { field: "from", kind: it.me ? "my_location" : (it.kind || "") } });
     if (state.to) planTrip(); else toInput.focus();
   } else {
-    state.to = { lat: it.lat, lon: it.lon, label: it.label };
+    state.to = { lat: it.lat, lon: it.lon, label: it.label, source: "suggestion", kind: it.kind };
+    track("suggestion_picked", { detail: { field: "to", kind: it.kind || "" } });
     toInput.value = it.label;
     toInput.blur();
     planTrip();
@@ -292,6 +296,7 @@ $("swapBtn").addEventListener("click", () => {
   state.from = to; fromInput.value = to.label;
   state.to = from || (state.me ? { ...state.me, label: "My location" } : null);
   toInput.value = from ? from.label : (state.me ? "My location" : "");
+  track("swap_places");
   if (state.to) planTrip();
 });
 
@@ -299,8 +304,9 @@ function locate() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) return reject(new Error("unsupported"));
     navigator.geolocation.getCurrentPosition(
-      (p) => { state.me = { lat: p.coords.latitude, lon: p.coords.longitude, label: "My location" }; resolve(state.me); },
-      reject, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+      (p) => { state.me = { lat: p.coords.latitude, lon: p.coords.longitude, label: "My location", source: "my_location" }; resolve(state.me); },
+      (err) => { track("location_denied", { detail: { code: err?.code ?? 0 } }); reject(err); },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
   });
 }
 
@@ -308,6 +314,7 @@ $("useLoc").addEventListener("click", async () => {
   state.from = null; fromInput.value = "My location";
   try {
     await locate();
+    track("location_used");
     if (map) map.flyTo({ center: pt(state.me), zoom: 15, duration: reduceMotion ? 0 : 900 });
     if (state.to) planTrip(); else toInput.focus();
   } catch (_) {
@@ -349,6 +356,7 @@ async function planTrip() {
     return;
   }
   state.plan = data; state.selected = data.options?.length ? 0 : null; state.view = "list";
+  state.searchId = data.search_id || null;
   render();
   drawPlan();
   startLive();
@@ -368,8 +376,13 @@ function render() {
     + plan.options.map((opt, i) => optionCard(opt, i)).join("");
   results.querySelectorAll(".option").forEach((el) => el.addEventListener("click", () => {
     const i = +el.dataset.i;
-    if (state.selected === i) { state.view = "detail"; render(); }
-    else { state.selected = i; render(); drawPlan(); restartLive(); }
+    if (state.selected === i) {
+      state.view = "detail"; render();
+      track("details_opened", { search_id: state.searchId, option_index: i });
+    } else {
+      state.selected = i; render(); drawPlan(); restartLive();
+      track("option_selected", { search_id: state.searchId, option_index: i });
+    }
   }));
   tick();
 }
@@ -456,8 +469,12 @@ function renderDetail(opt) {
     </div>
   </div>`;
   $("backBtn").addEventListener("click", () => { state.view = "list"; render(); });
-  $("reportTrip").addEventListener("click", () => window.dmvReports?.open());
+  $("reportTrip").addEventListener("click", () => {
+    track("report_from_trip", { search_id: state.searchId, option_index: state.selected });
+    window.dmvReports?.open();
+  });
   $("askTrip").addEventListener("click", () => {
+    track("ask_about_trip", { search_id: state.searchId, option_index: state.selected });
     const desc = rides(opt).map((l) => `${l.agency_name} ${routeLabel(l)} from ${l.board.name} to ${l.alight.name}`).join(", then ");
     window.dmvChat?.ask(`I'm about to take ${desc}. How do I pay, and is there anything I should know?`);
   });
@@ -520,7 +537,7 @@ function placeParam(params, key) {
   if (!v) return null;
   const [lat, lon] = v.split(",").map(Number);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  return { lat, lon, label: params.get(`${key}label`) || `${lat.toFixed(4)}, ${lon.toFixed(4)}` };
+  return { lat, lon, label: params.get(`${key}label`) || `${lat.toFixed(4)}, ${lon.toFixed(4)}`, source: "link" };
 }
 
 function syncUrl() {
@@ -535,6 +552,11 @@ state.from = placeParam(startParams, "from");
 state.to = placeParam(startParams, "to");
 if (state.from) fromInput.value = state.from.label;
 if (state.to) toInput.value = state.to.label;
+
+// A visit: where it came from (the other site's name only) and the screen size.
+let referrer = "";
+try { const r = document.referrer && new URL(document.referrer); referrer = r && r.host !== location.host ? r.host : ""; } catch (_) {}
+track("page_view", { detail: { referrer, trip_link: Boolean(state.to), screen: innerWidth < 720 ? "phone" : innerWidth < 1100 ? "tablet" : "large" } });
 
 initMap();
 if (state.to) planTrip(); else toInput.focus();
