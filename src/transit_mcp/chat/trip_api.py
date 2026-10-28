@@ -30,7 +30,7 @@ from transit_mcp.chat.analytics import nearest_stops, search_row
 from transit_mcp.chat.guard import RateLimiter
 from transit_mcp.chatlog import device_class
 from transit_mcp.db.database import Database
-from transit_mcp.geocode import Geocoder, in_region
+from transit_mcp.geocode import BudgetSpent, GeocodeError, Geocoder, in_region
 from transit_mcp.ingest.http import HttpClient
 from transit_mcp.ingest.transitland import _secret, atlas_file_for, feed_record
 from transit_mcp.planning.live import LivePlanner, LiveSettings, Point
@@ -135,7 +135,7 @@ class TripService:
         self.settings = settings
         self.agencies = agency_info(settings)
         self.http = httpx.Client(timeout=8.0)
-        self.geocoder = Geocoder(settings.geocode_api_key, http=self.http)
+        self.geocoder = Geocoder.from_settings(settings, http=self.http)
         self.trip_limiter = RateLimiter(settings.trip_rate_per_minute, settings.trip_rate_per_day)
         self.geo_limiter = RateLimiter(40, 1000)
         self.event_limiter = RateLimiter(60, 3000)
@@ -182,8 +182,12 @@ def geocode(request: Request, q: str = "") -> JSONResponse:
         found = svc.geocoder.search(q)
         _event(request, "address_search", detail={
             "results": len(found), "ms": int((time.monotonic() - started) * 1000)})
-        return JSONResponse({"results": found})
-    except httpx.HTTPError as exc:
+        return JSONResponse({"results": found, "attribution": svc.geocoder.attribution})
+    except BudgetSpent as exc:
+        log.warning("geocode paused: %s", exc)
+        return JSONResponse({"results": [], "message": "Address search is paused for now. "
+                             "Use My location, or try again later."}, status_code=503)
+    except GeocodeError as exc:
         log.warning("geocode failed: %s", exc)
         return JSONResponse({"results": [], "message": "Address search is busy. "
                              "Please try again in a moment."}, status_code=502)
@@ -198,7 +202,7 @@ def reverse(request: Request, lat: float, lon: float) -> JSONResponse:
         return JSONResponse({"label": None, "outside_region": True})
     try:
         return JSONResponse({"label": svc.geocoder.reverse(lat, lon)})
-    except httpx.HTTPError:
+    except GeocodeError:
         return JSONResponse({"label": None})
 
 

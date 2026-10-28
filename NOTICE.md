@@ -121,9 +121,12 @@ republished as a feed.
 
 ## Geocoding and the map
 
-- Typed addresses are turned into map points by [geocode.maps.co](https://geocode.maps.co/)
-  (free plan, non-commercial use), called from the server only; results are cached for
-  24 hours.
+- Typed addresses are turned into map points by the
+  [Google Geocoding API](https://developers.google.com/maps/documentation/geocoding)
+  (or [geocode.maps.co](https://geocode.maps.co/) when no Google key is set), called
+  from the server only; results are cached for 24 hours. Suggestions from Google are
+  credited "Results from Google Maps" under the list. Google requests are capped at
+  `GOOGLE_GEOCODING_MONTHLY_BUDGET` a month.
 - The map shows data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright)
   (Open Database License), from a regional extract of the
   [Protomaps](https://protomaps.com/) basemap build hosted on our own server. The map
@@ -136,7 +139,8 @@ republished as a feed.
   visitor allows it, and only to find nearby stops. The trip search log keeps start and
   end points rounded to about 100 meters, never typed addresses or exact locations.
 - Before any commercial use of the site, check the Transitland and geocode.maps.co plan
-  terms — the current plans are for non-commercial use.
+  terms — the current plans are for non-commercial use — and the Google Maps Platform
+  terms.
 
 ## Editorial content
 

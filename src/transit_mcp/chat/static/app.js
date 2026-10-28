@@ -213,13 +213,14 @@ function drawPlan() {
 const fromInput = $("fromInput"), toInput = $("toInput"), suggest = $("suggest");
 let activeField = null, suggestItems = [], suggestIndex = -1, searchTimer;
 
-function showSuggestions(field, items) {
+function showSuggestions(field, items, credit = "") {
   activeField = field; suggestItems = items; suggestIndex = -1;
   suggest.innerHTML = items.map((it, i) =>
-    `<li role="option" id="sg${i}" aria-selected="false">${esc(it.label)}${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</li>`).join("");
+    `<li role="option" id="sg${i}" aria-selected="false">${esc(it.label)}${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</li>`).join("")
+    + (credit && items.length ? `<li class="credit-line" role="presentation">Results from ${esc(credit)}</li>` : "");
   suggest.hidden = !items.length;
   field.setAttribute("aria-expanded", String(!!items.length));
-  [...suggest.children].forEach((li, i) => li.addEventListener("mousedown", (e) => { e.preventDefault(); pick(i); }));
+  [...suggest.children].slice(0, items.length).forEach((li, i) => li.addEventListener("mousedown", (e) => { e.preventDefault(); pick(i); }));
 }
 
 function hideSuggestions() {
@@ -239,10 +240,12 @@ function onType(field) {
     try {
       const r = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
       const data = await r.json();
-      const items = (data.results || []).map((x) => ({ ...x, sub: x.full_label && x.full_label !== x.label ? x.full_label.split(",").slice(-4, -2).join(",").trim() : "" }));
+      // Google results bring their own second line; geocode.maps.co ones get one here.
+      const items = (data.results || []).map((x) => ({ ...x, sub: "sub" in x ? x.sub : x.full_label && x.full_label !== x.label ? x.full_label.split(",").slice(-4, -2).join(",").trim() : "" }));
+      const found = items.length;
       if (field === fromInput) items.unshift({ label: "My location", me: true });
       if (!items.length && data.message) items.push({ label: data.message, disabled: true });
-      if (document.activeElement === field) showSuggestions(field, items);
+      if (document.activeElement === field) showSuggestions(field, items, found ? data.attribution : "");
     } catch (_) { /* keep typing; nothing to show */ }
   }, 380);
 }
@@ -271,7 +274,7 @@ function onKey(e) {
   if (e.key === "ArrowDown" || e.key === "ArrowUp") {
     e.preventDefault();
     suggestIndex = (suggestIndex + (e.key === "ArrowDown" ? 1 : -1) + suggestItems.length) % suggestItems.length;
-    [...suggest.children].forEach((li, i) => li.setAttribute("aria-selected", String(i === suggestIndex)));
+    [...suggest.children].slice(0, suggestItems.length).forEach((li, i) => li.setAttribute("aria-selected", String(i === suggestIndex)));
     e.target.setAttribute("aria-activedescendant", `sg${suggestIndex}`);
   } else if (e.key === "Enter") {
     e.preventDefault(); pick(suggestIndex >= 0 ? suggestIndex : 0);

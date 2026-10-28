@@ -161,15 +161,18 @@ def run_checks(settings: Settings | None = None, *, check_planner: bool = True) 
         ))
 
     # Map trip planner
-    missing = [name for name, value in (("GEOCODE_API_KEY", settings.geocode_api_key),
-                                        ("TRANSITLAND_API_KEY", settings.transitland_api_key))
-               if not value]
+    geocoder_key = settings.google_geocoding_api_key or settings.geocode_api_key
+    missing = [name for name, value in (
+        ("GOOGLE_GEOCODING_API_KEY", geocoder_key),
+        ("TRANSITLAND_API_KEY", settings.transitland_api_key)) if not value]
     checks.append(Check(
         "Map planner keys", WARN if missing else OK,
         f"{', '.join(missing)} empty — "
-        + ("typed addresses can't be found" if "GEOCODE_API_KEY" in missing else
+        + ("typed addresses can't be found" if "GOOGLE_GEOCODING_API_KEY" in missing else
            "live times only for agencies with their own realtime feed")
-        if missing else "set",
+        if missing else "set ("
+        + ("Google" if settings.google_geocoding_api_key else "geocode.maps.co")
+        + " address search)",
         "Put the missing key(s) in .env (see .env.example)." if missing else None,
     ))
     if facts is not None:
@@ -182,6 +185,20 @@ def run_checks(settings: Settings | None = None, *, check_planner: bool = True) 
                 "Transitland calls", WARN if budget.remaining() <= 0 else OK,
                 f"{used:,} of {budget.limit:,} used this month"
                 + (" — live times paused until next month" if budget.remaining() <= 0
+                   else ""),
+            ))
+        except Exception:  # noqa: BLE001 - older database without the table
+            pass
+    if facts is not None and settings.google_geocoding_api_key:
+        from transit_mcp.geocode import Geocoder
+
+        try:
+            budget = Geocoder.from_settings(settings).budget
+            used = budget.used()
+            checks.append(Check(
+                "Google geocoding", WARN if budget.remaining() <= 0 else OK,
+                f"{used:,} of {budget.limit:,} requests used this month"
+                + (" — address search paused until next month" if budget.remaining() <= 0
                    else ""),
             ))
         except Exception:  # noqa: BLE001 - older database without the table

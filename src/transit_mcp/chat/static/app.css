@@ -165,6 +165,10 @@ button, input, textarea { font: inherit; color: inherit; }
 }
 .suggest li small { display: block; color: var(--ink-3); font-size: 14px; margin-top: 2px; }
 .suggest li[aria-selected="true"], .suggest li:hover { background: var(--panel-2); }
+.suggest li.credit-line {
+  cursor: default; padding: 6px 12px 4px; font-size: 13px; color: var(--ink-3); text-align: right;
+}
+.suggest li.credit-line:hover { background: none; }
 
 /* ---------- results ---------- */
 .results { flex: 1; overflow: auto; padding: 4px 14px 14px; border-top: 1px solid var(--rule); }

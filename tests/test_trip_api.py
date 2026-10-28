@@ -46,6 +46,113 @@ def test_geocoder_without_key_does_nothing():
     assert Geocoder(None).search("Union Station") == []
 
 
+UNION_STATION_G = {
+    "formatted_address": "50 Massachusetts Ave NE, Washington, DC 20002, USA",
+    "geometry": {"location": {"lat": 38.8973, "lng": -77.0063}},
+    "types": ["establishment", "point_of_interest", "transit_station"],
+    "address_components": [
+        {"long_name": "Union Station", "types": ["establishment", "point_of_interest",
+                                                 "transit_station"]},
+        {"long_name": "50", "types": ["street_number"]},
+        {"long_name": "Washington", "types": ["locality", "political"]}]}
+ADDRESS_G = {
+    "formatted_address": "1000 N Glebe Rd, Arlington, VA 22201, USA",
+    "geometry": {"location": {"lat": 38.8836, "lng": -77.1166}},
+    "types": ["street_address"],
+    "address_components": [{"long_name": "Arlington", "types": ["locality", "political"]}]}
+SPRINGFIELD_G = {"formatted_address": "Springfield, IL, USA",
+                 "geometry": {"location": {"lat": 39.78, "lng": -89.65}},
+                 "types": ["locality", "political"], "address_components": []}
+
+
+class FakeBudget:
+    def __init__(self, left):
+        self.left, self.limit = left, left
+
+    def try_spend(self, n=1):
+        if self.left < n:
+            return False
+        self.left -= n
+        return True
+
+
+def _google(seen, reply=None, budget=None):
+    def handler(request: httpx.Request):
+        seen.append(request)
+        if reply is not None:
+            return reply
+        if "latlng" in request.url.params:
+            return httpx.Response(200, json={"status": "OK", "results": [ADDRESS_G]})
+        return httpx.Response(200, json={"status": "OK",
+                                         "results": [UNION_STATION_G, ADDRESS_G, SPRINGFIELD_G]})
+    return Geocoder("G-KEY", provider="google", budget=budget,
+                    http=httpx.Client(transport=httpx.MockTransport(handler)))
+
+
+def test_google_geocoder_names_places_filters_region_and_caches():
+    seen = []
+    g = _google(seen, budget=FakeBudget(10))
+    station, address = g.search("union station")
+    assert station == {"label": "Union Station, Washington",
+                       "full_label": UNION_STATION_G["formatted_address"],
+                       "sub": "50 Massachusetts Ave NE, Washington",
+                       "lat": 38.8973, "lon": -77.0063, "kind": "transit_station"}
+    assert (address["label"], address["sub"], address["kind"]) == (
+        "1000 N Glebe Rd, Arlington", "", "street_address")
+    params = seen[0].url.params
+    assert seen[0].url.host == "maps.googleapis.com" and seen[0].url.path.endswith("/json")
+    assert params["address"] == "union station" and params["key"] == "G-KEY"
+    assert params["components"] == "country:US" and "|" in params["bounds"]
+    g.search("union station")
+    assert len(seen) == 1 and g.budget.left == 9           # cached: not billed twice
+    assert g.reverse(38.8836, -77.1166) == "1000 N Glebe Rd, Arlington"
+    assert g.attribution == "Google Maps"
+
+
+def test_google_geocoder_errors_never_show_the_key():
+    from transit_mcp.geocode import BudgetSpent, GeocodeError
+
+    for reply in (httpx.Response(403, text="forbidden"),
+                  httpx.Response(200, json={"status": "REQUEST_DENIED",
+                                            "error_message": "The provided API key is invalid."})):
+        with pytest.raises(GeocodeError) as err:
+            _google([], reply=reply).search("union station")
+        assert "G-KEY" not in str(err.value) and err.value.__cause__ is None
+    zero = httpx.Response(200, json={"status": "ZERO_RESULTS", "results": []})
+    assert _google([], reply=zero).search("nowhere at all") == []
+    seen = []
+    with pytest.raises(BudgetSpent):
+        _google(seen, budget=FakeBudget(0)).search("union station")
+    assert seen == []                                      # stopped before calling Google
+
+
+def test_google_labels_name_once_and_drop_suites():
+    from transit_mcp.geocode import _google_item
+
+    airport = _google_item({
+        "formatted_address": "Ronald Reagan Washington National Airport (DCA), "
+                             "2401 Smith Blvd, Arlington, VA 22202, USA",
+        "geometry": {"location": {"lat": 38.85, "lng": -77.04}}, "types": ["airport"],
+        "address_components": [
+            {"long_name": "Ronald Reagan Washington National Airport", "types": ["airport"]},
+            {"long_name": "Arlington", "types": ["locality"]}]})
+    assert airport["label"] == "Ronald Reagan Washington National Airport, Arlington"
+    assert airport["sub"] == "2401 Smith Blvd, Arlington"
+    office = _google_item({"formatted_address": "1601 K St NW # 1, Washington, DC 20006, USA",
+                           "geometry": {"location": {"lat": 38.9, "lng": -77.03}},
+                           "types": ["subpremise"], "address_components": []})
+    assert office["label"] == "1601 K St NW, Washington"
+
+
+def test_geocoder_from_settings_prefers_google(isolated_settings):
+    s = isolated_settings.model_copy(update={"google_geocoding_api_key": "G",
+                                             "geocode_api_key": "M"})
+    g = Geocoder.from_settings(s)
+    assert (g.provider, g.api_key, g.budget.limit) == ("google", "G", 9000)
+    m = Geocoder.from_settings(s.model_copy(update={"google_geocoding_api_key": None}))
+    assert (m.provider, m.api_key, m.budget, m.attribution) == ("mapsco", "M", None, None)
+
+
 class FakeLive:
     """Gives exact times only (like WMATA's feed): 2 minutes after the timetable."""
 
@@ -199,3 +306,12 @@ def test_trip_export_and_stats(client):
     assert "origin_station" in csv_text.splitlines()[0] and "Farragut North" in csv_text
     stats = log.trip_stats(7)
     assert stats["searches"] == 1 and stats["top_start_stations"] == {"Farragut North": 1}
+
+
+def test_google_address_names_are_never_kept_in_the_search_log():
+    from transit_mcp.chatlog import place_name
+
+    assert place_name("1000 N Glebe Rd, Arlington", "street_address", "suggestion") is None
+    assert place_name("Watergate", "premise", "suggestion") is None
+    assert place_name("Union Station, Washington", "transit_station",
+                      "suggestion") == "Union Station, Washington"

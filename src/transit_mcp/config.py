@@ -29,7 +29,13 @@ class Settings(BaseSettings):
     transitland_api_key: str | None = Field(default=None, alias="TRANSITLAND_API_KEY")
     # Transitland REST calls allowed per month (Explorer plan: 5,000; keep a margin).
     transitland_monthly_budget: int = Field(default=4500, alias="TRANSITLAND_MONTHLY_BUDGET")
-    # geocode.maps.co key for turning addresses into map points (server-side only).
+    # Address search on the map (server-side only). Google's Geocoding API is used when
+    # its key is set; otherwise geocode.maps.co.
+    google_geocoding_api_key: str | None = Field(default=None,
+                                                 alias="GOOGLE_GEOCODING_API_KEY")
+    # Google bills per request: at most this many a month (searches and reverse lookups).
+    google_geocoding_monthly_budget: int = Field(default=9000,
+                                                 alias="GOOGLE_GEOCODING_MONTHLY_BUDGET")
     geocode_api_key: str | None = Field(default=None, alias="GEOCODE_API_KEY")
 
     # Storage

@@ -40,8 +40,10 @@ prompt instead — see `chat/agent.py`.)
      double-click `start.bat` again. It then downloads transit data (15–20 minutes
      for all 21 feeds).
    - For the map planner, also add `TRANSITLAND_API_KEY`
-     ([transit.land](https://www.transit.land/), Explorer plan) and `GEOCODE_API_KEY`
-     ([geocode.maps.co](https://geocode.maps.co/)), and download the regional map once
+     ([transit.land](https://www.transit.land/), Explorer plan) and
+     `GOOGLE_GEOCODING_API_KEY` ([Google Geocoding API](https://developers.google.com/maps/documentation/geocoding);
+     `GEOCODE_API_KEY` from [geocode.maps.co](https://geocode.maps.co/) also works), and
+     download the regional map once
      (about 600 MB; without it the map shows a plain background):
      `powershell -ExecutionPolicy Bypass -File deploy\map\fetch-basemap.ps1`
    - After that: the assistant opens in your web browser within seconds.
@@ -99,7 +101,7 @@ cited and stale data is flagged.
 | Fares, how to pay, how to ride | The agency's own **fare / rider web pages**, plus WMATA's station-to-station fare data (checked against wmata.com/pay.html) |
 | Disruptions | WMATA real-time incidents, agencies' GTFS-realtime alerts, and their service-alert / service-change web pages — always shown *alongside* the GTFS schedule, never instead of it |
 | Live departure times (map planner) | The agency's own **GTFS-realtime TripUpdates** feed at the URL Transitland lists (WMATA rail and bus, VRE, Fairfax Connector, MARC, ART); Transitland's departures API for the rest. Otherwise scheduled times, labelled "Scheduled" |
-| Addresses → map points | [geocode.maps.co](https://geocode.maps.co/), called from the server (the key never reaches browsers) |
+| Addresses → map points | [Google Geocoding API](https://developers.google.com/maps/documentation/geocoding) (or [geocode.maps.co](https://geocode.maps.co/) without a Google key), called from the server (the key never reaches browsers) |
 | The map | [OpenStreetMap](https://www.openstreetmap.org/copyright) data in a self-hosted [Protomaps](https://protomaps.com/) extract, drawn with MapLibre GL |
 
 Web pages are never used for routes or schedules. Each feed is downloaded from the

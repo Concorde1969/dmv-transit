@@ -164,7 +164,7 @@ def _trip_helpers():
         agencies = agency_info(settings)
         _trip_tools.update(
             settings=settings, agencies=agencies,
-            geocoder=Geocoder(settings.geocode_api_key),
+            geocoder=Geocoder.from_settings(settings),
             realtime=build_realtime(settings, agencies))
     return _trip_tools
 
@@ -181,7 +181,12 @@ def _place(db: Database, text: str):
     pt = regional.resolve_point(db, t)          # stations, stops, airports, aliases
     if pt and pt.get("kind") in ("wmata", "gtfs"):
         return Point(pt["lat"], pt["lon"], pt["label"])
-    hits = _trip_helpers()["geocoder"].search(t)   # addresses and landmarks
+    from transit_mcp.geocode import GeocodeError
+
+    try:
+        hits = _trip_helpers()["geocoder"].search(t)   # addresses and landmarks
+    except GeocodeError:
+        hits = []
     if hits:
         return Point(hits[0]["lat"], hits[0]["lon"], hits[0]["label"])
     if pt:

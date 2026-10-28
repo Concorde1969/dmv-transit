@@ -116,6 +116,9 @@ _ADDRESS_KINDS = {
     "houseboat", "static_caravan", "hut", "road", "street", "postcode", "house_number",
     "address", "living_street", "service", "unclassified", "residential_road", "tertiary",
     "secondary", "primary", "trunk", "motorway", "footway", "path", "track", "pedestrian",
+    # Google Geocoding types
+    "street_address", "premise", "subpremise", "route", "intersection", "postal_code",
+    "plus_code", "street_number",
 }
 
 
