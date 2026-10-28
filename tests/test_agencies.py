@@ -19,7 +19,9 @@ BUILTIN = {"wmata", "metrobus", "vre", "fairfax-connector", "art", "dash", "cue"
            # Maryland and intercity feeds from the Transitland feed list
            "mta-md-bus", "mta-md-commuter-bus", "mta-md-metro", "mta-md-light-rail",
            "marc", "annapolis-transit", "harbor-connector", "potomac-valley",
-           "intercity-bus", "flixbus", "amtrak"}
+           "intercity-bus", "flixbus", "amtrak",
+           # airport shuttles
+           "dulles-shuttles"}
 
 
 @pytest.fixture

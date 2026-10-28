@@ -9,7 +9,10 @@ Flow (the site owner's design):
    an end stop.
 3. Only when needed (no direct trip, or a much faster option exists), find **one-
    transfer** trips: ride to a stop, walk to another stop less than 0.3 km away (any
-   agency), ride on.
+   agency), ride on. Only when no trip with fewer changes works, **two-transfer** trips
+   (``TRIP_MAX_TRANSFERS``).
+   At an airport (``airports.toml``) the step between the terminal and its rail station
+   is added: BWI's free shuttle, DCA's and IAD's walkways, with the airport's directions.
 4. Check **live departures** (Transitland, merged GTFS-realtime) for the boarding stops
    of the best options, on feeds that have realtime; delays carry forward along a trip.
 5. Throw out connections that can't be made and vehicles that have already left.
@@ -33,6 +36,7 @@ from zoneinfo import ZoneInfo
 from transit_mcp.db.database import Database
 from transit_mcp.ingest.gtfs.clusters import haversine_m
 from transit_mcp.ingest.gtfs.shapes import decode
+from transit_mcp.planning.airports import AirportLink, load_links
 
 DAY = 86_400
 _DAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
@@ -76,7 +80,9 @@ class NearStop:
     name: str
     lat: float
     lon: float
-    walk_s: int
+    walk_s: int                   # time to or from the stop, including an airport shuttle
+    link: AirportLink | None = None   # reached through an airport's shuttle or walkway
+    link_s: int = 0               # the part of walk_s spent waiting for and on a shuttle
 
 
 @dataclass
@@ -150,6 +156,8 @@ class LiveSettings:
     departures_per_route: int = 4  # per route, direction and start stop
     transfer_only_if_faster_s: int = 300   # on top of the 5 min each transfer costs
     max_live_calls: int = 8
+    max_transfers: int = 2         # two-transfer trips only when nothing simpler works
+    two_transfer_wait_s: int = 3600   # longest wait at either change of such a trip
 
     @classmethod
     def from_settings(cls, s) -> LiveSettings:
@@ -157,14 +165,17 @@ class LiveSettings:
                    short_transfer_s=s.trip_short_transfer_min * 60,
                    max_wait_s=s.trip_max_transfer_wait_min * 60,
                    window_s=s.trip_window_min * 60, walk_m_per_min=s.trip_walk_m_per_min,
-                   max_live_calls=s.trip_max_live_calls)
+                   max_live_calls=s.trip_max_live_calls,
+                   max_transfers=s.trip_max_transfers)
 
 
 class LivePlanner:
     def __init__(self, db: Database, *, cfg: LiveSettings | None = None,
                  realtime=None, agencies: dict | None = None,
-                 tz: str = "America/New_York", now: datetime | None = None):
+                 tz: str = "America/New_York", now: datetime | None = None,
+                 airports: tuple[AirportLink, ...] | None = None):
         self.db = db
+        self.airports = load_links() if airports is None else airports
         self.cfg = cfg or LiveSettings()
         self.realtime = realtime          # planning.realtime.TransitlandRealtime or None
         self.agencies = agencies or {}    # slug -> {"name", "has_realtime", ...}
@@ -178,6 +189,10 @@ class LivePlanner:
         self._stop_cache: dict[tuple[str, str], dict] = {}
         self._trip_calls: dict[tuple[str, str], list[Call]] = {}
         self._boardings: dict[str, list[Call]] = {}
+        self._links: dict[str, dict[tuple[str, str], NearStop]] = {"origin": {},
+                                                                    "destination": {}}
+        self._down: list[tuple[Call, Call, int]] = []
+        self._up: dict[tuple[str, str], list[tuple[Call, Call, int]]] = {}
         self.live_calls = 0
 
     # -- reference data ----------------------------------------------------------------
@@ -216,12 +231,10 @@ class LivePlanner:
     def walk_s(self, meters: float) -> int:
         return int(math.ceil(meters * self.cfg.detour / self.cfg.walk_m_per_min * 60))
 
-    def stops_near(self, p: Point) -> list[NearStop]:
-        """The closest stops of each agency, nearest first."""
-        r = self.cfg.max_walk_m
+    def _stops_within(self, lat: float, lon: float, r: float):
+        """Boardable stops within ``r`` meters: (row, distance)."""
         dlat = r / 111_320.0
-        dlon = r / (111_320.0 * max(math.cos(math.radians(p.lat)), 0.1))
-        out = []
+        dlon = r / (111_320.0 * max(math.cos(math.radians(lat)), 0.1))
         for row in self.db.conn.execute(
             """
             SELECT s.feed_id, s.stop_id, s.name, s.lat, s.lon, par.name AS parent_name
@@ -231,13 +244,19 @@ class LivePlanner:
              WHERE s.lat BETWEEN ? AND ? AND s.lon BETWEEN ? AND ?
                AND (s.location_type IS NULL OR s.location_type IN (0, ''))
             """,
-            (p.lat - dlat, p.lat + dlat, p.lon - dlon, p.lon + dlon),
+            (lat - dlat, lat + dlat, lon - dlon, lon + dlon),
         ):
-            d = haversine_m(p.lat, p.lon, row["lat"], row["lon"])
+            d = haversine_m(lat, lon, row["lat"], row["lon"])
             if d <= r:
-                out.append(NearStop(row["feed_id"], row["stop_id"],
-                                    row["parent_name"] or row["name"], row["lat"], row["lon"],
-                                    self.walk_s(d)))
+                yield row, d
+
+    def stops_near(self, p: Point, end: str | None = None) -> list[NearStop]:
+        """The closest stops of each agency, nearest first — plus, at an airport, its
+        rail station's stops through the shuttle or walkway. ``end`` ("origin" or
+        "destination") records those links for the trip description."""
+        out = [NearStop(row["feed_id"], row["stop_id"], row["parent_name"] or row["name"],
+                        row["lat"], row["lon"], self.walk_s(d))
+               for row, d in self._stops_within(p.lat, p.lon, self.cfg.max_walk_m)]
         out.sort(key=lambda s: s.walk_s)
         kept: dict[str, int] = defaultdict(int)
         nearest = []
@@ -245,7 +264,33 @@ class LivePlanner:
             if kept[stop.feed] < self.cfg.stops_per_feed:
                 kept[stop.feed] += 1
                 nearest.append(stop)
+        linked = self._airport_stops(p)
+        if end:
+            self._links[end] = {(s.feed, s.stop_id): s for s in linked}
+        if linked:   # the airport's own way to its station replaces a straight-line walk
+            keys = {(s.feed, s.stop_id) for s in linked}
+            nearest = sorted([s for s in nearest if (s.feed, s.stop_id) not in keys] + linked,
+                             key=lambda s: s.walk_s)
         return nearest
+
+    def _airport_stops(self, p: Point) -> list[NearStop]:
+        out = []
+        for link in self.airports:
+            if not link.at_airport(p.lat, p.lon):
+                continue
+            for row, d in self._stops_within(*link.station, link.station_m):
+                if link.mode == "shuttle":
+                    shuttle = (link.minutes or 0) * 60 + link.wait_s(self.now_s)
+                    walk = self.walk_s(d) + shuttle
+                elif link.minutes:
+                    walk, shuttle = link.minutes * 60, 0
+                else:
+                    walk, shuttle = self.walk_s(haversine_m(*link.terminal, row["lat"],
+                                                            row["lon"])), 0
+                out.append(NearStop(row["feed_id"], row["stop_id"],
+                                    row["parent_name"] or row["name"], row["lat"], row["lon"],
+                                    walk, link=link, link_s=shuttle))
+        return out
 
     # -- timetable queries ---------------------------------------------------------------
     def calls_at(self, feed: str, stop_ids: list[str],
@@ -328,8 +373,10 @@ class LivePlanner:
 
     # -- search ----------------------------------------------------------------------------
     def plan(self, origin: Point, destination: Point) -> dict:
-        o_stops, d_stops = self.stops_near(origin), self.stops_near(destination)
+        o_stops = self.stops_near(origin, "origin")
+        d_stops = self.stops_near(destination, "destination")
         self.ends = {"origin": o_stops, "destination": d_stops}   # for the search log
+        self._origin, self._destination = origin, destination
         base = {"origin": _pt(origin), "destination": _pt(destination),
                 "now": self.midnight_epoch + self.now_s,
                 "window_min": self.cfg.window_s // 60,
@@ -351,8 +398,21 @@ class LivePlanner:
         if best_direct is not None:
             transfers = [c for c in transfers if self._score(c)
                          <= best_direct - self.cfg.transfer_only_if_faster_s]
-        groups = self._groups(direct + transfers)
+        good = self._choose(direct + transfers)
+        if not good and self.cfg.max_transfers >= 2:
+            good = self._choose(self._two_transfer())
+        result = {**base, "options": [self._describe(c) for c in good],
+                  "outcome": "ok" if good else "no_trips",
+                  "live_checks": self.live_calls,
+                  "live_available": self.realtime is not None and self.realtime.available()}
+        if not good:
+            result["notice"] = (f"No trips in the next {_span(self.cfg.window_s)} "
+                                "from stops near you.")
+        return result
 
+    def _choose(self, cands: list[Candidate]) -> list[Candidate]:
+        """The options to show: one departure per route choice, best first."""
+        groups = self._groups(cands)
         # Live times for the next few departures of the most promising route choices.
         self._apply_realtime([c for g in groups[: self.cfg.max_options * 2] for c in g[:3]])
         good = []
@@ -364,16 +424,8 @@ class LivePlanner:
                 good.append(chosen)
         # Long waits at a transfer only when no option has short ones.
         short = [c for c in good if self._feasible(c) == "ok"]
-        good = sorted(self._drop_dominated(short or good),
+        return sorted(self._drop_dominated(short or good),
                       key=self._score)[: self.cfg.max_options]
-        result = {**base, "options": [self._describe(c) for c in good],
-                  "outcome": "ok" if good else "no_trips",
-                  "live_checks": self.live_calls,
-                  "live_available": self.realtime is not None and self.realtime.available()}
-        if not good:
-            result["notice"] = (f"No trips in the next {_span(self.cfg.window_s)} "
-                                "from stops near you.")
-        return result
 
     def _window(self, walk_s: int) -> tuple[int, int]:
         # Starts a little before the rider can reach the stop: a late bus may become
@@ -435,8 +487,9 @@ class LivePlanner:
             trips = self.calls_of_trips(feed, list(first))
             for tid, b in first.items():
                 for c in trips.get(tid, ()):
-                    if c.seq > b.seq:
+                    if c.seq > b.seq and _same_run(c, b):
                         down.append((b, c, o_walk[b.stop_id]))
+        self._down = down
         if not down:
             return []
         latest = max(c.arr for _, c, _ in down) + self.cfg.max_wait_s
@@ -455,8 +508,9 @@ class LivePlanner:
             trips = self.calls_of_trips(feed, list(last))
             for tid, a in last.items():
                 for c in trips.get(tid, ()):
-                    if c.seq < a.seq and self.now_s <= c.dep <= latest:
+                    if c.seq < a.seq and _same_run(c, a) and self.now_s <= c.dep <= latest:
                         up[(feed, c.stop_id)].append((c, a, d_walk[a.stop_id]))
+        self._up = up
         if not up:
             return []
         near = self._transfer_index(list(up), {(b.feed, x.stop_id) for b, x, _ in down})
@@ -479,6 +533,151 @@ class LivePlanner:
                     taken.add(route)
                     out.append(Candidate([_ride(b, x), _ride(y, a)], walk_start, walk_end,
                                          [walk]))
+        return out
+
+    def _two_transfer(self) -> list[Candidate]:
+        """Ride, change, ride, change, ride: the first ride from a start stop (as in
+        ``_one_transfer``), a middle ride from a stop near where it ends to a stop near
+        where a last ride to the end stops begins. Only for searches where nothing
+        simpler works."""
+        down, up = self._down, self._up
+        if not down or not up:
+            return []
+        cfg, o, d = self.cfg, self._origin, self._destination
+        max_wait = min(cfg.max_wait_s, cfg.two_transfer_wait_s)
+        # Each change makes progress: the first one is closer to the end than the start
+        # is, the last one closer to the start than the end is.
+        span = haversine_m(o.lat, o.lon, d.lat, d.lon)
+        self._load_stops([(x.feed, x.stop_id) for _, x, _ in down] + list(up))
+
+        def closer(key, to: Point) -> bool:
+            s = self.stop(*key)
+            return s["lat"] is not None and haversine_m(s["lat"], s["lon"],
+                                                        to.lat, to.lon) < span
+
+        # Every first ride the rider can catch, by the stop it reaches.
+        first: dict[tuple[str, str], list[tuple[Call, Call, int]]] = defaultdict(list)
+        for b, x, walk_start in down:
+            if x.arr - self.now_s > cfg.max_ride_s or b.dep < self.now_s + walk_start:
+                continue
+            first[(x.feed, x.stop_id)].append((b, x, walk_start))
+        first = {k: v for k, v in first.items() if closer(k, d)}
+        last = {k: v for k, v in up.items() if closer(k, o)}
+        if not first or not last:
+            return []
+        around = self._stops_around(list(first) + list(last))
+        # Where the last ride can be reached from: stops within a short walk of its
+        # boarding stops. Only agencies with such a stop can give the middle ride.
+        ends: dict[tuple[str, str], list[tuple[tuple[str, str], int]]] = defaultdict(list)
+        for key in last:
+            for other, walk in around.get(key, ()):
+                ends[other].append((key, walk))
+        for entries in last.values():
+            entries.sort(key=lambda e: e[0].dep)
+        end_feeds = {feed for feed, _ in ends}
+        # Where the middle ride can start: (time the rider is there, first ride, walk),
+        # in time order.
+        ready: dict[tuple[str, str], list[tuple[int, tuple[Call, Call, int], int]]] = (
+            defaultdict(list))
+        for key, rides in first.items():
+            for other, walk in around.get(key, ()):
+                if other[0] in end_feeds:
+                    ready[other].extend((x.arr + walk, (b, x, ws), walk) for b, x, ws in rides)
+        for entries in ready.values():
+            entries.sort(key=lambda e: e[0])
+
+        out = []
+        by_feed: dict[str, list[str]] = defaultdict(list)
+        for feed, stop_id in ready:
+            by_feed[feed].append(stop_id)
+        for feed, stop_ids in by_feed.items():
+            lo = min(ready[(feed, s)][0][0] for s in stop_ids) + cfg.min_transfer_s
+            hi = max(ready[(feed, s)][-1][0] for s in stop_ids) + max_wait
+            boards: dict[str, tuple[Call, tuple[int, tuple[Call, Call, int], int]]] = {}
+            per_route: dict[tuple, int] = defaultdict(int)
+            for c in sorted(self.calls_at(feed, stop_ids, (lo, hi)), key=lambda c: c.dep):
+                if c.trip_id in boards:
+                    continue
+                # The latest first ride that still makes this departure: least waiting.
+                fit = None
+                for entry in ready[(feed, c.stop_id)]:
+                    if entry[0] + cfg.min_transfer_s > c.dep:
+                        break
+                    fit = entry
+                if fit is None or c.dep - fit[0] > max_wait:
+                    continue
+                b = fit[1][0]
+                if (feed, c.route_id) == (b.feed, b.route_id):
+                    continue
+                group = (c.route_id, c.headsign, c.stop_id)
+                if per_route[group] < 6:   # the next few departures of each line there
+                    per_route[group] += 1
+                    boards[c.trip_id] = (c, fit)
+            trips = self.calls_of_trips(feed, list(boards))
+            for tid, (m, (_, (b, x, walk_start), walk1)) in boards.items():
+                taken = set()   # per last route, the first vehicle that can be caught
+                for y in trips.get(tid, ()):
+                    if y.seq <= m.seq or not _same_run(y, m) or (feed, y.stop_id) not in ends:
+                        continue
+                    for key, walk2 in ends[(feed, y.stop_id)]:
+                        for c, a, walk_end in last[key]:
+                            route = (c.feed, c.route_id)
+                            if route in taken or route == (feed, m.route_id):
+                                continue
+                            slack = c.dep - (y.arr + walk2)
+                            if slack < cfg.min_transfer_s:
+                                continue
+                            if slack > max_wait:
+                                break
+                            taken.add(route)
+                            out.append(Candidate(
+                                [_ride(b, x), _ride(m, y), _ride(c, a)], walk_start,
+                                walk_end, [walk1, walk2]))
+        return out
+
+    def _stops_around(self, keys: list[tuple[str, str]]
+                      ) -> dict[tuple[str, str], list[tuple[tuple[str, str], int]]]:
+        """For each stop: every boardable stop (any agency) less than ``transfer_m``
+        away, with the walk time — itself included, at no walk."""
+        self._load_stops(keys)
+        pts = [self.stop(*k) for k in keys]
+        pts = [s for s in pts if s["lat"] is not None]
+        if not pts:
+            return {}
+        pad = self.cfg.transfer_m / 111_320.0
+        lat0, lat1 = min(s["lat"] for s in pts) - pad, max(s["lat"] for s in pts) + pad
+        lon0, lon1 = (min(s["lon"] for s in pts) - 2 * pad,
+                      max(s["lon"] for s in pts) + 2 * pad)
+        cell_lat = pad
+        grid: dict[tuple[int, int], list[tuple[tuple[str, str], float, float]]] = defaultdict(list)
+
+        def cell(lat, lon) -> tuple[int, int]:
+            lon_deg = cell_lat / max(math.cos(math.radians(lat)), 0.1)
+            return int(lat // cell_lat), int(lon // lon_deg)
+
+        for r in self.db.conn.execute(
+            """
+            SELECT feed_id, stop_id, lat, lon FROM gtfs_stops
+             WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
+               AND (location_type IS NULL OR location_type IN (0, ''))
+            """, (lat0, lat1, lon0, lon1)):
+            grid[cell(r["lat"], r["lon"])].append(((r["feed_id"], r["stop_id"]),
+                                                   r["lat"], r["lon"]))
+        out = {}
+        for key in keys:
+            s = self.stop(*key)
+            if s["lat"] is None:
+                continue
+            ci, cj = cell(s["lat"], s["lon"])
+            found = []
+            for di in (-1, 0, 1):
+                for dj in (-1, 0, 1):
+                    for other, lat, lon in grid.get((ci + di, cj + dj), ()):
+                        dist = haversine_m(s["lat"], s["lon"], lat, lon)
+                        if dist <= self.cfg.transfer_m:
+                            found.append((other, 0 if other == key
+                                          else max(60, self.walk_s(dist))))
+            out[key] = found
         return out
 
     def _transfer_index(self, onward_stops: list[tuple[str, str]],
@@ -538,11 +737,21 @@ class LivePlanner:
                 self._stop_cache.setdefault((feed, stop_id), {
                     "stop_id": stop_id, "name": stop_id, "lat": None, "lon": None})
 
-    @staticmethod
-    def _score(c: Candidate) -> int:
+    def _link(self, c: Candidate, end: str) -> NearStop | None:
+        ride = c.rides[0] if end == "origin" else c.rides[-1]
+        stop = ride.board_stop if end == "origin" else ride.alight_stop
+        return self._links[end].get((ride.feed, stop))
+
+    def _shuttle_s(self, c: Candidate) -> int:
+        return sum(s.link_s for s in (self._link(c, "origin"), self._link(c, "destination"))
+                   if s)
+
+    def _score(self, c: Candidate) -> int:
         # Earliest arrival, with each transfer counted as 5 extra minutes and walking
-        # counted twice (riders would rather wait than walk far).
-        return c.arrive + 300 * (len(c.rides) - 1) + c.walk_start_s + c.walk_end_s
+        # counted twice (riders would rather wait than walk far; an airport shuttle
+        # ride isn't walking).
+        return (c.arrive + 300 * (len(c.rides) - 1) + c.walk_start_s + c.walk_end_s
+                - self._shuttle_s(c))
 
     def _groups(self, cands: list[Candidate], per_group: int = 4) -> list[list[Candidate]]:
         """Candidates grouped by route choice (e.g. Blue Line → Silver Line), each group in
@@ -629,7 +838,7 @@ class LivePlanner:
         first = c.rides[0]
         start_stop = self.stop(first.feed, first.board_stop)
         legs.append({"mode": "walk", "duration_s": c.walk_start_s,
-                     "to": _stop_pt(start_stop)})
+                     "to": _stop_pt(start_stop), **_airport(self._link(c, "origin"), "origin")})
         for i, ride in enumerate(c.rides):
             if i:
                 walk = c.transfer_walk_s[i - 1]
@@ -641,7 +850,8 @@ class LivePlanner:
             legs.append(self._ride_leg(ride))
         last = c.rides[-1]
         legs.append({"mode": "walk", "duration_s": c.walk_end_s,
-                     "from": _stop_pt(self.stop(last.feed, last.alight_stop))})
+                     "from": _stop_pt(self.stop(last.feed, last.alight_stop)),
+                     **_airport(self._link(c, "destination"), "destination")})
         leave = first.dep_eff - c.walk_start_s
         fares = [leg.get("fare") for leg in legs if leg["mode"] == "ride"]
         return {
@@ -651,7 +861,8 @@ class LivePlanner:
             "arrive_at": self._epoch(c.arrive),
             "duration_s": c.arrive - (self.now_s if leave < self.now_s else leave),
             "wait_s": first.dep_eff - (self.now_s + c.walk_start_s),
-            "walk_s": c.walk_start_s + c.walk_end_s + sum(c.transfer_walk_s),
+            "walk_s": (c.walk_start_s + c.walk_end_s + sum(c.transfer_walk_s)
+                       - self._shuttle_s(c)),
             "transfers": len(c.rides) - 1,
             "live": any(r.live for r in c.rides),
             "fare_estimate": (round(sum(fares), 2) if fares and all(
@@ -664,7 +875,8 @@ class LivePlanner:
             "SELECT short_name, long_name, color, text_color, route_type FROM gtfs_routes "
             "WHERE feed_id = ? AND route_id = ?", (ride.feed, ride.route_id)).fetchone()
         calls = [c for c in self.calls_of_trips(ride.feed, [ride.trip_id]).get(ride.trip_id, ())
-                 if ride.board_seq <= c.seq <= ride.alight_seq]
+                 if ride.board_seq <= c.seq <= ride.alight_seq
+                 and abs(c.dep - ride.dep) < DAY // 2]
         stops = [self.stop(ride.feed, c.stop_id) for c in calls]
         path = [[s["lon"], s["lat"]] for s in stops if s["lat"] is not None]
         shaped = self._shape_slice(ride, stops)
@@ -735,9 +947,22 @@ def _by_feed(stops: list[NearStop]) -> dict[str, list[NearStop]]:
     return out
 
 
+def _same_run(a: Call, b: Call) -> bool:
+    """Two calls of one trip on the same day: a trip whose service runs yesterday and
+    today has both runs' calls (today's times and yesterday's, 24 h earlier)."""
+    return abs(a.dep - b.dep) < DAY // 2
+
+
 def _ride(board: Call, alight: Call) -> Ride:
     return Ride(board.feed, board.trip_id, board.route_id, board.headsign, board.shape_id,
                 board.stop_id, board.seq, board.dep, alight.stop_id, alight.seq, alight.arr)
+
+
+def _airport(stop: NearStop | None, end: str) -> dict:
+    """The airport step on a start/end leg: directions, and how much is shuttle."""
+    if stop is None or stop.link is None:
+        return {}
+    return {"airport": {**stop.link.info(end), "shuttle_s": stop.link_s}}
 
 
 def _pt(p: Point) -> dict:

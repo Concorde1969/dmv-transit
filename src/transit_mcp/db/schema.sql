@@ -342,7 +342,12 @@ CREATE TABLE IF NOT EXISTS gtfs_stop_times (
     drop_off_type  INTEGER,
     stop_headsign  TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_gtfs_stop_times_stop ON gtfs_stop_times(feed_id, stop_id);
+-- Departure and arrival times in the stop index: the trip planner's "what leaves
+-- these stops in the next hours" filters inside the index instead of reading every
+-- stop time of the day (replaces the old (feed_id, stop_id) index).
+DROP INDEX IF EXISTS idx_gtfs_stop_times_stop;
+CREATE INDEX IF NOT EXISTS idx_gtfs_stop_times_stop_time
+    ON gtfs_stop_times(feed_id, stop_id, departure_time, arrival_time);
 CREATE INDEX IF NOT EXISTS idx_gtfs_stop_times_trip ON gtfs_stop_times(feed_id, trip_id);
 
 CREATE TABLE IF NOT EXISTS gtfs_calendar (

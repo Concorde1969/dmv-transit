@@ -2,7 +2,8 @@
 
 Deliberately dependency-free: stdlib ``zipfile`` + ``csv`` streamed into SQLite.
 ``shapes.txt`` (90-95% of a feed) is not loaded row by row; ``shapes.py`` stores each
-shape simplified and encoded, for drawing routes on the map.
+shape simplified and encoded, for drawing routes on the map. Trips given as a headway
+(``frequencies.txt``, e.g. "every 17 minutes, all day") become one trip per run.
 """
 
 from __future__ import annotations
@@ -159,6 +160,77 @@ def _iter_rows(zf: zipfile.ZipFile, member: str):
             yield dict(zip(header, (c.strip() for c in row)))
 
 
+FREQ_SEP = "@"   # run trip IDs: "<template trip>@HH:MM:SS"
+
+
+def _secs(t: str | None) -> int | None:
+    try:
+        h, m, s = (t or "").strip().split(":")
+        return int(h) * 3600 + int(m) * 60 + int(s)
+    except ValueError:
+        return None
+
+
+def _hms(s: int) -> str:
+    return f"{s // 3600:02d}:{s % 3600 // 60:02d}:{s % 60:02d}"
+
+
+def expand_frequencies(db: Database, feed_id: str) -> int:
+    """Turn each headway trip (``frequencies.txt``) into one trip per run, so code that
+    reads ``gtfs_stop_times`` sees every departure. The template trip's times only give
+    the time between its stops; it is replaced by its runs ("<trip>@HH:MM:SS"). Safe to
+    run again: templates already expanded have no stop times left."""
+    conn = db.conn
+    freqs = conn.execute(
+        "SELECT trip_id, start_time, end_time, headway_secs FROM gtfs_frequencies "
+        "WHERE feed_id = ? ORDER BY trip_id, start_time", (feed_id,)).fetchall()
+    by_trip: dict[str, list] = {}
+    for f in freqs:
+        by_trip.setdefault(f["trip_id"], []).append(f)
+    runs = 0
+    for trip_id, windows in by_trip.items():
+        trip = conn.execute("SELECT * FROM gtfs_trips WHERE feed_id = ? AND trip_id = ?",
+                            (feed_id, trip_id)).fetchone()
+        calls = conn.execute(
+            "SELECT * FROM gtfs_stop_times WHERE feed_id = ? AND trip_id = ? "
+            "ORDER BY stop_sequence", (feed_id, trip_id)).fetchall()
+        if trip is None or not calls:
+            continue
+        base = _secs(calls[0]["departure_time"]) or _secs(calls[0]["arrival_time"]) or 0
+        trip_rows, time_rows = [], []
+        for w in windows:
+            start, end, step = _secs(w["start_time"]), _secs(w["end_time"]), w["headway_secs"]
+            if start is None or end is None or not step or step <= 0:
+                continue
+            for t in range(start, end, int(step)):
+                run_id = f"{trip_id}{FREQ_SEP}{_hms(t)}"
+                trip_rows.append((feed_id, run_id, trip["route_id"], trip["service_id"],
+                                  trip["headsign"], trip["direction_id"], trip["block_id"],
+                                  trip["shape_id"], trip["wheelchair_accessible"]))
+                for c in calls:
+                    arr, dep = _secs(c["arrival_time"]), _secs(c["departure_time"])
+                    time_rows.append((
+                        feed_id, run_id, c["stop_id"], c["stop_sequence"],
+                        _hms(arr - base + t) if arr is not None else None,
+                        _hms(dep - base + t) if dep is not None else None,
+                        c["pickup_type"], c["drop_off_type"], c["stop_headsign"]))
+        if not trip_rows:
+            continue
+        conn.execute("DELETE FROM gtfs_stop_times WHERE feed_id = ? AND trip_id = ?",
+                     (feed_id, trip_id))
+        conn.executemany(
+            "INSERT OR REPLACE INTO gtfs_trips (feed_id, trip_id, route_id, service_id, "
+            "headsign, direction_id, block_id, shape_id, wheelchair_accessible) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", trip_rows)
+        conn.executemany(
+            "INSERT INTO gtfs_stop_times (feed_id, trip_id, stop_id, stop_sequence, "
+            "arrival_time, departure_time, pickup_type, drop_off_type, stop_headsign) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", time_rows)
+        runs += len(trip_rows)
+    db.commit()
+    return runs
+
+
 def _load_member(
     db: Database, feed_id: str, zf: zipfile.ZipFile, member: str
 ) -> int:
@@ -295,6 +367,9 @@ def load_feed(
         if not db.conn.execute("SELECT 1 FROM gtfs_shapes WHERE feed_id = ? LIMIT 1",
                                (feed.slug,)).fetchone():
             stats["shapes"] = load_shapes(db, feed.slug, zipfile.ZipFile(io.BytesIO(content)))
+        # ... and headway trips loaded before they were expanded.
+        if load_stop_times:
+            stats["frequency_trips"] = expand_frequencies(db, feed.slug)
         db.commit()
         if archive_dir is not None:
             stats["archived"] = str(
@@ -313,6 +388,8 @@ def load_feed(
             continue
         stats["rows"][member] = _load_member(db, feed.slug, zf, member)
     stats["shapes"] = load_shapes(db, feed.slug, zf)  # simplified, for maps
+    if load_stop_times:
+        stats["frequency_trips"] = expand_frequencies(db, feed.slug)
 
     info = _feed_info(zf)
     db.conn.execute(

@@ -5,7 +5,8 @@ around the Washington DC / Maryland / Virginia region by public transit. It answ
 from current, cited data pulled from **WMATA** (Metrorail + Metrobus), the Virginia
 systems (**VRE, Fairfax Connector, ART, DASH, CUE, Loudoun, OmniRide, Virginia
 Breeze**), Maryland (**MTA bus, commuter bus, Metro SubwayLink, Light RailLink, MARC,
-Annapolis Transit, Harbor Connector, Potomac Valley**) and intercity services
+Annapolis Transit, Harbor Connector, Potomac Valley**), the **Dulles Airport
+shuttles**, and intercity services
 (**Amtrak, FlixBus** and other intercity buses), and focuses on what trips actually
 hinge on: which systems connect where, **on which days and at what times** a
 connection works, and **how to pay** each leg.
@@ -38,7 +39,7 @@ prompt instead — see `chat/agent.py`.)
      ([console.anthropic.com](https://console.anthropic.com/)) and `WMATA_API_KEY`
      (free at [developer.wmata.com](https://developer.wmata.com/)), save, and
      double-click `start.bat` again. It then downloads transit data (15–20 minutes
-     for all 21 feeds).
+     for all 22 feeds).
    - For the map planner, also add `TRANSITLAND_API_KEY`
      ([transit.land](https://www.transit.land/), Explorer plan) and
      `GOOGLE_GEOCODING_API_KEY` ([Google Geocoding API](https://developers.google.com/maps/documentation/geocoding);
@@ -112,7 +113,14 @@ shows which source each feed used). Every Transitland API call is counted agains
 planner shows scheduled times.
 
 The planner only suggests a change between two stops less than 0.3 km apart (of any
-agency), so every transfer is a short walk. Nearby stops are also grouped into
+agency), so every transfer is a short walk. Trips with two changes are searched only
+when nothing with fewer changes works (`TRIP_MAX_TRANSFERS`). At **BWI, DCA and IAD**
+the step between the terminal and the rail station comes from
+[`planning/airports.toml`](src/transit_mcp/planning/airports.toml): BWI's free shuttle
+to the MARC/Amtrak station (timing from the airport's website, since the shuttle has no
+current GTFS feed) and DCA's and IAD's walkways, each with the airport's own directions.
+Feeds that give trips as headways (`frequencies.txt`: the Dulles shuttles, CUE,
+Annapolis Transit) are expanded into one trip per run when loaded. Nearby stops are also grouped into
 **clusters** (every pair in a cluster is less than 0.3 km apart) for the assistant's
 "what connects here" answers.
 
@@ -174,6 +182,7 @@ content hash. One failing source never stops the rest of a run.
 | `annapolis-transit` | Annapolis Transit | bus | GTFS via Transitland |
 | `harbor-connector` | Harbor Connector (Baltimore) | ferry | GTFS via Transitland |
 | `potomac-valley` | Potomac Valley Transit Authority | bus | GTFS via Transitland |
+| `dulles-shuttles` | Dulles Airport Shuttles (garages, economy lots) | bus | GTFS via Transitland |
 | `intercity-bus` | Intercity buses (combined feed) | intercity bus | GTFS via Transitland |
 | `flixbus` | FlixBus | intercity bus | GTFS via Transitland |
 | `amtrak` | Amtrak | intercity rail | GTFS via Transitland |

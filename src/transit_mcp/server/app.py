@@ -198,11 +198,13 @@ def _place(db: Database, text: str):
 def plan_trip_now(origin: str, destination: str) -> dict:
     """Leave-now trip options with LIVE departures, like the site's map: trips leaving
     in the next 3 hours from each agency's closest stops (up to about a mile's walk; the
-    walking time is part of each option), direct trips first and one transfer only when
-    needed, and transfers only between stops within 0.3 km. Options with short transfer
-    waits (10 minutes or less) come first; a trip with a longer wait is offered only when
-    nothing better works. Tell the rider how much walking and waiting each option
-    involves. Use this when the rider
+    walking time is part of each option), direct trips first, one transfer only when
+    needed, two transfers only when nothing simpler works, and transfers only between
+    stops within 0.3 km. Options with short transfer waits (10 minutes or less) come
+    first; a trip with a longer wait is offered only when nothing better works. At BWI,
+    DCA and IAD a step gives the airport's own directions between the terminal and its
+    rail station (BWI: the free shuttle) — pass those on. Tell the rider how much
+    walking and waiting each option involves. Use this when the rider
     wants to go now; use plan_connection for general "how would I get there" or a later
     day.
 
@@ -235,7 +237,13 @@ def plan_trip_now(origin: str, destination: str) -> dict:
     def brief(opt):
         steps = []
         for leg in opt["legs"]:
-            if leg["mode"] == "walk":
+            if leg.get("airport"):
+                a = leg["airport"]
+                steps.append(f"{'free airport shuttle' if a['mode'] == 'shuttle' else 'walk'} "
+                             f"about {round(leg['duration_s'] / 60)} min between the "
+                             f"{a['name']} terminal and {a['station']}: {a['text']} "
+                             f"(directions from {a['source']})")
+            elif leg["mode"] == "walk":
                 steps.append(f"walk {round(leg['duration_s'] / 60)} min"
                              + (f" (wait {round(leg['wait_s'] / 60)} min)"
                                 if leg.get("transfer") else ""))

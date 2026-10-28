@@ -401,7 +401,21 @@ function span(minutes) {
 }
 
 function walkLegs(opt) {
-  return opt.legs.filter((l) => l.mode === "walk").map((l) => l.duration_s);
+  // An airport shuttle ride isn't walking.
+  return opt.legs.filter((l) => l.mode === "walk").map((l) => l.duration_s - (l.airport?.shuttle_s || 0));
+}
+
+const shuttleLeg = (opt) => opt.legs.find((l) => l.airport?.mode === "shuttle");
+
+// An airport's own directions between the terminal and its rail station.
+function airportStep(leg, next) {
+  const a = leg.airport, m = mins(leg.duration_s);
+  const toStation = Boolean(leg.to);
+  const title = a.mode === "shuttle"
+    ? (toStation ? `Free ${a.code} shuttle to ${a.station}, about ${m} min` : `Free ${a.code} shuttle to the terminal, about ${m} min`)
+    : (toStation ? `Walk about ${m} min to ${leg.to.name}` : `Walk about ${m} min into ${a.name}`);
+  const leaves = toStation && next ? ` Your ${isRail(next) ? "train" : "bus"} leaves at ${clock(next.board.expected)}.` : "";
+  return { cls: "walk", title, sub: `${a.text}${leaves} (Directions from the airport's website.)` };
 }
 
 function optionCard(opt, i) {
@@ -410,6 +424,7 @@ function optionCard(opt, i) {
   const pills = rs.map(pill).join(ICONS.chev);
   const walk = mins(opt.walk_s);
   const longWalk = walkLegs(opt).find((s) => s >= 600);
+  const shuttle = shuttleLeg(opt);
   const longWait = opt.legs.find((l) => l.transfer && l.wait_s > (state.plan.short_transfer_min || 10) * 60);
   const changes = opt.transfers ? plural(opt.transfers, "change", "changes") : "No changes";
   const late = rs.find((l) => l.live && l.delay_s >= 120);
@@ -421,6 +436,7 @@ function optionCard(opt, i) {
     <div class="meta">Arrive <strong>${clock(opt.arrive_at)}</strong>, ${mins(opt.duration_s)} min. ${changes}. ${tag}
       ${late ? `<span class="late">${mins(late.delay_s)} min late</span>` : ""}
       ${longWalk ? `<br><span class="walk-note">Includes a ${mins(longWalk)}-minute walk</span>` : ""}
+      ${shuttle ? `<br><span class="walk-note">Includes the free ${esc(shuttle.airport.code)} shuttle</span>` : ""}
       ${longWait ? `<br><span class="wait-note">Includes a ${mins(longWait.wait_s)}-minute wait at ${esc(longWait.to.name)}</span>` : ""}
       ${opt.reports?.length ? `<br><span class="report-note">${ICONS.alert}Rider report, ${esc(ago(opt.reports[0].minutes_ago))}: ${esc(opt.reports[0].summary)}</span>` : ""}
       ${opt.fare_estimate != null ? `<br>About $${opt.fare_estimate.toFixed(2)}` : ""}</div>
@@ -434,7 +450,9 @@ function renderDetail(opt) {
   legs.forEach((leg, idx) => {
     if (leg.mode === "walk") {
       const next = legs[idx + 1];
-      if (idx === 0) {
+      if (leg.airport) {
+        steps.push(airportStep(leg, next));
+      } else if (idx === 0) {
         steps.push({ cls: "walk", title: `Walk ${mins(leg.duration_s)} min to ${leg.to.name}`,
           sub: next ? `Your ${isRail(next) ? "train" : "bus"} leaves at ${clock(next.board.expected)}` : "" });
       } else if (leg.transfer) {

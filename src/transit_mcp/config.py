@@ -117,6 +117,9 @@ class Settings(BaseSettings):
     trip_max_transfer_wait_min: int = Field(default=120, alias="TRIP_MAX_TRANSFER_WAIT_MIN")
     # Departures in this many minutes are offered.
     trip_window_min: int = Field(default=180, alias="TRIP_WINDOW_MIN")
+    # Most changes in one trip. Two-change trips are searched only when no trip with
+    # fewer changes works.
+    trip_max_transfers: int = Field(default=2, alias="TRIP_MAX_TRANSFERS")
     # Gentle walking pace (m/min) for walk times shown to riders.
     trip_walk_m_per_min: float = Field(default=70.0, alias="TRIP_WALK_M_PER_MIN")
     trip_live_cache_s: int = Field(default=60, alias="TRIP_LIVE_CACHE_S")

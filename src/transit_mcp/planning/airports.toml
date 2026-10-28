@@ -1,0 +1,74 @@
+# Getting between an airport's terminal and its rail station — what the GTFS feeds
+# don't say. From each airport's own website (checked 2026-10-28); re-check `source`
+# when an airport changes its terminals. The live planner adds this as the first or
+# last step of a trip that starts or ends at the airport.
+#
+#   terminal      where riders mean by "the airport" (lat, lon)
+#   area_m        a trip start/end this close to `terminal` counts as at the airport
+#   station       the rail station (lat, lon); stops within `station_m` use this link
+#   mode          "shuttle" (a vehicle the rider waits for) or "walkway"
+#   minutes       shuttle ride or walk time; for a walkway without it, the walk is
+#                 worked out from the distance
+#   every_min     how often the shuttle runs (half of it is counted as the wait);
+#                 night_every_min between night[0] and night[1]
+#   to_station    instructions, terminal -> station
+#   from_station  instructions, station -> terminal
+
+[[airport]]
+code = "BWI"
+name = "BWI Marshall Airport"
+terminal = [39.1774, -76.6684]
+area_m = 1500
+station = [39.1923, -76.6946]
+station_name = "BWI Rail Station"
+station_m = 250
+mode = "shuttle"
+minutes = 10
+every_min = 15
+night_every_min = 25
+night = ["01:00", "05:00"]
+to_station = """Take the free BWI shuttle to the BWI Rail Station (MARC and Amtrak). \
+It picks up on the lower level, outside baggage claim, and runs 24 hours a day, about \
+every 10 to 15 minutes (every 25 minutes from 1 to 5 a.m.)."""
+from_station = """Take the free BWI shuttle to the terminal. It stops beside the rail \
+station garage, directly across from the rail station, and drops off near the airline \
+check-in counters. It runs 24 hours a day, about every 10 to 15 minutes (every 25 \
+minutes from 1 to 5 a.m.)."""
+source = "https://bwiairport.com/to-from-bwi/transportation/transit/amtrak/"
+
+[[airport]]
+code = "DCA"
+name = "Reagan National Airport"
+terminal = [38.8501, -77.0392]
+area_m = 1200
+station = [38.8535, -77.0440]
+station_name = "Ronald Reagan Washington National Airport Metro station"
+station_m = 150
+mode = "walkway"
+to_station = """From Terminal 2, cross either enclosed pedestrian bridge on the \
+concourse level to the Metro station. From Terminal 1, board any "Airport Shuttle" bus \
+at the street-side curb and get off at the Terminal 2 or North/South Parking 1 & 2 \
+stop, where an enclosed bridge leads to the station."""
+from_station = """For Terminal 2, go to either end of the platform and cross the \
+bridge to the concourse level (the elevator is at the center of the platform). For \
+Terminal 1, exit toward the parking garage, go down to street level and board any \
+"Airport Shuttle" bus."""
+source = "https://www.flyreagan.com/metro"
+
+[[airport]]
+code = "IAD"
+name = "Dulles International Airport"
+terminal = [38.9537, -77.4480]
+area_m = 2500
+station = [38.9558, -77.4482]
+station_name = "Washington Dulles International Airport Metro station"
+station_m = 150
+mode = "walkway"
+minutes = 5
+to_station = """Follow the signs down to the indoor pedestrian walkway to the Metro \
+station, about 600 feet (5 minutes). There are elevators at the Main Terminal and at \
+the station."""
+from_station = """Follow the signs to the indoor pedestrian walkway to the Main \
+Terminal, about 600 feet (5 minutes). There are elevators at the station and at the \
+Main Terminal."""
+source = "https://www.flydulles.com/parking-transportation/silver-line-metrorail/silver-line-faqs"

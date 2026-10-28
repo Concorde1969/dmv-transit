@@ -1,0 +1,16 @@
+slug = "dulles-shuttles"
+name = "Dulles Airport Shuttles"
+mode = "bus"
+
+# The airport's own ground shuttles (parking lots, terminal), from its ridesystems GTFS
+# feed. Descriptions and fares are intentionally left out: answers about these
+# shuttles come from the GTFS feed until a curated profile is written.
+[profile]
+frequency_tier = "frequent"
+
+# Routes, stops and schedules: GTFS found through Transitland (url = fallback).
+[[sources]]
+type = "gtfs"
+transitland_id = "f-dqc1-dullesairport"
+transitland_atlas = "ridesystems.net.dmfr.json"
+url = "https://dullesairport.ridesystems.net/Secure/Admin/Reports/GTFSDownload.aspx"
