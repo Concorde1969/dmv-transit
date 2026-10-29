@@ -60,7 +60,26 @@ class Scheduler:
         result = run_all(self.settings)
         self._prune_chatlog()
         self._prune_reports()
+        self._prune_accounts()
         return result
+
+    def _prune_accounts(self) -> None:
+        """Nightly: delete used-up sign-in codes and sessions, and unused accounts."""
+        if not self.settings.accounts_enabled:
+            return
+        from transit_mcp.accounts import AccountStore
+
+        try:
+            store = AccountStore.from_settings(self.settings)
+            try:
+                n = store.prune(self.settings.accounts_inactive_days)
+            finally:
+                store.close()
+            if n:
+                log.info("accounts: removed %d unused for %d days",
+                         n, self.settings.accounts_inactive_days)
+        except Exception:  # noqa: BLE001 - retried tomorrow night
+            log.exception("account cleanup failed")
 
     def _prune_reports(self) -> None:
         """Nightly: delete rider reports past the retention period."""

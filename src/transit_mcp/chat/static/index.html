@@ -28,6 +28,10 @@
 <div id="map" role="region" aria-label="Map"></div>
 
 <div class="topbar">
+  <button class="ask-btn account-btn" id="accountBtn" type="button" aria-controls="accountDrawer" aria-expanded="false" hidden>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+    <span class="account-btn-text" id="accountBtnText">Sign in</span>
+  </button>
   <button class="ask-btn report-btn" id="reportBtn" type="button" aria-controls="reportDrawer" aria-expanded="false">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg>
     <span class="report-btn-text">Report an issue</span>
@@ -70,6 +74,7 @@
       </button>
     </div>
     <ul class="suggest" id="suggest" role="listbox" aria-label="Places" hidden></ul>
+    <div class="quick" id="quickPlaces" hidden></div>
   </form>
 
   <div class="results" id="results" aria-live="polite"></div>
@@ -115,7 +120,11 @@
       Analytics to count visits, which sets cookies and receives your IP address under
       Google's own privacy policy. Rider reports you send are
       shown to other riders and the assistant for a few hours, and kept for up to one
-      year with the same anonymous code.</p>
+      year with the same anonymous code. If you create an account, we keep your email
+      address and the places you save (their names, addresses and dates) so you can pick
+      them on any device. Your account isn't linked to the usage log above, and saved
+      places are never put in links. You can delete your account and places at any time
+      under My places; accounts unused for two years are deleted automatically.</p>
     </div>
   </div>
   <div class="composer">
@@ -178,10 +187,21 @@
   </div>
 </aside>
 
+<aside class="drawer" id="accountDrawer" aria-labelledby="accountTitle" aria-hidden="true">
+  <div class="drawer-head">
+    <h2 id="accountTitle">My places</h2>
+    <button class="icon-btn close" id="closeAccount" type="button" aria-label="Close My places">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="account-body" id="accountBody"></div>
+</aside>
+
 <script src="/static/map/vendor/pmtiles.js"></script>
 <script src="/static/map/vendor/basemaps.js"></script>
 <script type="module" src="/static/app.js"></script>
 <script type="module" src="/static/chat.js"></script>
 <script type="module" src="/static/reports.js"></script>
+<script type="module" src="/static/account.js"></script>
 </body>
 </html>

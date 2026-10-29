@@ -41,6 +41,7 @@ PowerShell, using your signed-in AWS CLI profile — `aws login`):
 | Transitland (Explorer plan, live times for some agencies) | free plan — the app stays under Transitland's 5,000 calls/month on its own (`TRANSITLAND_MONTHLY_BUDGET`) |
 | Google Geocoding API (address search) | billed per request by Google — the app stops at `GOOGLE_GEOCODING_MONTHLY_BUDGET` (default 9,000) a month; searches are cached for a day |
 | Google Places Autocomplete + Place Details (suggestions while typing) | billed by Google per request / per session — the app stops at `GOOGLE_PLACES_MONTHLY_BUDGET` (default 9,000) a month, then uses the Geocoding API |
+| Amazon SES (sign-in code emails for accounts) | about $0.10 per 1,000 emails — the app sends at most `ACCOUNTS_DAILY_EMAILS` (500) a day |
 
 Why 2 GB: the nightly data load covers 21 GTFS feeds, including WMATA's Metrobus
 schedule (4+ million timetable rows). It is processed in a streaming way (the heaviest
@@ -253,6 +254,34 @@ powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 'cd ~/dmvtr
 powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 'cd ~/dmvtransit && docker compose exec -T app transit-mcp reports hide 42'
 ```
 
+## Accounts (My places)
+
+Visitors can sign in with an emailed 6-digit code (no passwords) and save their hotel,
+home and places to visit; they show as quick picks under "Where to?" and as pins on
+the map. Accounts and places are kept in `/data/accounts.db` (inside the snapshots),
+separate from the chat log, and are deleted when the visitor deletes their account or
+after `ACCOUNTS_INACTIVE_DAYS` (two years) unused.
+
+Sign-in codes go out through **Amazon SES** in the project's selected Region
+(us-east-2). One-time setup:
+
+1. **Verify the domain.** SES console (us-east-2) → **Identities → Create identity →
+   Domain** `dmvtransit.com`, with Easy DKIM (RSA 2048). Add the three CNAME records it
+   lists in the domain's DNS (Squarespace → Domains → dmvtransit.com → DNS). Also add
+   a DMARC record: TXT `_dmarc` = `v=DMARC1; p=none;`. The identity turns
+   **Verified** within an hour or so.
+2. **Leave the sandbox.** New SES accounts can only email addresses you've verified.
+   SES console → **Account dashboard → Request production access** (mail type
+   Transactional; website https://dmvtransit.com; describe "one-time sign-in codes
+   that visitors request themselves"). AWS usually answers within a day. Until then,
+   verify your own address under Identities to test.
+3. **SMTP credentials.** SES console → **SMTP settings → Create SMTP credentials**.
+   Put the user name and password in your local `.env` as `SMTP_USERNAME` and
+   `SMTP_PASSWORD` (they're shown once), then run `push-env.ps1` as usual.
+
+Without SMTP settings the site works as before and the Sign in button is hidden.
+Bounces and complaints are handled by SES's account-level suppression list.
+
 ## Chat log
 
 The site saves each question with its answer, the data tools used, timing, token
@@ -272,6 +301,7 @@ what visitors typed: keep them private (the folder is git-ignored).
 | Browser certificate error right after launch | DNS wasn't pointing at the server yet, or port 443 is closed. Fix, then `docker compose restart caddy` and check `docker compose logs caddy`. |
 | "The assistant isn't available right now" | Run the health check — usually a missing/invalid key in the server's `.env`. |
 | 502 Bad Gateway | The app is starting or crashed: `docker compose logs --tail 50 app`. |
+| "We couldn't send the email just now" when signing in | `docker compose logs app \| grep "sign-in email"`: a wrong SMTP password, the domain not verified in SES yet, or (in the SES sandbox) an unverified recipient. |
 | Answers missing new schedules | `docker compose logs scheduler` — nightly refresh errors are listed per agency. |
 | "Access Denied" from AWS on something that used to work | Check the project's spend limit and billing status in AWS Settings → Billing. |
 
@@ -290,5 +320,9 @@ what visitors typed: keep them private (the folder is git-ignored).
 - Location: the browser asks before sharing it, it is used only to find nearby stops,
   and map searches are logged with points rounded to about 100 meters. The geocoder and
   Transitland keys stay on the server; browsers only talk to dmvtransit.com.
+- Accounts: sign-in codes and session tokens are stored only as hashes; a code works
+  for 10 minutes and 5 tries; code emails are limited per visitor, per address and
+  site-wide. The session cookie is HttpOnly, Secure and SameSite=Lax, and changes must
+  come from the site's own pages. Saved places never appear in links or the usage log.
 - Secrets live only in `~/dmvtransit/.env` (`chmod 600`), never in the image or Git.
 - Containers run as a non-root user; Ubuntu installs security updates automatically.

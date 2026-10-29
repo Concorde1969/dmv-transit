@@ -77,6 +77,7 @@ function say(msg, ok = false) {
 function open() {
   if (!drawer.classList.contains("open")) track("report_form_opened");
   window.dmvChat?.close?.(true);
+  window.dmvAccount?.close(true);
   drawer.classList.add("open");
   drawer.setAttribute("aria-hidden", "false");
   btn.setAttribute("aria-expanded", "true");

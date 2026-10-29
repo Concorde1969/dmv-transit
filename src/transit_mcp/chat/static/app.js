@@ -2,6 +2,7 @@
 // Data: /api/geocode, /api/trip, /api/trip/live (chat/trip_api.py). Map: MapLibre GL with a
 // self-hosted Protomaps basemap (/tiles/dmv.pmtiles); all files are served by this site.
 import * as ML from "/static/map/vendor/maplibre-gl.mjs";
+import { KIND, savedPoint, sortPlaces } from "/static/places.js";
 import { ago, reportItem } from "/static/reports.js";
 import { track } from "/static/track.js";
 
@@ -20,8 +21,10 @@ const state = {
   selected: null,        // index into plan.options
   view: "list",          // list | detail
   searchId: null,        // the server's ID for the last search (usage log)
+  saved: [],             // the signed-in visitor's saved places (account.js)
+  accounts: false,       // whether accounts are available on this site
 };
-let map, youMarker, destMarker, liveTimer;
+let map, youMarker, destMarker, liveTimer, savedMarkers = [], savedPopup;
 
 // ------------------------------------------------------------------ helpers
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -159,6 +162,7 @@ function addTripLayers() {
               "text-offset": [0, 1.3], "text-anchor": "top", "text-max-width": 12 },
     paint: { "text-color": "#1B2621", "text-halo-color": "#ffffff", "text-halo-width": 2 } });
   if (state.plan) drawPlan();
+  drawSaved();
 }
 
 const SHUTTLE_COLOR = "#0F7368";
@@ -245,7 +249,7 @@ const newSession = () => (crypto.randomUUID ? crypto.randomUUID()
 function showSuggestions(field, items, credit = "") {
   activeField = field; suggestItems = items; suggestIndex = -1;
   suggest.innerHTML = items.map((it, i) =>
-    `<li role="option" id="sg${i}" aria-selected="false">${esc(it.label)}${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</li>`).join("")
+    `<li role="option" id="sg${i}" aria-selected="false"${it.saved ? ` class="saved kind-${esc(it.saved.kind)}"` : ""}>${it.saved ? `<span class="sg-icon">${KIND[it.saved.kind]?.icon || ""}</span>` : ""}${esc(it.label)}${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</li>`).join("")
     + (credit && items.length ? `<li class="credit-line" role="presentation">Results from ${esc(credit)}</li>` : "");
   suggest.hidden = !items.length;
   field.setAttribute("aria-expanded", String(!!items.length));
@@ -257,12 +261,22 @@ function hideSuggestions() {
   fromInput.setAttribute("aria-expanded", "false"); toInput.setAttribute("aria-expanded", "false");
 }
 
+// Saved places as suggestions: all of them before typing, the matching ones after.
+function savedSuggestions(q = "") {
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  return sortPlaces(state.saved)
+    .filter(({ p, s }) => !s.past && words.every((w) => `${p.name} ${p.address || ""}`.toLowerCase().includes(w)))
+    .slice(0, q ? 3 : 8)
+    .map(({ p, s }) => ({ label: p.name, sub: [KIND[p.kind]?.name, s.badge].filter(Boolean).join(", "), saved: p }));
+}
+
 function onType(field) {
   clearTimeout(searchTimer);
   const q = field.value.trim();
   if (field === fromInput) state.from = q.toLowerCase() === "my location" ? null : state.from;
-  if (q.length < 3) {
-    showSuggestions(field, field === fromInput ? [{ label: "My location", me: true }] : []);
+  if (q.length < 3 || q.toLowerCase() === "my location") {   // nothing typed yet
+    const mine = savedSuggestions();
+    showSuggestions(field, field === fromInput ? [{ label: "My location", me: true }, ...mine] : mine);
     return;
   }
   searchTimer = setTimeout(async () => {
@@ -273,6 +287,7 @@ function onType(field) {
       // Google results bring their own second line; geocode.maps.co ones get one here.
       const items = (data.results || []).map((x) => ({ ...x, sub: "sub" in x ? x.sub : x.full_label && x.full_label !== x.label ? x.full_label.split(",").slice(-4, -2).join(",").trim() : "" }));
       const found = items.length;
+      items.unshift(...savedSuggestions(q));
       if (field === fromInput) items.unshift({ label: "My location", me: true });
       if (!items.length && data.message) items.push({ label: data.message, disabled: true });
       if (document.activeElement === field) showSuggestions(field, items, found ? data.attribution : "");
@@ -285,6 +300,11 @@ async function pick(i) {
   if (!it || it.disabled) return;
   const field = activeField;
   hideSuggestions();
+  if (it.saved) {
+    placesSession = null;
+    track("saved_place_used", { detail: { field: field === fromInput ? "from" : "to", kind: it.saved.kind, from: "suggestion" } });
+    return field === fromInput ? startFrom(savedPoint(it.saved)) : goTo(savedPoint(it.saved));
+  }
   if (!it.me && it.place_id && it.lat == null) {
     // A Places suggestion: ask where it is (this also closes the typing session).
     try {
@@ -300,11 +320,11 @@ async function pick(i) {
   placesSession = null;
   if (field === fromInput) {
     if (it.me) { state.from = null; fromInput.value = "My location"; }
-    else { state.from = { lat: it.lat, lon: it.lon, label: it.label, source: "suggestion", kind: it.kind }; fromInput.value = it.label; }
+    else { state.from = { lat: it.lat, lon: it.lon, label: it.label, source: "suggestion", kind: it.kind, address: it.full_label }; fromInput.value = it.label; }
     track("suggestion_picked", { detail: { field: "from", kind: it.me ? "my_location" : (it.kind || "") } });
     if (state.to) planTrip(); else toInput.focus();
   } else {
-    state.to = { lat: it.lat, lon: it.lon, label: it.label, source: "suggestion", kind: it.kind };
+    state.to = { lat: it.lat, lon: it.lon, label: it.label, source: "suggestion", kind: it.kind, address: it.full_label };
     track("suggestion_picked", { detail: { field: "to", kind: it.kind || "" } });
     toInput.value = it.label;
     toInput.blur();
@@ -369,6 +389,79 @@ $("useLoc").addEventListener("click", async () => {
   }
 });
 
+// ------------------------------------------------------------------ saved places
+// Quick picks under "Where to?" and pins on the map (the list itself is in account.js).
+function goTo(point) {
+  state.to = point; toInput.value = point.label;
+  hideSuggestions(); toInput.blur();
+  planTrip();
+}
+function startFrom(point) {
+  state.from = point; fromInput.value = point.label;
+  hideSuggestions();
+  if (state.to) planTrip(); else toInput.focus();
+}
+window.dmvTrip = { goTo, startFrom };
+
+function renderQuick() {
+  const box = $("quickPlaces");
+  const picks = sortPlaces(state.saved).filter(({ s }) => s.active).slice(0, 10);
+  box.hidden = !picks.length;
+  box.innerHTML = picks.length ? `<span class="quick-label" id="quickLabel">Your places</span>
+    <div class="quick-row" role="group" aria-labelledby="quickLabel">${picks.map(({ p, s }) => `
+      <button class="quick-chip kind-${esc(p.kind)}" type="button" data-id="${p.id}" aria-label="Go to ${esc(p.name)}${s.badge ? `, ${esc(s.badge)}` : ""}">
+        ${KIND[p.kind]?.icon || ""}<span>${esc(p.name)}</span>${s.badge ? `<small>${esc(s.badge)}</small>` : ""}</button>`).join("")}</div>` : "";
+  box.querySelectorAll(".quick-chip").forEach((b) => b.addEventListener("click", () => {
+    const p = state.saved.find((x) => x.id === +b.dataset.id);
+    if (!p) return;
+    track("saved_place_used", { detail: { field: "to", kind: p.kind, from: "quick" } });
+    goTo(savedPoint(p));
+  }));
+}
+
+function drawSaved() {
+  if (!map) return;
+  savedMarkers.forEach((m) => m.remove()); savedMarkers = [];
+  savedPopup?.remove();
+  for (const { p, s } of sortPlaces(state.saved)) {
+    if (s.past) continue;
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = `saved-pin kind-${p.kind}`;
+    el.innerHTML = KIND[p.kind]?.icon || "";
+    el.setAttribute("aria-label", `Your place: ${p.name}`);
+    el.addEventListener("click", (e) => { e.stopPropagation(); showSavedPopup(p, s); });
+    savedMarkers.push(new maplibregl.Marker({ element: el }).setLngLat([p.lon, p.lat]).addTo(map));
+  }
+}
+
+function showSavedPopup(p, s) {
+  track("saved_place_pin", { detail: { kind: p.kind } });
+  const box = document.createElement("div");
+  box.className = "saved-popup";
+  box.innerHTML = `<strong>${esc(p.name)}</strong><small>${esc([KIND[p.kind]?.name, s.badge].filter(Boolean).join(", "))}</small>
+    <div class="popup-actions"><button class="btn small primary" type="button" data-act="to">Go here</button>
+    <button class="btn small quiet" type="button" data-act="from">Start here</button></div>`;
+  box.addEventListener("click", (e) => {
+    const act = e.target.closest("button")?.dataset.act;
+    if (!act) return;
+    savedPopup?.remove();
+    track("saved_place_used", { detail: { field: act, kind: p.kind, from: "pin" } });
+    if (act === "to") goTo(savedPoint(p)); else startFrom(savedPoint(p));
+  });
+  savedPopup?.remove();
+  savedPopup = new maplibregl.Popup({ offset: 18, closeButton: true, maxWidth: "260px" })
+    .setLngLat([p.lon, p.lat]).setDOMContent(box).addTo(map);
+  box.querySelector("button")?.focus();
+}
+
+window.addEventListener("dmv:places", (e) => {
+  state.saved = e.detail.places || [];
+  state.accounts = Boolean(e.detail.enabled || e.detail.signedIn);
+  renderQuick(); drawSaved();
+  if (state.plan && state.view === "list") render();
+});
+
 // ------------------------------------------------------------------ planning
 const results = $("results");
 
@@ -419,7 +512,12 @@ function render() {
   const n = plan.options.length;
   const liveNote = plan.live_available === false ? " Live times are paused; showing the timetable." : "";
   results.innerHTML = `<div class="status-line">${plural(n, "way", "ways")} to go in the next ${span(plan.window_min)}. Trips may include walking to and from stops; walking time is shown on each trip.${liveNote}</div>`
+    + saveButton()
     + plan.options.map((opt, i) => optionCard(opt, i)).join("");
+  $("savePlace")?.addEventListener("click", () => {
+    const t = state.to;
+    window.dmvAccount?.savePlace({ name: t.label, lat: t.lat, lon: t.lon, address: t.address || t.label, kind: t.kind });
+  });
   results.querySelectorAll(".option").forEach((el) => el.addEventListener("click", () => {
     const i = +el.dataset.i;
     if (state.selected === i) {
@@ -431,6 +529,14 @@ function render() {
     }
   }));
   tick();
+}
+
+// "Save this place" for a destination picked from the search (not one already saved).
+function saveButton() {
+  const t = state.to;
+  if (!state.accounts || !t || t.source === "saved" || t.source === "my_location") return "";
+  if (state.saved.some((p) => Math.abs(p.lat - t.lat) < 0.0005 && Math.abs(p.lon - t.lon) < 0.0005)) return "";
+  return `<button class="save-place" id="savePlace" type="button">${KIND.attraction.icon}Save ${esc(t.label)} to My places</button>`;
 }
 
 function countdown(opt) {
@@ -606,6 +712,11 @@ function placeParam(params, key) {
 
 function syncUrl() {
   const p = new URLSearchParams();
+  // Saved places (a hotel, a home) never go into the address bar or shared links.
+  if (state.to?.source === "saved" || state.from?.source === "saved") {
+    history.replaceState(null, "", location.pathname);
+    return;
+  }
   if (state.to) { p.set("to", `${state.to.lat.toFixed(5)},${state.to.lon.toFixed(5)}`); p.set("tolabel", state.to.label); }
   if (state.from) { p.set("from", `${state.from.lat.toFixed(5)},${state.from.lon.toFixed(5)}`); p.set("fromlabel", state.from.label); }
   history.replaceState(null, "", p.toString() ? `?${p}` : location.pathname);

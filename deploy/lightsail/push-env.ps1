@@ -6,7 +6,7 @@
 .DESCRIPTION
   Builds the server's .env from deploy/.env.production.example, filling in:
     ANTHROPIC_API_KEY, WMATA_API_KEY (required), TRANSITLAND_API_KEY,
-    GOOGLE_GEOCODING_API_KEY and GEOCODE_API_KEY
+    GOOGLE_GEOCODING_API_KEY, GEOCODE_API_KEY, SMTP_USERNAME and SMTP_PASSWORD
       - copied from the .env in the project folder on this PC;
     SITE_DOMAIN and ACME_EMAIL - from the parameters below.
   Uploads it to the server (readable only by the server's user), then starts or
@@ -46,7 +46,8 @@ $local = Read-EnvFile $localEnv
 $fill = @{ SITE_DOMAIN = $SiteDomain.Trim(); ACME_EMAIL = $AcmeEmail.Trim() }
 foreach ($name in 'ANTHROPIC_API_KEY', 'WMATA_API_KEY', 'TRANSITLAND_API_KEY',
                  'GOOGLE_GEOCODING_API_KEY', 'GOOGLE_GEOCODING_MONTHLY_BUDGET',
-                 'GOOGLE_PLACES_MONTHLY_BUDGET', 'GEOCODE_API_KEY') {
+                 'GOOGLE_PLACES_MONTHLY_BUDGET', 'GEOCODE_API_KEY',
+                 'SMTP_HOST', 'SMTP_USERNAME', 'SMTP_PASSWORD', 'MAIL_FROM') {
     if ($local[$name]) { $fill[$name] = $local[$name] }
 }
 $missing = @('ANTHROPIC_API_KEY', 'WMATA_API_KEY') | Where-Object { -not $fill[$_] }

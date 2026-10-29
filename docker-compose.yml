@@ -21,6 +21,7 @@ x-app: &app
     TRANSIT_MCP_DB: /data/transit.db
     MAP_TILES_PATH: /data/map/dmv.pmtiles   # basemap: deploy/map/fetch-basemap.sh
     CHATLOG_DB: /data/chatlog.db        # saved chats (kept 1 year; in snapshots)
+    ACCOUNTS_DB: /data/accounts.db      # accounts and saved places (in snapshots)
     TRANSIT_MCP_CACHE_DIR: /data/cache
     GTFS_ARCHIVE_DIR: /data/gtfs
     FEEDS_DIR: /data/feeds

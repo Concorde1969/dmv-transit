@@ -56,7 +56,8 @@ class Place(BaseModel):
     lat: float
     lon: float
     label: str = Field(default="", max_length=200)
-    source: str | None = Field(default=None, max_length=20)   # my_location | suggestion | link
+    # my_location | suggestion | link | saved (a place in the visitor's account)
+    source: str | None = Field(default=None, max_length=20)
     kind: str | None = Field(default=None, max_length=40)     # geocoder type of a suggestion
 
 
@@ -303,7 +304,8 @@ def trip(request: Request, body: TripRequestBody) -> JSONResponse:
 # detail holds a few short values (e.g. the referring site's name, a screen size).
 EVENTS = {"page_view", "option_selected", "details_opened", "ask_about_trip",
           "report_from_trip", "assistant_opened", "report_form_opened", "location_used",
-          "location_denied", "swap_places", "suggestion_picked"}
+          "location_denied", "swap_places", "suggestion_picked", "account_opened",
+          "saved_place_used", "saved_place_pin"}
 
 
 class EventBody(BaseModel):

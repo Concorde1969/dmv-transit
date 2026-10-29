@@ -152,6 +152,23 @@ class Settings(BaseSettings):
     reports_rate_per_day: int = Field(default=10, alias="REPORTS_RATE_PER_DAY")
     reports_daily_limit: int = Field(default=300, alias="REPORTS_DAILY_LIMIT")  # site-wide
 
+    # --- Accounts (saved hotel, home and places to visit; see accounts.py) ---
+    accounts_enabled: bool = Field(default=True, alias="ACCOUNTS_ENABLED")
+    accounts_db: Path = Field(default=Path("./accounts.db"), alias="ACCOUNTS_DB")
+    # Key for sign-in code hashes; if empty, a random one is kept in the accounts DB.
+    accounts_secret: str | None = Field(default=None, alias="ACCOUNTS_SECRET")
+    accounts_max_places: int = Field(default=50, alias="ACCOUNTS_MAX_PLACES")
+    # Accounts nobody has used for this long are deleted with their places.
+    accounts_inactive_days: int = Field(default=730, alias="ACCOUNTS_INACTIVE_DAYS")
+    # Sign-in code emails the whole site may send a day.
+    accounts_daily_emails: int = Field(default=500, alias="ACCOUNTS_DAILY_EMAILS")
+    # Outgoing mail for sign-in codes (Amazon SES SMTP on the public site).
+    smtp_host: str | None = Field(default=None, alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, alias="SMTP_PORT")
+    smtp_username: str | None = Field(default=None, alias="SMTP_USERNAME")
+    smtp_password: str | None = Field(default=None, alias="SMTP_PASSWORD")
+    mail_from: str = Field(default="DMV Transit <signin@dmvtransit.com>", alias="MAIL_FROM")
+
     # --- Scheduled data refresh (`transit-mcp scheduler`) ---
     refresh_alerts_minutes: int = Field(default=15, alias="REFRESH_ALERTS_MINUTES")
     refresh_full_at: str = Field(default="03:30", alias="REFRESH_FULL_AT")  # local HH:MM

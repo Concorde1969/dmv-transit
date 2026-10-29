@@ -149,6 +149,7 @@ function autosize() {
 function open() {
   if (!drawer.classList.contains("open")) track("assistant_opened");
   window.dmvReports?.close(true);
+  window.dmvAccount?.close(true);
   drawer.classList.add("open");
   drawer.setAttribute("aria-hidden", "false");
   askBtn.setAttribute("aria-expanded", "true");

@@ -136,6 +136,18 @@ matching trip options for `REPORTS_SHOW_HOURS` (3) and the assistant can look th
 both always label them as unverified rider reports. Review them with
 `transit-mcp reports list|hide|publish|delete`.
 
+### Accounts: My places
+
+Visitors (tourists especially) can sign in with an emailed 6-digit code — no
+password — and save their hotel with check-in and check-out dates, a home, and the
+attractions they plan to visit, each with an optional day. Current places appear as
+one-tap quick picks under "Where to?", in the From and To suggestions, and as pins on
+the map (Go here / Start here); a hotel counts only during the stay, and past visits
+drop out. Accounts live in their own SQLite file (`ACCOUNTS_DB`), never linked to the
+chat log; saved places are logged as "saved" without names and are kept out of links.
+Codes are emailed over SMTP (Amazon SES on the public site; see deploy/README.md); a
+local server without SMTP prints the code in its log.
+
 ## Command line
 
 All commands run from the project folder (`.venv\Scripts\transit-mcp.exe …`, or just

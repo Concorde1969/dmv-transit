@@ -21,6 +21,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from transit_mcp.chat.account_api import router as account_router
+from transit_mcp.chat.account_api import start_accounts
 from transit_mcp.chat.agent import INTERNAL_EVENTS, run_chat
 from transit_mcp.chat.guard import (
     MESSAGES,
@@ -92,6 +94,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception:  # noqa: BLE001 - the site works without rider reports
             log.exception("rider reports unavailable")
             app.state.reports = None
+    app.state.accounts = start_accounts(settings)   # saved places (chat/account_api.py)
     try:
         yield
     finally:
@@ -102,6 +105,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             app.state.chatlog.close()
         if getattr(app.state, "trips", None) is not None:
             app.state.trips.close()
+        if app.state.accounts is not None:
+            app.state.accounts.close()
 
 
 app = FastAPI(title="DMV Regional Transportation Assistant", lifespan=lifespan,
@@ -109,6 +114,7 @@ app = FastAPI(title="DMV Regional Transportation Assistant", lifespan=lifespan,
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 app.include_router(trip_router)
 app.include_router(reports_router)
+app.include_router(account_router)
 
 
 @app.get("/")
