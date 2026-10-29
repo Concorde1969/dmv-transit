@@ -37,7 +37,10 @@ class Mailer:
 
     @property
     def available(self) -> bool:
-        return bool(self.host and self.sender) or self.log_only
+        """Ready to send: a server, a sender and the SMTP user name and password (SES
+        always asks for them; without them accounts stay hidden)."""
+        return (bool(self.host and self.sender and self.username and self.password)
+                or self.log_only)
 
     def send(self, to: str, subject: str, text: str, html: str | None = None) -> None:
         if self.log_only:

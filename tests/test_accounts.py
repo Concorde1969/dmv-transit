@@ -278,3 +278,14 @@ def test_accounts_unavailable_without_mail_in_production(client):
     client.app.state.accounts.mailer.available = False
     r = client.post("/api/account/code", json={"email": "v@example.com"}, headers=SITE)
     assert r.status_code == 503
+
+
+def test_mailer_needs_its_password_before_accounts_show():
+    from transit_mcp.mailer import Mailer
+
+    kw = {"host": "email-smtp.us-east-2.amazonaws.com", "sender": "DMV <a@dmvtransit.com>"}
+    assert not Mailer(**kw).available                          # host only (template default)
+    assert not Mailer(**kw, username="AKIA").available         # no password
+    assert Mailer(**kw, username="AKIA", password="pw").available
+    assert Mailer(host=None, log_only=True).available          # development: code in the log
+    assert not Mailer(host=None).available
