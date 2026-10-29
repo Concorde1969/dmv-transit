@@ -34,6 +34,9 @@ www.{$SITE_DOMAIN} {
 	reverse_proxy app:8765 {
 		# Send each piece of a streamed answer immediately.
 		flush_interval -1
+		# While the app restarts (deploys), keep trying instead of answering 502.
+		lb_try_duration 20s
+		lb_try_interval 500ms
 	}
 
 	# Access log with visitor addresses masked to their network (e.g. 203.0.0.0/16):
