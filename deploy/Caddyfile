@@ -25,9 +25,9 @@ www.{$SITE_DOMAIN} {
 		Referrer-Policy "strict-origin-when-cross-origin"
 		# Location: only this site may ask (to find stops near the rider).
 		Permissions-Policy "geolocation=(self), microphone=(), camera=()"
-		# Everything is served from this site. The map engine runs its worker from a
-		# blob: URL and draws icons into blob:/data: images.
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; child-src blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		# Everything is served from this site, except Google Analytics (gtag.js). The map
+		# engine runs its worker from a blob: URL and draws icons into blob:/data: images.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.google-analytics.com https://*.googletagmanager.com; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; worker-src 'self' blob:; child-src blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 		-Server
 	}
 
