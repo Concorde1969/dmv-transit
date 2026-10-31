@@ -169,6 +169,14 @@ class Settings(BaseSettings):
     smtp_password: str | None = Field(default=None, alias="SMTP_PASSWORD")
     mail_from: str = Field(default="DMV Transit <signin@dmvtransit.com>", alias="MAIL_FROM")
 
+    # --- The MCP server at a web address (`transit-mcp serve --http`; server/http.py) ---
+    mcp_http_host: str = Field(default="127.0.0.1", alias="MCP_HTTP_HOST")
+    mcp_http_port: int = Field(default=8766, alias="MCP_HTTP_PORT")
+    mcp_keys_db: Path = Field(default=Path("./mcp_keys.db"), alias="MCP_KEYS_DB")
+    # Requests each API key may make.
+    mcp_rate_per_minute: int = Field(default=30, alias="MCP_RATE_PER_MINUTE")
+    mcp_rate_per_day: int = Field(default=300, alias="MCP_RATE_PER_DAY")
+
     # --- Scheduled data refresh (`transit-mcp scheduler`) ---
     refresh_alerts_minutes: int = Field(default=15, alias="REFRESH_ALERTS_MINUTES")
     refresh_full_at: str = Field(default="03:30", alias="REFRESH_FULL_AT")  # local HH:MM

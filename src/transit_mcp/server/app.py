@@ -7,6 +7,11 @@ flag so the model can caveat old data.
 from __future__ import annotations
 
 import json
+import logging
+import re
+from datetime import datetime
+from functools import lru_cache
+from zoneinfo import ZoneInfo
 
 from mcp.server.fastmcp import FastMCP
 
@@ -35,6 +40,13 @@ transfers_at. Agency web pages (search_transit_info, how_to_pay's fare_page_text
 used only for fares, how to pay/ride, and disruptions. When a result lists
 active_disruptions, still give the scheduled route and tell the rider about each one.
 
+TRIPS FROM ADDRESSES: when a rider gives a street address, hotel, landmark or any place
+that isn't plainly a station, recognize it as a place to look up: call geocode_address,
+check the result is the place they meant (ask them if several fit), then pass its `point`
+to plan_trip, which returns real trip options from the timetables, for now or a later
+time (depart_at). plan_trip also accepts addresses directly. plan_connection is the
+general "which systems and on which days" advice. Never work out a route yourself.
+
 For any Metrorail trip between two stations call get_metro_route — it says which line(s)
 to ride, where to change trains, which direction, and when trains run. Never describe a
 Metrorail trip as direct / one seat / no transfer unless it returns "transfers": 0.
@@ -51,7 +63,9 @@ a specific app, exact-change cash, or advance online booking). Cite `url` / `far
 fields and flag any `stale` result as possibly out of date.
 """
 
-mcp = FastMCP("transit-mcp-wmata", instructions=_INSTRUCTIONS)
+mcp = FastMCP("dmv-transit", instructions=_INSTRUCTIONS)
+# httpx logs every URL at INFO, and Google's APIs take their key in the URL.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 def _db() -> Database:
@@ -152,24 +166,30 @@ def get_fare(origin: str, destination: str, rider_type: str = "regular") -> dict
 
 
 _trip_tools: dict = {}
+_HOUSE_NUMBER = re.compile(r"\s*\d+[a-zA-Z]?\s+\S")      # "1717 E Capitol St SE"
+
+
+@lru_cache(maxsize=1)
+def _geocoder():
+    from transit_mcp.geocode import Geocoder
+
+    return Geocoder.from_settings(get_settings())
 
 
 def _trip_helpers():
-    """Geocoder + live-departures client, created once (they hold caches)."""
+    """Live-departures client and agency details, created once (they hold caches)."""
     if not _trip_tools:
         from transit_mcp.chat.trip_api import agency_info, build_realtime
-        from transit_mcp.geocode import Geocoder
 
         settings = get_settings()
         agencies = agency_info(settings)
-        _trip_tools.update(
-            settings=settings, agencies=agencies,
-            geocoder=Geocoder.from_settings(settings),
-            realtime=build_realtime(settings, agencies))
+        _trip_tools.update(settings=settings, agencies=agencies,
+                           realtime=build_realtime(settings, agencies))
     return _trip_tools
 
 
 def _place(db: Database, text: str):
+    from transit_mcp.geocode import GeocodeError
     from transit_mcp.planning.live import Point
 
     t = text.strip()
@@ -178,13 +198,12 @@ def _place(db: Database, text: str):
         return Point(lat, lon, t)
     except ValueError:
         pass
-    pt = regional.resolve_point(db, t)          # stations, stops, airports, aliases
-    if pt and pt.get("kind") in ("wmata", "gtfs"):
+    pt = regional.resolve_point(db, t)                  # stations, stops, airports, aliases
+    # A street address goes to the geocoder first, however closely it matches a stop name.
+    if pt and pt.get("kind") in ("wmata", "gtfs") and not _HOUSE_NUMBER.match(t):
         return Point(pt["lat"], pt["lon"], pt["label"])
-    from transit_mcp.geocode import GeocodeError
-
     try:
-        hits = _trip_helpers()["geocoder"].search(t)   # addresses and landmarks
+        hits = _geocoder().search(t)                    # addresses and landmarks
     except GeocodeError:
         hits = []
     if hits:
@@ -194,40 +213,109 @@ def _place(db: Database, text: str):
     return None
 
 
+def _engine_place(db: Database, text: str) -> tuple[str, str | None]:
+    """A place the scheduling engine can read, and what it was resolved to: the engine
+    knows stations and stops, so addresses and landmarks go to it as "lat,lon"."""
+    if not _HOUSE_NUMBER.match(text) and regional.resolve_point(db, text):
+        return text, None
+    p = _place(db, text)
+    return (f"{p.lat:.6f},{p.lon:.6f}", p.label) if p else (text, None)
+
+
 @mcp.tool()
-def plan_trip_now(origin: str, destination: str) -> dict:
-    """Leave-now trip options with LIVE departures, like the site's map: trips leaving
-    in the next 3 hours from each agency's closest stops (up to about a mile's walk; the
-    walking time is part of each option), direct trips first, one transfer only when
-    needed, two transfers only when nothing simpler works, and transfers only between
-    stops within 0.3 km. Options with short transfer waits (10 minutes or less) come
-    first; a trip with a longer wait is offered only when nothing better works. At BWI,
-    DCA and IAD a step gives the airport's own directions between the terminal and its
-    rail station (BWI: the free shuttle) — pass those on. Tell the rider how much
-    walking and waiting each option involves. Use this when the rider
-    wants to go now; use plan_connection for general "how would I get there" or a later
-    day.
+def geocode_address(query: str, limit: int = 5) -> dict:
+    """Find where a street address, hotel, attraction or other place is, in the DC,
+    Maryland and Northern Virginia area. Call this whenever a rider names a place that
+    isn't plainly a station, before planning a trip from or to it. Check that the result
+    is the place they meant, and ask them if several fit. Pass a result's `point` to
+    plan_trip, plan_connection or find_stops_near.
 
     Args:
-        origin: An address, landmark, station, or "lat,lon".
-        destination: An address, landmark, station, or "lat,lon".
+        query: What the rider said, e.g. "1717 E Capitol St SE" or "Capital Hilton".
+        limit: Most results to return, 1 to 5.
     """
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
+    from transit_mcp.geocode import BudgetSpent, GeocodeError
 
+    geocoder = _geocoder()
+    if not geocoder.available:
+        return {"query": query, "results": [], "error": "address_search_not_set_up"}
+    try:
+        hits = geocoder.search(query)
+    except BudgetSpent:
+        return {"query": query, "results": [], "error": "address_search_paused",
+                "message": "This month's address searches are used up. Ask for a station "
+                           "name or a \"lat,lon\" point instead."}
+    except GeocodeError:
+        return {"query": query, "results": [], "error": "address_search_failed",
+                "message": "Address search isn't responding. Try again in a moment."}
+    results = [{"name": h["label"], "address": h.get("full_label") or h["label"],
+                "kind": h.get("kind"), "lat": h["lat"], "lon": h["lon"],
+                "point": f"{h['lat']:.6f},{h['lon']:.6f}"}
+               for h in hits[:max(1, min(limit, 5))]]
+    out = {"query": query, "results": results, "source": geocoder.attribution or
+           "geocode.maps.co"}
+    if not results:
+        out["message"] = "No match in the DC, Maryland and Northern Virginia area. Ask the " \
+                         "rider for a fuller address, with the city."
+    return out
+
+
+def _departure(text: str, tz: ZoneInfo, now: datetime) -> datetime | None:
+    """``depart_at`` as a time in the site's zone; None if it can't be read or is past."""
+    try:
+        t = datetime.fromisoformat(text.strip())
+    except ValueError:
+        return None
+    t = t.replace(tzinfo=tz) if t.tzinfo is None else t.astimezone(tz)
+    return t if (t - now).total_seconds() > -300 else None
+
+
+@mcp.tool()
+def plan_trip(origin: str, destination: str, depart_at: str | None = None) -> dict:
+    """Real trip options from the agencies' timetables, like the site's map: trips leaving
+    in the 3 hours after the given time from each agency's closest stops (up to about a
+    mile's walk; the walking time is part of each option), direct trips first, one
+    transfer only when needed, two transfers only when nothing simpler works, and
+    transfers only between stops within 0.3 km. Options with short transfer waits
+    (10 minutes or less) come first; a trip with a longer wait is offered only when
+    nothing better works. Leaving now, times include live updates where agencies publish
+    them; for a later time they are the timetable. At BWI, DCA and IAD a step gives the
+    airport's own directions between the terminal and its rail station (BWI: the free
+    shuttle) — pass those on. Tell the rider how much walking and waiting each option
+    involves. Use this whenever a rider asks how to get somewhere at a particular time;
+    use plan_connection for general "how would I get there" and which days it works.
+
+    Args:
+        origin: An address, landmark, station, or "lat,lon" (a `point` from
+            geocode_address is best).
+        destination: Same as origin.
+        depart_at: When to leave, in local Eastern time, as "YYYY-MM-DDTHH:MM"
+            (e.g. "2026-11-02T09:30"). Leave it out to leave now.
+    """
     from transit_mcp.planning.live import LivePlanner, LiveSettings
 
     h = _trip_helpers()
     settings = h["settings"]
+    tz = ZoneInfo(settings.timezone)
+    now = datetime.now(tz)
+    start = now
+    if depart_at:
+        start = _departure(depart_at, tz, now)
+        if start is None:
+            return {"error": "bad_depart_at",
+                    "message": "depart_at must be a future local time like "
+                               f"{now.strftime('%Y-%m-%d')}T09:30. It's now "
+                               f"{now.strftime('%Y-%m-%dT%H:%M')}."}
+    later = (start - now).total_seconds() > 300     # live updates only cover the present
     with _db() as db:
         o, d = _place(db, origin), _place(db, destination)
         if not o or not d:
             return {"error": "could_not_find_place",
-                    "origin_found": bool(o), "destination_found": bool(d)}
+                    "origin_found": bool(o), "destination_found": bool(d),
+                    "message": "Try geocode_address with a fuller address."}
         result = LivePlanner(db, cfg=LiveSettings.from_settings(settings),
-                             realtime=h["realtime"], agencies=h["agencies"],
-                             tz=settings.timezone).plan(o, d)
-    tz = ZoneInfo(settings.timezone)
+                             realtime=None if later else h["realtime"], agencies=h["agencies"],
+                             tz=settings.timezone, now=start).plan(o, d)
 
     def clock(epoch):
         # "%I" (not the Linux-only "%-I"), then drop the leading zero: "5:04 PM"
@@ -262,10 +350,12 @@ def plan_trip_now(origin: str, destination: str) -> dict:
 
     return {
         "from": o.label, "to": d.label,
+        "leaving_after": start.strftime("%A, %B %d, %Y, ") + clock(start.timestamp()),
         "options": [brief(x) for x in result["options"]],
         "notice": result.get("notice"),
         "note": "Departure times marked (live) include real-time updates; others are the "
-                "timetable. Riders can see these options on the site's map.",
+                "timetable. This is an unofficial tool, not affiliated with WMATA or any "
+                "transit agency: riders should confirm times with the agency.",
         "source": "Agencies' GTFS timetables via Transitland, live departures from "
                   "Transitland",
         "url": "https://www.transit.land/",
@@ -362,6 +452,12 @@ def how_to_pay(agency: str) -> dict:
         return regional.how_to_pay(db, agency)
 
 
+def _found(origin: str | None, destination: str | None) -> dict:
+    """Which address or landmark each end was taken to be, when it was looked up."""
+    return {k: v for k, v in (("origin_found_as", origin),
+                              ("destination_found_as", destination)) if v}
+
+
 @mcp.tool()
 def plan_connection(origin: str, destination: str, when: str | None = None) -> dict:
     """Advise on getting between two places across systems: which system for each
@@ -369,12 +465,14 @@ def plan_connection(origin: str, destination: str, when: str | None = None) -> d
     how to pay per leg. Guidance, not a booked itinerary.
 
     Args:
-        origin: Place name, station, or "lat,lon".
-        destination: Place name, station, or "lat,lon".
+        origin: Address, place name, station, or "lat,lon".
+        destination: Address, place name, station, or "lat,lon".
         when: Optional — a day ("sunday", "weekday") to check feasibility against.
     """
     with _db() as db:
-        return connect.plan_connection(db, origin, destination, when)
+        (o, o_label), (d, d_label) = _engine_place(db, origin), _engine_place(db, destination)
+        out = connect.plan_connection(db, o, d, when)
+    return {**out, **_found(o_label, d_label)}
 
 
 @mcp.tool()
@@ -383,11 +481,12 @@ def estimate_trip_cost(
     rider_category: str | None = None,
 ) -> dict:
     """Estimate the total fare for a cross-system trip: per-leg fares, how to pay
-    each, and a total — noting each leg is usually a separate payment."""
+    each, and a total — noting each leg is usually a separate payment. Origin and
+    destination can be addresses, places, stations or "lat,lon"."""
     with _db() as db:
-        return connect.estimate_trip_cost(
-            db, origin, destination, when, rider_category
-        )
+        (o, o_label), (d, d_label) = _engine_place(db, origin), _engine_place(db, destination)
+        out = connect.estimate_trip_cost(db, o, d, when, rider_category)
+    return {**out, **_found(o_label, d_label)}
 
 
 @mcp.resource("transit://region/agencies")

@@ -139,9 +139,28 @@ def _cmd_search(args: argparse.Namespace) -> int:
 
 
 def _cmd_serve(args: argparse.Namespace) -> int:
+    if args.http:
+        from transit_mcp.server.http import serve as serve_http
+
+        serve_http(args.host, args.port)
+        return 0
     from transit_mcp.server.app import main as serve_main
 
     serve_main()
+    return 0
+
+
+def _cmd_mcp_keys(args: argparse.Namespace) -> int:
+    from transit_mcp.mcp_keys import McpKeys
+
+    keys = McpKeys.from_settings(get_settings())
+    if args.keys_cmd == "add":
+        key_id, key = keys.add(args.name)
+        print(f"Key {key_id} for {args.name}. Copy it now; it can't be shown again:\n{key}")
+    elif args.keys_cmd == "list":
+        print(json.dumps(keys.list(), indent=2))
+    elif args.keys_cmd == "revoke":
+        print(f"Key {args.id} {'revoked' if keys.revoke(args.id) else 'not found'}.")
     return 0
 
 
@@ -381,8 +400,21 @@ def build_parser() -> argparse.ArgumentParser:
     srch.add_argument("--limit", type=int, default=5)
     srch.set_defaults(func=_cmd_search)
 
-    sub.add_parser("serve", help="Run the MCP server over stdio") \
-        .set_defaults(func=_cmd_serve)
+    srv = sub.add_parser("serve", help="Run the MCP server (stdio, or --http for a web "
+                                       "address that needs an API key)")
+    srv.add_argument("--http", action="store_true", help="serve over HTTP at /mcp")
+    srv.add_argument("--host", help="HTTP address to listen on (default MCP_HTTP_HOST)")
+    srv.add_argument("--port", type=int, help="HTTP port (default MCP_HTTP_PORT)")
+    srv.set_defaults(func=_cmd_serve)
+
+    mk = sub.add_parser("mcp-keys", help="API keys for the MCP server's web address")
+    mksub = mk.add_subparsers(dest="keys_cmd", required=True)
+    ma = mksub.add_parser("add", help="Create a key (shown once)")
+    ma.add_argument("name", help="who it's for")
+    mksub.add_parser("list", help="Keys, when each was last used, and call counts (JSON)")
+    mr = mksub.add_parser("revoke", help="Stop a key working, immediately")
+    mr.add_argument("id", type=int)
+    mk.set_defaults(func=_cmd_mcp_keys)
 
     sch = sub.add_parser("scheduler", help="Keep data fresh on a server (runs forever)")
     sch.add_argument("--once", action="store_true",

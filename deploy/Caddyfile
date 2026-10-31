@@ -31,6 +31,12 @@ www.{$SITE_DOMAIN} {
 		-Server
 	}
 
+	# The MCP server for other LLMs (it checks API keys itself).
+	reverse_proxy /mcp mcp:8766 {
+		lb_try_duration 20s
+		lb_try_interval 500ms
+	}
+
 	reverse_proxy app:8765 {
 		# Send each piece of a streamed answer immediately.
 		flush_interval -1

@@ -220,9 +220,10 @@ To add one, copy `agencies/_template.toml` — see [agencies/README.md](agencies
 | `get_route(agency, query)` | A route's days, hours, frequency, endpoints, fare |
 | `transfers_at(place, day?, time?)` | Other systems within walking distance + whether the connection works then |
 | `how_to_pay(agency)` | Payment methods, where to buy, app, SmarTrip/contactless, transfers |
-| `plan_connection(origin, destination, when?)` | Systems per leg, transfer hub, days it works, fares — via the configured engine |
+| `geocode_address(query, limit?)` | Where an address, hotel or landmark is: the step before planning a trip, so the LLM can confirm the place |
+| `plan_trip(origin, destination, depart_at?)` | Real trip options for the 3 hours after a time (default now), with walking, waits and live times when leaving now; takes addresses, places, stations or "lat,lon" |
+| `plan_connection(origin, destination, when?)` | Systems per leg, transfer hub, days it works, fares — via the configured engine; takes addresses too |
 | `get_rider_reports(station?, line?, days?)` | Recent unverified reports from riders on the site (delays, crowding, elevators, tips) |
-| `plan_trip_now(origin, destination)` | The map planner's leave-now options for the next 3 hours, with live times and walking minutes |
 | `estimate_trip_cost(origin, destination, when?, rider_category?)` | Per-leg fares and total |
 
 Resources: `transit://region/agencies`, `transit://wmata/freshness`,
@@ -230,7 +231,13 @@ Resources: `transit://region/agencies`, `transit://wmata/freshness`,
 
 ### Using the MCP server from another client
 
-Claude Desktop (`claude_desktop_config.json`):
+**Over the web**, for an LLM or app on another machine: `https://dmvtransit.com/mcp`
+(MCP Streamable HTTP) with an API key sent as `Authorization: Bearer <key>`. Keys and
+limits are in [deploy/README.md](deploy/README.md#mcp-server-for-other-llms). To run it
+yourself: `transit-mcp mcp-keys add "who it's for"`, then `transit-mcp serve --http`
+(serves `http://127.0.0.1:8766/mcp`).
+
+**On the same machine**, over stdio — Claude Desktop (`claude_desktop_config.json`):
 
 ```json
 {

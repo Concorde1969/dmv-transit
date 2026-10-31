@@ -13,7 +13,7 @@ x-app: &app
   env_file: .env
   # These pin container paths and production mode. They take precedence over .env,
   # so a .env copied from a laptop can't point the database outside the volume.
-  environment:
+  environment: &app_env
     APP_ENV: production
     TRUST_PROXY: "true"
     CHAT_HOST: 0.0.0.0
@@ -22,6 +22,7 @@ x-app: &app
     MAP_TILES_PATH: /data/map/dmv.pmtiles   # basemap: deploy/map/fetch-basemap.sh
     CHATLOG_DB: /data/chatlog.db        # saved chats (kept 1 year; in snapshots)
     ACCOUNTS_DB: /data/accounts.db      # accounts and saved places (in snapshots)
+    MCP_KEYS_DB: /data/mcp_keys.db      # API keys for the MCP web address (in snapshots)
     TRANSIT_MCP_CACHE_DIR: /data/cache
     GTFS_ARCHIVE_DIR: /data/gtfs
     FEEDS_DIR: /data/feeds
@@ -49,6 +50,21 @@ services:
   scheduler:
     <<: *app
     command: ["transit-mcp", "scheduler"]
+    healthcheck:
+      disable: true
+
+  # The MCP server at https://<site>/mcp for other LLMs (API key needed; deploy/README.md).
+  mcp:
+    <<: *app
+    command: ["transit-mcp", "serve", "--http"]
+    environment:
+      <<: *app_env
+      MCP_HTTP_HOST: 0.0.0.0
+      # Live times only from agencies' own free feeds: outside use never spends the
+      # site's monthly Transitland calls.
+      TRIP_MAX_LIVE_CALLS: "0"
+    expose:
+      - "8766"          # reachable only by Caddy, never published to the internet
     healthcheck:
       disable: true
 

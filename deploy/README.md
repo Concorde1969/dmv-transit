@@ -254,6 +254,58 @@ powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 'cd ~/dmvtr
 powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 'cd ~/dmvtransit && docker compose exec -T app transit-mcp reports hide 42'
 ```
 
+## MCP server for other LLMs
+
+Other people's LLMs and apps can use the same tools as the site's assistant at
+`https://dmvtransit.com/mcp`, with an API key. It runs in its own `mcp` container, so
+outside use can't slow the website; Caddy passes `/mcp` to it.
+
+**Give someone access.** Run this yourself (the key prints once, and only its hash is
+kept). Use one word for the name, and one key per person so you can revoke them
+separately:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 'cd ~/dmvtransit && docker compose exec -T mcp transit-mcp mcp-keys add alex-assistant'
+```
+
+Send them the key through a private channel, with these settings:
+
+- **URL:** `https://dmvtransit.com/mcp`
+- **Transport:** Streamable HTTP
+- **Header:** `Authorization: Bearer <key>`
+
+Most clients take those in a settings file, for example:
+
+```json
+{
+  "mcpServers": {
+    "dmv-transit": {
+      "url": "https://dmvtransit.com/mcp",
+      "headers": { "Authorization": "Bearer <key>" }
+    }
+  }
+}
+```
+
+**See use, or stop a key** (takes effect at once, no restart):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 'cd ~/dmvtransit && docker compose exec -T mcp transit-mcp mcp-keys list'
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 'cd ~/dmvtransit && docker compose exec -T mcp transit-mcp mcp-keys revoke 3'
+```
+
+**Limits and cost.** Each key gets 30 requests a minute and 300 a day
+(`MCP_RATE_PER_MINUTE`, `MCP_RATE_PER_DAY`). Outside use never spends Transitland calls:
+this container only reads live times from agencies' own free feeds
+(`TRIP_MAX_LIVE_CALLS=0`), so some trips show timetable times where the website shows
+live ones. Address lookups share the site's monthly Google limit
+(`GOOGLE_GEOCODING_MONTHLY_BUDGET`). The server keeps only a call count and last-used
+time per key, never what was asked. Keys are in `/data/mcp_keys.db`, inside the
+snapshots.
+
 ## Accounts (My places)
 
 Visitors can sign in with an emailed 6-digit code (no passwords) and save their hotel,
@@ -324,5 +376,8 @@ what visitors typed: keep them private (the folder is git-ignored).
   for 10 minutes and 5 tries; code emails are limited per visitor, per address and
   site-wide. The session cookie is HttpOnly, Secure and SameSite=Lax, and changes must
   come from the site's own pages. Saved places never appear in links or the usage log.
+- MCP web address: every request needs an API key (stored only as a hash), each key
+  has its own rate limits, and it runs in a separate container reachable only through
+  Caddy. Its tools only read data.
 - Secrets live only in `~/dmvtransit/.env` (`chmod 600`), never in the image or Git.
 - Containers run as a non-root user; Ubuntu installs security updates automatically.
