@@ -8,6 +8,11 @@ mode = "intercity_bus"
 [profile]
 frequency_tier = "intercity"
 
+[fares]
+notes = """\
+  Fares vary by company, trip and date. See prices and book on the bus company's own \
+  website."""
+
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]
 type = "gtfs"

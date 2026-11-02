@@ -21,6 +21,7 @@ from datetime import datetime
 
 from transit_mcp.db.database import Database
 from transit_mcp.planning.models import Leg, TripOption, TripPlan, TripRequest
+from transit_mcp.planning.rail_fares import leg_fare
 from transit_mcp.retrieval.metro import _network as metro_network
 from transit_mcp.retrieval.metro import leg_service, route_between_codes
 from transit_mcp.retrieval.queries import get_fare, is_stale
@@ -230,12 +231,16 @@ class _Planner:
     def gtfs_leg(self, feed: str, hit: dict, role: str) -> tuple[Leg, set[str]]:
         fare = self.fare(feed)
         methods = json.loads(fare.get("payment_methods") or "[]")
+        route = self.route_label(feed, hit["route_id"])
+        board, alight = self.stop_name(feed, hit["from"]), self.stop_name(feed, hit["to"])
+        by_station = leg_fare(feed, route, board, alight)
         leg = Leg(
             mode="ride", agency=feed, system=self.name(feed),
-            route=self.route_label(feed, hit["route_id"]), route_id=hit["route_id"],
-            board=self.stop_name(feed, hit["from"]), alight=self.stop_name(feed, hit["to"]),
+            route=route, route_id=hit["route_id"],
+            board=board, alight=alight,
             board_stop_id=hit["from"], alight_stop_id=hit["to"], role=role,
-            fare=fare.get("base_fare"), pay_with=methods[0] if methods else "see fare page",
+            fare=fare.get("base_fare") if by_station is None else by_station,
+            pay_with=methods[0] if methods else "see fare page",
             fare_page=fare.get("fare_page_url"), note=fare.get("notes"),
         )
         return leg, self.service_days(feed, hit["services"])

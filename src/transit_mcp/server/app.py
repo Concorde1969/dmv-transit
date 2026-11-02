@@ -6,6 +6,7 @@ flag so the model can caveat old data.
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import re
@@ -67,12 +68,23 @@ mcp = FastMCP("dmv-transit", instructions=_INSTRUCTIONS)
 # httpx logs every URL at INFO, and Google's APIs take their key in the URL.
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
+# Some MCP clients never show the model the server's instructions, so each tool's
+# description carries the rule as well.
+GROUNDING = ("Answer only from this tool's results: never add routes, hours, phone numbers, "
+             "addresses or tips from memory. Unofficial tool, not affiliated with WMATA or any "
+             "transit agency.")
+
+
+def tool(fn):
+    """``@mcp.tool()`` with the grounding rule added to the description."""
+    return mcp.tool(description=f"{inspect.cleandoc(fn.__doc__ or '')}\n\n{GROUNDING}")(fn)
+
 
 def _db() -> Database:
     return Database(get_settings().db_path)
 
 
-@mcp.tool()
+@tool
 def search_transit_info(query: str, category: str | None = None, limit: int = 5) -> list[dict]:
     """Full-text search of the agencies' web pages: fares, how to pay, accessibility,
     safety, rules, new-rider/visitor guides, and service-change notices. NOT a source
@@ -89,7 +101,7 @@ def search_transit_info(query: str, category: str | None = None, limit: int = 5)
         return [h.as_dict() for h in search(db, query, category=category, limit=limit)]
 
 
-@mcp.tool()
+@tool
 def get_service_alerts(
     line: str | None = None, station: str | None = None, mode: str | None = None,
     agency: str | None = None,
@@ -108,7 +120,7 @@ def get_service_alerts(
                                           agency=agency)
 
 
-@mcp.tool()
+@tool
 def get_rider_reports(station: str | None = None, line: str | None = None,
                       days: int = 2) -> dict:
     """Recent reports from other RIDERS (crowdsourced on this site): delays, crowding,
@@ -137,14 +149,14 @@ def get_rider_reports(station: str | None = None, line: str | None = None,
     }
 
 
-@mcp.tool()
+@tool
 def get_elevator_escalator_status(station: str | None = None) -> list[dict]:
     """Elevators and escalators currently out of service, optionally for one station."""
     with _db() as db:
         return queries.get_unit_status(db, station=station, only_out=True)
 
 
-@mcp.tool()
+@tool
 def get_station_info(station: str) -> dict | None:
     """Lines served, address, parking availability, transfers, and entrances for a
     station (accepts a name like "Gallery Place" or a code like "B01")."""
@@ -152,7 +164,7 @@ def get_station_info(station: str) -> dict | None:
         return queries.get_station_info(db, station)
 
 
-@mcp.tool()
+@tool
 def get_fare(origin: str, destination: str, rider_type: str = "regular") -> dict:
     """Station-to-station Metrorail fare.
 
@@ -222,7 +234,7 @@ def _engine_place(db: Database, text: str) -> tuple[str, str | None]:
     return (f"{p.lat:.6f},{p.lon:.6f}", p.label) if p else (text, None)
 
 
-@mcp.tool()
+@tool
 def geocode_address(query: str, limit: int = 5) -> dict:
     """Find where a street address, hotel, attraction or other place is, in the DC,
     Maryland and Northern Virginia area. Call this whenever a rider names a place that
@@ -270,7 +282,7 @@ def _departure(text: str, tz: ZoneInfo, now: datetime) -> datetime | None:
     return t if (t - now).total_seconds() > -300 else None
 
 
-@mcp.tool()
+@tool
 def plan_trip(origin: str, destination: str, depart_at: str | None = None) -> dict:
     """Real trip options from the agencies' timetables, like the site's map: trips leaving
     in the 3 hours after the given time from each agency's closest stops (up to about a
@@ -362,7 +374,7 @@ def plan_trip(origin: str, destination: str, depart_at: str | None = None) -> di
     }
 
 
-@mcp.tool()
+@tool
 def get_metro_route(origin: str, destination: str) -> dict:
     """How to ride Metrorail between two stations: which line(s), where to change
     trains, which direction ("toward ..."), number of stops, and the fare. Use this for
@@ -376,14 +388,14 @@ def get_metro_route(origin: str, destination: str) -> dict:
         return metro.metro_route(db, origin, destination)
 
 
-@mcp.tool()
+@tool
 def list_topics() -> list[dict]:
     """List content categories with document counts and data freshness."""
     with _db() as db:
         return queries.list_topics(db)
 
 
-@mcp.tool()
+@tool
 def get_guide(topic: str) -> dict | None:
     """Full text of the primary guide for a topic: new_rider, visitor, payment,
     fares, accessibility, safety, or maps."""
@@ -391,7 +403,7 @@ def get_guide(topic: str) -> dict | None:
         return queries.get_guide(db, topic)
 
 
-@mcp.tool()
+@tool
 def list_agencies() -> list[dict]:
     """Every transit system in the region (WMATA + VRE, Virginia Breeze, Fairfax
     Connector, ART, DASH, CUE, Loudoun, OmniRide): mode, role, strengths, service
@@ -400,7 +412,7 @@ def list_agencies() -> list[dict]:
         return regional.list_agencies(db)
 
 
-@mcp.tool()
+@tool
 def find_stops_near(place: str, radius_m: int = 400, agency: str | None = None) -> dict:
     """Stops and stations within walking distance of a place, across all agencies.
 
@@ -413,7 +425,7 @@ def find_stops_near(place: str, radius_m: int = 400, agency: str | None = None) 
         return regional.find_stops_near(db, place, radius_m=radius_m, agency=agency)
 
 
-@mcp.tool()
+@tool
 def get_route(agency: str, query: str) -> dict:
     """One route from an agency's GTFS schedule: days and hours of service, typical
     frequency, endpoints, fare, and any live disruptions on it.
@@ -427,7 +439,7 @@ def get_route(agency: str, query: str) -> dict:
         return regional.get_route(db, agency, query)
 
 
-@mcp.tool()
+@tool
 def transfers_at(place: str, day: str | None = None, time: str | None = None) -> dict:
     """Routes from OTHER systems reachable on foot from a station or stop, grouped by
     agency, each with walk time and its service window from the GTFS schedules. Pass
@@ -438,7 +450,7 @@ def transfers_at(place: str, day: str | None = None, time: str | None = None) ->
         return regional.transfers_at(db, place, day=day, time=time)
 
 
-@mcp.tool()
+@tool
 def how_to_pay(agency: str) -> dict:
     """How to pay to ride one agency. `fare_page_text` is the agency's own fare page
     (the source for prices, discounts and transfer rules); the other fields are a
@@ -458,7 +470,7 @@ def _found(origin: str | None, destination: str | None) -> dict:
                               ("destination_found_as", destination)) if v}
 
 
-@mcp.tool()
+@tool
 def plan_connection(origin: str, destination: str, when: str | None = None) -> dict:
     """Advise on getting between two places across systems: which system for each
     leg, the transfer hub, WHICH DAYS/TIMES the connection works, and the fare +
@@ -475,7 +487,7 @@ def plan_connection(origin: str, destination: str, when: str | None = None) -> d
     return {**out, **_found(o_label, d_label)}
 
 
-@mcp.tool()
+@tool
 def estimate_trip_cost(
     origin: str, destination: str, when: str | None = None,
     rider_category: str | None = None,

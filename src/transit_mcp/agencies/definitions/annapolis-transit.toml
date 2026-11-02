@@ -8,9 +8,38 @@ mode = "bus"
 [profile]
 frequency_tier = "infrequent"
 
+[fares]
+base_fare = 2.00
+reduced_fare = 1.00
+payment_methods = [
+  "Cash on the bus: only cash is accepted on board",
+  "Passes from the Annapolis Department of Transportation office",
+]
+where_to_buy = [
+  "On the bus: Day Pass, cash only",
+  "Annapolis Department of Transportation office in business hours: cash, check, Visa, MasterCard",
+]
+cash_onboard = true
+fare_page_url = "https://www.annapolis.gov/194/ADOT-Transit-Fares"
+notes = """\
+  $2 one way; $1 with photo ID for seniors 60+, people with disabilities, Medicare \
+  card holders, and private school and college students. Free Downtown Shuttle. \
+  Children 5 and under ride free (up to 3 with a paying adult). Annapolis K-12 \
+  students free on school days, 6 am to 7 pm. Day Pass $4, 7-Day $20, 30-Day $80, \
+  90-Day $200, Annual $500; half price with a reduced-fare photo ID. ADA service $4 \
+  one way. Fares change; confirm the current amount at the fare page before you \
+  travel."""
+
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]
 type = "gtfs"
 transitland_id = "f-dqct-annapolistransit"
 transitland_atlas = "arcgis.com.dmfr.json"
 url = "https://www.arcgis.com/sharing/rest/content/items/c307923d57ab4871aff79491b4a1bfd3/data"
+
+# Fare page: the fields above are a summary of it.
+[[sources]]
+type = "web_pages"
+pages = [
+  { url = "https://www.annapolis.gov/194/ADOT-Transit-Fares", category = "fares" },
+]

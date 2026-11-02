@@ -43,7 +43,7 @@ PowerShell, using your signed-in AWS CLI profile — `aws login`):
 | Google Places Autocomplete + Place Details (suggestions while typing) | billed by Google per request / per session — the app stops at `GOOGLE_PLACES_MONTHLY_BUDGET` (default 9,000) a month, then uses the Geocoding API |
 | Amazon SES (sign-in code emails for accounts) | about $0.10 per 1,000 emails — the app sends at most `ACCOUNTS_DAILY_EMAILS` (500) a day |
 
-Why 2 GB: the nightly data load covers 21 GTFS feeds, including WMATA's Metrobus
+Why 2 GB: the nightly data load covers 23 GTFS feeds, including WMATA's Metrobus
 schedule (4+ million timetable rows). It is processed in a streaming way (the heaviest
 step peaked at about 270 MB measured locally) and the database is about 900 MB on
 disk, plus about 600 MB for the map; with Ubuntu and Docker (~400 MB) that leaves
@@ -297,7 +297,7 @@ powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 'cd ~/dmvtr
 powershell -ExecutionPolicy Bypass -File deploy\lightsail\remote.ps1 'cd ~/dmvtransit && docker compose exec -T mcp transit-mcp mcp-keys revoke 3'
 ```
 
-**Limits and cost.** Each key gets 30 requests a minute and 300 a day
+**Limits and cost.** Each key gets 120 requests a minute and 1,500 a day
 (`MCP_RATE_PER_MINUTE`, `MCP_RATE_PER_DAY`). Outside use never spends Transitland calls:
 this container only reads live times from agencies' own free feeds
 (`TRIP_MAX_LIVE_CALLS=0`), so some trips show timetable times where the website shows

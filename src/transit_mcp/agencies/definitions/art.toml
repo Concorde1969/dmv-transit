@@ -23,25 +23,31 @@ connects_to = [
 frequency_tier = "frequent"
 
 [fares]
-base_fare = 2.00
-reduced_fare = 1.00
+base_fare = 2.25
+reduced_fare = 1.10
 payment_methods = [
   "SmarTrip card or SmarTrip in Apple/Google Wallet",
-  "Contactless bank card or phone",
   "Exact-change cash in the farebox",
 ]
 where_to_buy = [
   "Use an existing SmarTrip or buy/reload one at any Metrorail station, online, or at retail",
 ]
 accepts_smartrip = true
-accepts_contactless = true
 cash_onboard = true
 exact_change_required = true
 transfer_policy = """\
-  SmarTrip/contactless gives the regional transfer discount with Metrorail and \
-  Metrobus within 2 hours; ART-to-ART transfers are free."""
+  SmarTrip only: free transfers to ART or Metrobus within 2 hours, and a discount on \
+  Metrorail within 2 hours ($2.25 adults, $1.10 seniors)."""
 fare_page_url = "https://www.arlingtontransit.com/rider-info-fares/fares/"
-notes = "$2.00 base / $1.00 reduced. Fares change; confirm the current amount at the fare page before you travel."
+notes = """\
+  $2.25 adults, $1.10 seniors 65+ (Senior SmarTrip or Medicare card). 7-Day Regional \
+  Bus Pass $13.50 adults, $6.75 seniors. Free for people with a Metro Disability ID, \
+  MetroAccess customers and their attendants, and children under 5. K-12 students: \
+  free with iRide SmarTrip, $1.10 cash with school ID. Cash: $1, $2, $5, $10 bills \
+  and coins; no change given. STAR paratransit: Zone 1 $4.50, Zone 2 $6.20, Zone 3 \
+  $10.70. MICRO: $3.00 a ride, $2.00 seniors, disabled riders and K-12 students, \
+  $2.00 each additional passenger, children under 5 free. Fares change; confirm the \
+  current amount at the fare page before you travel."""
 
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]

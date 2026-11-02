@@ -8,6 +8,11 @@ mode = "intercity_rail"
 [profile]
 frequency_tier = "intercity"
 
+[fares]
+fare_page_url = "https://www.amtrak.com"
+notes = """\
+  Fares vary by trip and date. See prices and book at https://www.amtrak.com ."""
+
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]
 type = "gtfs"

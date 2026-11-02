@@ -21,7 +21,7 @@ BUILTIN = {"wmata", "metrobus", "vre", "fairfax-connector", "art", "dash", "cue"
            "marc", "annapolis-transit", "harbor-connector", "potomac-valley",
            "intercity-bus", "flixbus", "amtrak",
            # airport shuttles
-           "dulles-shuttles"}
+           "dulles-shuttles", "charm-city-circulator"}
 
 
 @pytest.fixture

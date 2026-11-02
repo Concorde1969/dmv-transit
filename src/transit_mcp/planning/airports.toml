@@ -46,13 +46,12 @@ station_name = "Ronald Reagan Washington National Airport Metro station"
 station_m = 150
 mode = "walkway"
 to_station = """From Terminal 2, cross either enclosed pedestrian bridge on the \
-concourse level to the Metro station. From Terminal 1, board any "Airport Shuttle" bus \
-at the street-side curb and get off at the Terminal 2 or North/South Parking 1 & 2 \
-stop, where an enclosed bridge leads to the station."""
+concourse level to the Metro station; the walkway runs between the north and south ends \
+of Terminal 2. From Terminal 1, first walk to Terminal 2, then cross a bridge to the \
+station."""
 from_station = """For Terminal 2, go to either end of the platform and cross the \
 bridge to the concourse level (the elevator is at the center of the platform). For \
-Terminal 1, exit toward the parking garage, go down to street level and board any \
-"Airport Shuttle" bus."""
+Terminal 1, cross the bridge into Terminal 2, then walk on to Terminal 1."""
 source = "https://www.flyreagan.com/metro"
 
 [[airport]]

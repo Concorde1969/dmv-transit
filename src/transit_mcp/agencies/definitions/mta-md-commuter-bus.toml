@@ -8,6 +8,21 @@ mode = "commuter_bus"
 [profile]
 frequency_tier = "peak"
 
+[fares]
+payment_methods = [
+  "CharmPass mobile app",
+  "Paper tickets from Commuter Direct",
+  "10-trip and monthly tickets at MARC ticket machines",
+]
+mobile_app_name = "CharmPass"
+fare_page_url = "https://www.mta.maryland.gov/commuterbus-fares"
+notes = """\
+  Fares go by zone, shown on each route's PDF schedule. One way: Zone 1 $4.00, 2 \
+  $5.00, 3 $6.00, 4 $7.00, 5 $8.00 (senior or disability $3.00 to $7.00). 10 Trip: \
+  $40.00 to $80.00 ($30.00 to $70.00). Monthly: $136.00 to $272.00 ($102.00 to \
+  $238.00). A Transit Link Card adds $34 a month. Fares change; confirm the current \
+  amount at the fare page before you travel."""
+
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]
 type = "gtfs"
@@ -16,3 +31,10 @@ transitland_id = "f-dq-mtamaryland~commuterbus"
 transitland_rt_id = "f-dq-mtamaryland~commuterbus~rt"
 transitland_atlas = "mta.maryland.gov.dmfr.json"
 url = "https://feeds.mta.maryland.gov/gtfs/commuter-bus"
+
+# Fare page: the fields above are a summary of it.
+[[sources]]
+type = "web_pages"
+pages = [
+  { url = "https://www.mta.maryland.gov/commuterbus-fares", category = "fares" },
+]

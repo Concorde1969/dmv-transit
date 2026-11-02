@@ -8,6 +8,12 @@ mode = "intercity_bus"
 [profile]
 frequency_tier = "intercity"
 
+[fares]
+fare_page_url = "https://shop.flixbus.com"
+notes = """\
+  Fares vary by trip and date. See prices and book at https://shop.flixbus.com for \
+  FlixBus, or https://shop.greyhound.com for Greyhound."""
+
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]
 type = "gtfs"

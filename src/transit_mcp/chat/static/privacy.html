@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-BXZC03P0DK"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-BXZC03P0DK');
+</script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Privacy - DMV Transit (Unofficial)</title>
+<meta name="description" content="What DMV Transit, an unofficial trip planner for DC, Maryland and Virginia, collects, why, how long it's kept, and how to delete it." />
+<meta name="theme-color" content="#064F30" />
+<link rel="icon" href="/favicon.ico" sizes="48x48" />
+<style>
+  :root { --bg: #FAFBF6; --ink: #1B2621; --ink-2: #4A5651; --rule: #D3DDD2; --brand: #064F30;
+          --cream: #EDEBE0; --stripe: #DE6A3A; --link: #0F7368; --fill: #E6EFE4;
+          --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "SF Pro Text",
+                  "Helvetica Neue", Arial, sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 18px/1.6 var(--font); }
+  header { background: var(--brand); color: var(--cream); border-bottom: 4px solid var(--stripe);
+           padding: 22px 16px 18px; }
+  header a { color: var(--cream); }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  main { padding: 8px 16px 56px; }
+  h1 { margin: 6px 0 4px; font-size: 32px; line-height: 1.15; }
+  h2 { font-size: 22px; margin: 34px 0 8px; }
+  p, li { max-width: 66ch; }
+  ul { padding-left: 22px; }
+  li { margin-bottom: 6px; }
+  a { color: var(--link); text-underline-offset: 3px; }
+  a:focus-visible { outline: 3px solid var(--link); outline-offset: 2px; }
+  .lede { color: var(--ink-2); margin: 0; }
+  .box { background: var(--fill); border-radius: 14px; padding: 14px 18px; margin: 18px 0; }
+  .box p { margin: 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 16px; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 10px 8px 0; border-bottom: 1px solid var(--rule); }
+  th { color: var(--ink-2); font-weight: 650; }
+  .scroll { overflow-x: auto; }
+  footer { color: var(--ink-2); font-size: 15px; border-top: 1px solid var(--rule); margin-top: 40px; padding-top: 14px; }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <a href="/">&larr; Back to the trip planner</a>
+  <h1>Privacy</h1>
+  <p class="lede" style="color: var(--cream)">What DMV Transit keeps, why, and for how long.</p>
+</div></header>
+
+<main><div class="wrap">
+
+<div class="box"><p>DMV Transit is an independent, unofficial trip planner for DC, Maryland and
+Virginia. It is not affiliated with WMATA or any transit agency. It doesn't sell your
+information or show ads.</p></div>
+
+<h2>What we keep</h2>
+<div class="scroll"><table>
+  <tr><th>What</th><th>Details</th><th>Kept for</th></tr>
+  <tr><td>Trip searches</td><td>Start and end rounded to about 100 meters, the nearest stops, the trip
+    options shown, and the names of landmarks or stations you pick. Never street addresses or what
+    you type.</td><td>1 year</td></tr>
+  <tr><td>Questions to the assistant</td><td>Your question and the answer. Email addresses and phone
+    numbers are removed automatically before saving.</td><td>1 year</td></tr>
+  <tr><td>Page activity</td><td>Which trip options and panels you open, the kind of device, and the
+    name of the site that sent you here.</td><td>1 year</td></tr>
+  <tr><td>Rider reports</td><td>The report you write. Other riders and the assistant see it for a few
+    hours.</td><td>1 year</td></tr>
+  <tr><td>Your account, if you make one</td><td>Your email address and the places you save (names,
+    addresses and dates). Never linked to the records above, and saved places never appear in
+    links.</td><td>Until you delete it, or 2 years after your last visit</td></tr>
+</table></div>
+<p>The records above use an anonymous code to tell one visitor's activity from another's. The code
+is made from your IP address in a way that can't be reversed; we don't store IP addresses
+themselves. Our web server's request log shortens addresses to their network (for example
+203.0.0.0) before writing them.</p>
+
+<h2>Your location</h2>
+<p>Your browser asks before sharing your location. We use it only to find stops near you and plan
+your trip, and we keep it only as part of a trip search, rounded as described above.</p>
+
+<h2>Services that receive information</h2>
+<ul>
+  <li><strong>Google Analytics</strong> counts visits. It sets cookies and receives your IP address
+    under <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's
+    privacy policy</a>.</li>
+  <li><strong>Google Maps</strong> finds the places you type in the search boxes. Our server sends it
+    what you type; your browser doesn't contact Google for this.</li>
+  <li><strong>Anthropic</strong> (Claude) answers questions to the assistant and checks rider reports
+    before others see them. It receives the question or report text.</li>
+  <li><strong>Transitland</strong> provides some live departure times. It receives stop codes, not
+    anything about you.</li>
+  <li><strong>Amazon Web Services</strong> hosts the site and sends sign-in code emails.</li>
+</ul>
+<p>The map itself is served from our own server.</p>
+
+<h2>Cookies and browser storage</h2>
+<ul>
+  <li>Google Analytics cookies, as above.</li>
+  <li>If you sign in, a sign-in cookie that keeps you signed in for 90 days. It can't be read by page
+    scripts.</li>
+  <li>The assistant keeps a conversation code in your browser tab, cleared when you close it.</li>
+</ul>
+
+<h2>Signing in</h2>
+<p>Accounts use a 6-digit code emailed to you instead of a password. We send no other email: no
+newsletters, no marketing. Codes and sign-in tokens are stored only in scrambled (hashed) form.</p>
+
+<h2>Deleting your information</h2>
+<ul>
+  <li><strong>Your account:</strong> open My places and choose Delete my account. Your email address,
+    saved places and sign-ins are removed at once.</li>
+  <li><strong>Everything else:</strong> it's deleted automatically after one year. To ask for earlier
+    removal, contact the site's creator below. Because records aren't linked to your name, include
+    roughly when you used the site.</li>
+</ul>
+
+<h2>Contact</h2>
+<p>DMV Transit is built by Kaleb Neal. Reach him on
+<a href="https://www.linkedin.com/in/kaleb-neal" target="_blank" rel="noopener noreferrer">LinkedIn</a>.</p>
+
+<footer>Last updated November 2, 2026. Transit information here is unofficial; always confirm with
+the agency before you travel.</footer>
+
+</div></main>
+</body>
+</html>

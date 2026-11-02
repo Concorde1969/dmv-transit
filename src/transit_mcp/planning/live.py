@@ -37,6 +37,7 @@ from transit_mcp.db.database import Database
 from transit_mcp.ingest.gtfs.clusters import haversine_m
 from transit_mcp.ingest.gtfs.shapes import decode
 from transit_mcp.planning.airports import AirportLink, load_links
+from transit_mcp.planning.rail_fares import leg_fare
 
 DAY = 86_400
 _DAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
@@ -914,6 +915,9 @@ class LivePlanner:
         shaped = self._shape_slice(ride, stops)
         agency = self.agencies.get(ride.feed, {})
         rtype = int(route["route_type"]) if route and route["route_type"] is not None else 3
+        fare = leg_fare(ride.feed, route["long_name"] if route else None,
+                        stops[0]["name"] if stops else None,
+                        stops[-1]["name"] if stops else None)
         return {
             "mode": "ride",
             "agency": ride.feed,
@@ -934,7 +938,7 @@ class LivePlanner:
             "stops": max(0, len(calls) - 1),
             "live": ride.live,
             "delay_s": ride.delay if ride.live else None,
-            "fare": agency.get("base_fare"),
+            "fare": agency.get("base_fare") if fare is None else fare,
             "geometry": shaped or path,
         }
 

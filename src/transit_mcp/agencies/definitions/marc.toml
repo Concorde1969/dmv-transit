@@ -8,6 +8,35 @@ mode = "commuter_rail"
 [profile]
 frequency_tier = "peak"
 
+[fares]
+payment_methods = [
+  "CharmPass mobile app",
+  "Ticket vending machine (card, Apple Pay, Google Pay; cash at some stations)",
+  "Ticket agent or Commuter Store",
+  "Cash to the conductor, if there is no machine or open ticket office",
+]
+where_to_buy = [
+  "CharmPass app: one-way, 5-Day, 7-Day and 31-Day passes",
+  "Machines at MARC stations",
+  "MTA.CommuterDirect.com or 410-697-2212 (by mail)",
+  "Ticket agents at Odenton and Frederick stations",
+]
+mobile_app_name = "CharmPass"
+cash_onboard = true
+transfer_policy = """\
+  Weekly and monthly tickets also work on MTA Local Bus, Light Rail, Metro Subway, \
+  WMATA Metrobus (base fare only), Montgomery County Ride On and Frederick County \
+  TransIT."""
+fare_page_url = "https://www.mta.maryland.gov/marc-fares"
+notes = """\
+  One-way fares go by station, from $6.00 up to $14.00; plan_trip gives the fare for \
+  a specific trip (chart dated June 27, 2021, as linked on MARC's fare page). 50% off \
+  for seniors 65+ and riders with disabilities, and for students through Student \
+  Saver. Two children under 6 ride free with a full-fare rider. Tickets bought on \
+  board cost $5.00 more if a machine or ticket office was available (not for senior \
+  or disability fares); conductors take cash only, nothing over $20. Fares change; \
+  confirm the current amount at the fare page before you travel."""
+
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]
 type = "gtfs"
@@ -16,3 +45,10 @@ transitland_id = "f-dq-mtamaryland~marc"
 transitland_rt_id = "f-mtamaryland~marc~train~rt"
 transitland_atlas = "mta.maryland.gov.dmfr.json"
 url = "https://feeds.mta.maryland.gov/gtfs/marc"
+
+# Fare page: the fields above are a summary of it.
+[[sources]]
+type = "web_pages"
+pages = [
+  { url = "https://www.mta.maryland.gov/marc-fares", category = "fares" },
+]

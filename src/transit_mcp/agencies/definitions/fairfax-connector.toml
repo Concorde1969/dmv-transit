@@ -26,28 +26,31 @@ frequency_tier = "peak"
 park_and_ride = true
 
 [fares]
-base_fare = 2.00
-reduced_fare = 1.00
+base_fare = 2.25
+reduced_fare = 1.10
 payment_methods = [
   "SmarTrip card or SmarTrip in Apple/Google Wallet",
-  "Contactless bank card or phone",
   "Exact-change cash in the farebox",
 ]
 where_to_buy = [
   "Use an existing SmarTrip, or buy one at any Metrorail station machine, online, or at retail",
-  "No ticket needed — tap or drop exact cash when boarding",
+  "No ticket needed: tap or pay cash when boarding",
 ]
 accepts_smartrip = true
-accepts_contactless = true
 cash_onboard = true
 exact_change_required = true
 transfer_policy = """\
-  Pay with SmarTrip/contactless to get the regional transfer discount to Metrorail \
-  and Metrobus within 2 hours."""
+  With SmarTrip, local bus-to-bus transfers are free for 2 hours; a transfer from a \
+  Regular Route to an Express Route may cost more. Metrorail-to-bus with SmarTrip: \
+  Regular Routes free; routes 393, 394, 395, 396, 599, 697, 698, 699 and 835 cost \
+  $2.55 ($0.15 seniors and people with disabilities)."""
 fare_page_url = "https://www.fairfaxcounty.gov/connector/fares-and-policies"
 notes = """\
-  $2.00 base / $1.00 reduced; some Fairfax County shuttle routes are free. Fares \
-  change; confirm the current amount at the fare page before you travel."""
+  Regular Routes $2.25, $1.10 seniors and people with disabilities. Routes 393, 394, \
+  395, 396, 599, 697, 698, 699 and 835: $4.80 ($2.40). Routes 350 (TAGS), 423 and \
+  427: $0.55. 480 Wolf Trap Express: $5.00 round trip ($2.75 after Metrorail with \
+  SmarTrip). Children 12 and under ride free with a paying adult. Fares change; \
+  confirm the current amount at the fare page before you travel."""
 
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]

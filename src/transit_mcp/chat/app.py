@@ -122,6 +122,11 @@ async def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
+@app.get("/privacy")
+async def privacy() -> FileResponse:
+    return FileResponse(STATIC_DIR / "privacy.html")
+
+
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon() -> FileResponse:
     return FileResponse(STATIC_DIR / "brand" / "favicon.ico",

@@ -8,6 +8,24 @@ mode = "bus"
 [profile]
 frequency_tier = "frequent"
 
+[fares]
+base_fare = 2.00
+reduced_fare = 1.00
+payment_methods = [
+  "Exact-change cash (fareboxes give no change)",
+  "CharmCard",
+  "CharmPass mobile app",
+]
+mobile_app_name = "CharmPass"
+cash_onboard = true
+exact_change_required = true
+fare_page_url = "https://www.mta.maryland.gov/regular-fares"
+notes = """\
+  One way $2.00 full fare, $1.00 senior or disability, $1.50 student, $2.20 Mobility. \
+  1-Day Pass $4.60 ($2.30 senior or disability). 7-Day Pass $22.00. 31-Day Pass \
+  $77.00 ($23.00 senior or disability). Fares change; confirm the current amount at \
+  the fare page before you travel."""
+
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]
 type = "gtfs"
@@ -16,3 +34,10 @@ transitland_id = "f-dq-mtamaryland~bus"
 transitland_rt_id = "f-dq-mtamaryland~bus~rt"
 transitland_atlas = "mta.maryland.gov.dmfr.json"
 url = "https://feeds.mta.maryland.gov/gtfs/local-bus"
+
+# Fare page: the fields above are a summary of it.
+[[sources]]
+type = "web_pages"
+pages = [
+  { url = "https://www.mta.maryland.gov/regular-fares", category = "fares" },
+]

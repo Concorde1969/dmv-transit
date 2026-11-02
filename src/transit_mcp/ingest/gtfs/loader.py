@@ -175,6 +175,24 @@ def _hms(s: int) -> str:
     return f"{s // 3600:02d}:{s % 3600 // 60:02d}:{s % 60:02d}"
 
 
+def name_platforms(db: Database, feed_id: str) -> int:
+    """Give platforms that are only called "2" or "Lead" their station's name (VRE's feed
+    does this): riders, stop search and fare tables all need the station. Safe to re-run."""
+    cur = db.conn.execute(
+        """
+        UPDATE gtfs_stops SET name = (
+            SELECT p.name FROM gtfs_stops p
+             WHERE p.feed_id = gtfs_stops.feed_id AND p.stop_id = gtfs_stops.parent_station)
+         WHERE feed_id = ?
+           AND (name GLOB '[0-9]' OR name GLOB '[0-9][0-9]'
+                OR LOWER(name) IN ('lead', 'station monitor'))
+           AND EXISTS (SELECT 1 FROM gtfs_stops p
+                        WHERE p.feed_id = gtfs_stops.feed_id
+                          AND p.stop_id = gtfs_stops.parent_station AND p.name IS NOT NULL)
+        """, (feed_id,))
+    return cur.rowcount
+
+
 def expand_frequencies(db: Database, feed_id: str) -> int:
     """Turn each headway trip (``frequencies.txt``) into one trip per run, so code that
     reads ``gtfs_stop_times`` sees every departure. The template trip's times only give
@@ -370,6 +388,7 @@ def load_feed(
         # ... and headway trips loaded before they were expanded.
         if load_stop_times:
             stats["frequency_trips"] = expand_frequencies(db, feed.slug)
+        stats["platforms_named"] = name_platforms(db, feed.slug)
         db.commit()
         if archive_dir is not None:
             stats["archived"] = str(
@@ -390,6 +409,7 @@ def load_feed(
     stats["shapes"] = load_shapes(db, feed.slug, zf)  # simplified, for maps
     if load_stop_times:
         stats["frequency_trips"] = expand_frequencies(db, feed.slug)
+    stats["platforms_named"] = name_platforms(db, feed.slug)
 
     info = _feed_info(zf)
     db.conn.execute(

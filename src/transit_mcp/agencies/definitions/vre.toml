@@ -38,20 +38,24 @@ payment_methods = [
   "No SmarTrip for VRE fare; no cash paid to the conductor",
 ]
 where_to_buy = [
-  "VRE Mobile app (iOS/Android) — buy and activate before you board",
+  "VRE Mobile app (iOS/Android): buy and activate before you board",
   "Ticket vending machines at every VRE station",
   "Employer Commuter Choice / transit benefit programs",
 ]
 mobile_app_name = "VRE Mobile"
 transfer_policy = """\
-  A valid VRE ticket includes a free same-day connecting ride on Metrorail, \
-  Metrobus, ART, DASH, Fairfax Connector, OmniRide, and other partners ('free ride' \
-  / step-up) — keep your ticket to show."""
+  A valid VRE ticket includes a free same-day connecting ride on Metrorail, Metrobus, \
+  ART, DASH, Fairfax Connector, OmniRide, and other partners ('free ride' / step-up): \
+  keep your ticket to show."""
 fare_page_url = "https://www.vre.org/service/fares/"
 notes = """\
-  Fares are zone/distance based, roughly $4–$14 one way; buy before boarding — there \
-  is a surcharge or no sale on board. Fares change; confirm the current amount at the \
-  fare page before you travel."""
+  Fares go by zone (table effective July 1, 2026), $3.90 to $13.45 one way; trips \
+  within zones 1 to 3 are $5.00. plan_trip gives the fare for a specific trip. A Day \
+  Pass is twice a single ride. Zones: 1 Union Station, L'Enfant; 2 Crystal City, \
+  Alexandria; 3 Franconia-Springfield, Backlick Road; 4 Lorton, Burke Centre, Rolling \
+  Road; 5 Woodbridge, Rippon; 6 Quantico, Broad Run, Manassas, Manassas Park; 8 \
+  Brooke, Leeland Road; 9 Fredericksburg, Spotsylvania. Buy before boarding. Fares \
+  change; confirm the current amount at the fare page before you travel."""
 
 # Routes, stops and schedules: GTFS found through Transitland. (vre.org's web
 # pages sit behind a Cloudflare challenge, so fares come from the [fares] section.)

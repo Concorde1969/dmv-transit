@@ -8,9 +8,26 @@ mode = "bus"
 [profile]
 frequency_tier = "infrequent"
 
+[fares]
+mobile_app_name = "Token Transit"
+fare_page_url = "https://www.potomacvalleytransit.org/fares-passes/"
+notes = """\
+  READY RIDE fares are $2.00 a boarding. For Regular Route fares, call 304-257-1414 \
+  or 1-800-565-7240. Regular Route: 50% off for seniors 62+ and people with \
+  disabilities. Children 6 to 12: 50% off all fares; under 6 free. Discount pass: \
+  $5.50 of Regular Route service for $5.00. Fares change; confirm the current amount \
+  at the fare page before you travel."""
+
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]
 type = "gtfs"
 transitland_id = "f-potomac~valley~transit~authority"
 transitland_atlas = "nationalrtap.org.dmfr.json"
 url = "https://rapid.nationalrtap.org/GTFSFileManagement/UserUploadFiles/12017/feed.zip"
+
+# Fare page: the fields above are a summary of it.
+[[sources]]
+type = "web_pages"
+pages = [
+  { url = "https://www.potomacvalleytransit.org/fares-passes/", category = "fares" },
+]

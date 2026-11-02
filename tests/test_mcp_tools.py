@@ -238,3 +238,30 @@ def test_each_key_has_its_own_limit(web):
         assert web.post("/mcp", json=INIT, headers=_auth(quiet)).status_code == 200
     finally:
         web.guard.limiter = saved
+
+
+def test_every_tool_carries_the_grounding_rule():
+    import asyncio
+
+    tools = asyncio.run(server.mcp.list_tools())
+    assert len(tools) == 18
+    for t in tools:
+        assert t.description.endswith(server.GROUNDING), t.name
+        assert len(t.description) > len(server.GROUNDING) + 40, t.name   # docstring kept
+
+
+def test_privacy_page_is_served(monkeypatch, isolated_settings):
+    from transit_mcp.chat import app as app_mod
+
+    settings = isolated_settings.model_copy(update={"anthropic_api_key": "k", "app_env": "production"})
+    monkeypatch.setattr(app_mod, "get_settings", lambda: settings)
+
+    async def nothing(self):
+        self._tools = []
+
+    monkeypatch.setattr(app_mod.McpBridge, "start", nothing)
+    monkeypatch.setattr(app_mod.McpBridge, "stop", nothing)
+    with TestClient(app_mod.app) as c:
+        r = c.get("/privacy")
+        assert r.status_code == 200 and "What we keep" in r.text
+        assert 'href="/privacy"' in c.get("/").text

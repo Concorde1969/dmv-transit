@@ -8,6 +8,21 @@ mode = "ferry"
 [profile]
 frequency_tier = "infrequent"
 
+[fares]
+base_fare = 0.00
+reduced_fare = 0.00
+payment_methods = [
+  "No fare: the Harbor Connector is free. Just board.",
+]
+where_to_buy = [
+  "Nothing to buy.",
+]
+transfer_policy = """\
+  No fare, so transfers are irrelevant: board and ride."""
+fare_page_url = "https://transportation.baltimorecity.gov/harborconnector"
+notes = """\
+  The Harbor Connector is free."""
+
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]
 type = "gtfs"

@@ -8,6 +8,22 @@ mode = "bus"
 [profile]
 frequency_tier = "frequent"
 
+[fares]
+base_fare = 0.00
+reduced_fare = 0.00
+payment_methods = [
+  "No fare: the shuttles are free. Just board.",
+]
+where_to_buy = [
+  "Nothing to buy.",
+]
+transfer_policy = """\
+  No fare, so transfers are irrelevant: board and ride."""
+fare_page_url = "https://www.flydulles.com/parking-transportation/ground-transportation"
+notes = """\
+  Free shuttles run 24/7 between the terminals and the on-airport parking garages and \
+  lots."""
+
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]
 type = "gtfs"

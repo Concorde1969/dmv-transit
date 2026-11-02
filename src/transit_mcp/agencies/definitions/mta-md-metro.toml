@@ -8,6 +8,21 @@ mode = "rail"
 [profile]
 frequency_tier = "frequent"
 
+[fares]
+base_fare = 2.00
+reduced_fare = 1.00
+payment_methods = [
+  "Ticket vending machine at the station",
+  "CharmPass mobile app",
+]
+mobile_app_name = "CharmPass"
+fare_page_url = "https://www.mta.maryland.gov/regular-fares"
+notes = """\
+  One way $2.00 full fare, $1.00 senior or disability, $1.50 student, $2.20 Mobility. \
+  1-Day Pass $4.60 ($2.30 senior or disability). 7-Day Pass $22.00. 31-Day Pass \
+  $77.00 ($23.00 senior or disability). Fares change; confirm the current amount at \
+  the fare page before you travel."""
+
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]
 type = "gtfs"

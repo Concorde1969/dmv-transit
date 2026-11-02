@@ -1,0 +1,37 @@
+slug = "charm-city-circulator"
+name = "Charm City Circulator"
+mode = "bus"
+
+# Added from the Transitland feed list. Descriptions are intentionally left out: answers
+# about this agency come from its GTFS feed (routes, stops, schedules).
+[profile]
+frequency_tier = "frequent"
+
+[fares]
+base_fare = 0.00
+reduced_fare = 0.00
+payment_methods = [
+  "No fare: the Charm City Circulator is free. Just board.",
+]
+where_to_buy = [
+  "Nothing to buy.",
+]
+fare_page_url = "https://transportation.baltimorecity.gov/charm-city-circulator"
+transfer_policy = """\
+  No fare, so transfers are irrelevant: board and ride."""
+notes = """\
+  The Charm City Circulator is free."""
+
+# Routes, stops and schedules: GTFS found through Transitland (url = fallback).
+[[sources]]
+type = "gtfs"
+transitland_id = "f-dqcx8-charmcitycirculator"
+# Live departures: the agency's own GTFS-realtime feed, listed in Transitland.
+transitland_rt_id = "f-dqcx8-charmcitycirculator~rt"
+url = "https://passio3.com/charmcity/passioTransit/gtfs/google_transit.zip"
+
+# Live service alerts: GTFS-realtime.
+[[sources]]
+type = "gtfs_rt_alerts"
+transitland_id = "f-dqcx8-charmcitycirculator~rt"
+url = "https://passio3.com/charmcity/passioTransit/gtfs/realtime/serviceAlerts"

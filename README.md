@@ -39,7 +39,7 @@ prompt instead — see `chat/agent.py`.)
      ([console.anthropic.com](https://console.anthropic.com/)) and `WMATA_API_KEY`
      (free at [developer.wmata.com](https://developer.wmata.com/)), save, and
      double-click `start.bat` again. It then downloads transit data (15–20 minutes
-     for all 22 feeds).
+     for all 23 feeds).
    - For the map planner, also add `TRANSITLAND_API_KEY`
      ([transit.land](https://www.transit.land/), Explorer plan) and
      `GOOGLE_GEOCODING_API_KEY` ([Google Geocoding API](https://developers.google.com/maps/documentation/geocoding);
@@ -124,6 +124,10 @@ Annapolis Transit) are expanded into one trip per run when loaded. Nearby stops 
 **clusters** (every pair in a cluster is less than 0.3 km apart) for the assistant's
 "what connects here" answers.
 
+### Fares
+
+Each agency's fare summary is in its definition file, with the agency's fare page scraped nightly where the site allows it. VRE and MARC price trips by station, which GTFS doesn't carry, so their published charts are in `planning/rail_fares.toml` and trips show the exact one-way fare. Fares that vary by trip (Amtrak, FlixBus, Greyhound, Virginia Breeze, intercity buses) send riders to the operator's site.
+
 ### Rider reports (crowdsourced)
 
 Riders can warn each other from the map page (**Report an issue**): the station and
@@ -195,6 +199,7 @@ content hash. One failing source never stops the rest of a run.
 | `harbor-connector` | Harbor Connector (Baltimore) | ferry | GTFS via Transitland |
 | `potomac-valley` | Potomac Valley Transit Authority | bus | GTFS via Transitland |
 | `dulles-shuttles` | Dulles Airport Shuttles (garages, economy lots) | bus | GTFS via Transitland |
+| `charm-city-circulator` | Charm City Circulator (Baltimore, free) | bus | GTFS via Transitland |
 | `intercity-bus` | Intercity buses (combined feed) | intercity bus | GTFS via Transitland |
 | `flixbus` | FlixBus | intercity bus | GTFS via Transitland |
 | `amtrak` | Amtrak | intercity rail | GTFS via Transitland |

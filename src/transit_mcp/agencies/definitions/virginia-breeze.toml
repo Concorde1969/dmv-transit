@@ -29,21 +29,19 @@ park_and_ride = true
 
 [fares]
 payment_methods = [
-  "Buy an e-ticket online in advance (credit/debit card)",
-  "Walk-up seats sometimes available but not guaranteed; no SmarTrip",
+  "Buy online before you travel",
 ]
 where_to_buy = [
-  "Book at the Virginia Breeze website / booking partner before your trip",
-  "Show the e-ticket (QR code) to the driver when boarding",
+  "https://virginiabreeze.tds.ai/#/",
 ]
 transfer_policy = """\
-  No integrated transfers — a Breeze ticket covers only the coach. Buy Metro fare \
+  No integrated transfers: a Breeze ticket covers only the coach. Buy Metro fare \
   separately at your connecting station."""
-fare_page_url = "https://virginiabreeze.drpt.virginia.gov/"
+fare_page_url = "https://virginiabreeze.tds.ai/#/"
 notes = """\
-  Distance-based intercity fares, roughly $15–$60 one way depending on how far you \
-  ride; reserve early because each route runs once a day. Fares change; confirm the \
-  current amount at the fare page before you travel."""
+  Fares vary by route and date, so there is no set fare chart: buy tickets ahead at \
+  https://virginiabreeze.tds.ai/#/ . One carry-on and one checked bag are included. \
+  Arrive about 15 minutes before departure."""
 
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]
@@ -55,5 +53,5 @@ url = "https://maps.tds.ai/download-feed/virginia-breeze-gtfs"
 [[sources]]
 type = "web_pages"
 pages = [
-  { url = "https://virginiabreeze.drpt.virginia.gov/", category = "fares" },
+  { url = "https://virginiabreeze.drpt.virginia.gov/faqs/", category = "fares" },
 ]

@@ -174,8 +174,8 @@ class Settings(BaseSettings):
     mcp_http_port: int = Field(default=8766, alias="MCP_HTTP_PORT")
     mcp_keys_db: Path = Field(default=Path("./mcp_keys.db"), alias="MCP_KEYS_DB")
     # Requests each API key may make.
-    mcp_rate_per_minute: int = Field(default=30, alias="MCP_RATE_PER_MINUTE")
-    mcp_rate_per_day: int = Field(default=300, alias="MCP_RATE_PER_DAY")
+    mcp_rate_per_minute: int = Field(default=120, alias="MCP_RATE_PER_MINUTE")
+    mcp_rate_per_day: int = Field(default=1500, alias="MCP_RATE_PER_DAY")
 
     # --- Scheduled data refresh (`transit-mcp scheduler`) ---
     refresh_alerts_minutes: int = Field(default=15, alias="REFRESH_ALERTS_MINUTES")

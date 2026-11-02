@@ -27,7 +27,8 @@ _ROUTE_ALERT_ID = {("wmata", r): c for r, c in (
     ("RED", "RD"), ("BLUE", "BL"), ("GREEN", "GR"), ("YELLOW", "YL"),
     ("ORANGE", "OR"), ("SILVER", "SV"))}
 # Agencies whose fare / payment pages are stored under another agency's slug.
-_DOCS_FEED = {"metrobus": "wmata"}
+_DOCS_FEED = {"metrobus": "wmata", "mta-md-metro": "mta-md-bus",
+              "mta-md-light-rail": "mta-md-bus"}
 _FARE_TEXT_CHARS = 2500
 
 _DAY_ALIASES = {
