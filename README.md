@@ -142,15 +142,18 @@ both always label them as unverified rider reports. Review them with
 
 ### Accounts: My places
 
-Visitors (tourists especially) can sign in with an emailed 6-digit code — no
-password — and save their hotel with check-in and check-out dates, a home, and the
+Visitors (tourists especially) can make an account with a username and password (no
+email needed) and save their hotel with check-in and check-out dates, a home, and the
 attractions they plan to visit, each with an optional day. Current places appear as
 one-tap quick picks under "Where to?", in the From and To suggestions, and as pins on
 the map (Go here / Start here); a hotel counts only during the stay, and past visits
 drop out. Accounts live in their own SQLite file (`ACCOUNTS_DB`), never linked to the
 chat log; saved places are logged as "saved" without names and are kept out of links.
-Codes are emailed over SMTP (Amazon SES on the public site; see deploy/README.md); a
-local server without SMTP prints the code in its log.
+Passwords are salted scrypt hashes; a recovery code shown once at sign-up resets a
+forgotten password, and five wrong tries lock an account for 15 minutes. Sign-in by
+emailed code is also built in, switched on with `ACCOUNTS_EMAIL_CODES=true` once SMTP
+works (Amazon SES on the public site; see deploy/README.md); a local server without
+SMTP prints the code in its log.
 
 ## Command line
 

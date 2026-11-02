@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
 
-from transit_mcp.accounts import AccountStore, PlaceError, PlaceInput, normalize_email
+from transit_mcp.accounts import (
+    AccountStore,
+    AuthError,
+    PlaceError,
+    PlaceInput,
+    check_password,
+    hash_password,
+    normalize_email,
+)
 from transit_mcp.mailer import code_email
 
 
@@ -162,7 +171,8 @@ def client(isolated_settings, monkeypatch, tmp_path):
 
     settings = isolated_settings.model_copy(update={
         "anthropic_api_key": "test-key", "app_env": "production",
-        "accounts_db": tmp_path / "accounts.db", "smtp_host": "smtp.test"})
+        "accounts_db": tmp_path / "accounts.db", "smtp_host": "smtp.test",
+        "accounts_email_codes": True})
     monkeypatch.setattr(app_mod, "get_settings", lambda: settings)
 
     async def no_start(self):
@@ -190,7 +200,8 @@ def _sign_in(client, email="Visitor@Example.com"):
 
 
 def test_sign_in_flow_sets_a_safe_cookie(client):
-    assert client.get("/api/account").json() == {"signed_in": False, "enabled": True}
+    assert client.get("/api/account").json() == {"signed_in": False, "enabled": True,
+                                                  "email_codes": True}
     r = _sign_in(client)
     assert r.status_code == 200 and r.json()["created"] is True
     assert r.json()["email"] == "visitor@example.com"
@@ -289,3 +300,197 @@ def test_mailer_needs_its_password_before_accounts_show():
     assert Mailer(**kw, username="AKIA", password="pw").available
     assert Mailer(host=None, log_only=True).available          # development: code in the log
     assert not Mailer(host=None).available
+
+
+
+# ------------------------------------------------------------------------ passwords
+GOOD = "a long walk to the metro"
+
+
+def test_passwords_are_salted_hashes(store):
+    a, b = hash_password(GOOD), hash_password(GOOD)
+    assert a != b and a.startswith("scrypt$") and GOOD not in a
+    assert check_password(GOOD, a) and not check_password(GOOD + "!", a)
+    assert not check_password(GOOD, None) and not check_password(GOOD, "junk")
+
+
+def test_register_then_sign_in(store):
+    user, token, code = store.register("TouristTina", GOOD)
+    assert user["username"] == "TouristTina" and store.user_for_token(token)["id"] == user["id"]
+    assert re.fullmatch(r"[A-Z2-7]{4}(-[A-Z2-7]{4}){3}", code)
+    again, token2 = store.password_sign_in("touristtina", GOOD)       # any capitalization
+    assert again["id"] == user["id"] and token2 != token
+    raw = _raw(store.path)
+    assert GOOD.encode() not in raw and code.encode() not in raw
+
+
+@pytest.mark.parametrize("username, password, words", [
+    ("ab", GOOD, "3 to 30"), ("-tina", GOOD, "3 to 30"), ("tina smith", GOOD, "3 to 30"),
+    ("tina", "short", "at least 10"), ("tina", "password123", "easy to guess"),
+    ("tina", "aaaaaaaaaaaa", "easy to guess"), ("tina", "tina-is-my-name", "username"),
+])
+def test_register_rules(store, username, password, words):
+    with pytest.raises(AuthError, match=words):
+        store.register(username, password)
+
+
+def test_usernames_are_unique_regardless_of_case(store):
+    store.register("Tina", GOOD)
+    with pytest.raises(AuthError, match="taken") as e:
+        store.register("tINA", GOOD)
+    assert e.value.status == 409
+
+
+def test_wrong_password_and_unknown_user_look_the_same(store):
+    store.register("tina", GOOD)
+    with pytest.raises(AuthError) as wrong:
+        store.password_sign_in("tina", "not the password")
+    with pytest.raises(AuthError) as unknown:
+        store.password_sign_in("nobody", GOOD)
+    assert str(wrong.value) == str(unknown.value) and wrong.value.status == 400
+
+
+def test_five_wrong_passwords_lock_the_account_for_15_minutes(store):
+    store.register("tina", GOOD)
+    for _ in range(4):
+        with pytest.raises(AuthError):
+            store.password_sign_in("tina", "wrong password 1")
+    with pytest.raises(AuthError, match="15 minutes") as e:
+        store.password_sign_in("tina", "wrong password 1")
+    assert e.value.status == 429
+    with pytest.raises(AuthError, match="15 minutes"):
+        store.password_sign_in("tina", GOOD)                          # even the right one
+    store.clock.t += 15 * 60 + 1
+    assert store.password_sign_in("tina", GOOD)[0]["username"] == "tina"
+
+
+def test_recovery_code_resets_the_password_once(store):
+    _, old_token, code = store.register("tina", GOOD)
+    user, token, new_code = store.recover("tina", code.lower().replace("-", " "),
+                                          "a brand new password")
+    assert new_code != code and store.user_for_token(token)["id"] == user["id"]
+    assert store.user_for_token(old_token) is None                    # other sign-ins end
+    with pytest.raises(AuthError):
+        store.password_sign_in("tina", GOOD)
+    assert store.password_sign_in("tina", "a brand new password")
+    with pytest.raises(AuthError):
+        store.recover("tina", code, "yet another password")           # old code is spent
+    with pytest.raises(AuthError, match="at least 10"):
+        store.recover("tina", new_code, "short")
+
+
+def test_change_password_keeps_only_this_sign_in(store):
+    user, token, _ = store.register("tina", GOOD)
+    _, other = store.password_sign_in("tina", GOOD)
+    with pytest.raises(AuthError):
+        store.change_password(user["id"], "wrong one here", "a different password", token)
+    store.change_password(user["id"], GOOD, "a different password", token)
+    assert store.user_for_token(token) and store.user_for_token(other) is None
+    assert store.password_sign_in("tina", "a different password")
+
+
+def test_old_email_accounts_survive_the_upgrade(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    db = sqlite3.connect(path)
+    db.executescript("""
+        PRAGMA foreign_keys = ON;
+        CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE,
+                            created_at TEXT NOT NULL, last_seen TEXT NOT NULL);
+        CREATE TABLE sessions (token_hash TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            expires_at REAL NOT NULL);
+        CREATE TABLE places (id INTEGER PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL,
+            kind TEXT NOT NULL, lat REAL NOT NULL, lon REAL NOT NULL, address TEXT,
+            start_date TEXT, end_date TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        INSERT INTO users VALUES (7, 'old@example.com', '2026-10-29', '2026-10-29');
+        INSERT INTO places VALUES (1, 7, 'Hotel', 'hotel', 38.9, -77.0, NULL, NULL, NULL, 'x', 'x');
+    """)
+    db.commit()
+    db.close()
+    s = AccountStore(path)
+    try:
+        assert [p["name"] for p in s.places(7)] == ["Hotel"]
+        user, token, created = s.sign_in("old@example.com")
+        assert user["id"] == 7 and not created
+        assert s.user_for_token(token)["email"] == "old@example.com"
+        s.register("newperson", GOOD)                                 # no email needed now
+        s.conn.execute("DELETE FROM users WHERE id = 7")              # foreign keys still work
+        s.conn.commit()
+        assert s.places(7) == [] and s.user_for_token(token) is None
+    finally:
+        s.close()
+    AccountStore(path).close()                                        # upgrading twice is fine
+
+
+def _register(client, username="TouristTina", password=GOOD):
+    return client.post("/api/account/register", headers=SITE,
+                       json={"username": username, "password": password})
+
+
+def test_password_flow_over_the_api(client):
+    r = _register(client)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["username"] == "TouristTina" and data["recovery_code"] and data["created"]
+    assert "httponly" in r.headers["set-cookie"].lower()
+    assert client.post("/api/account/places", json=HOTEL, headers=SITE).status_code == 201
+    client.post("/api/account/signout", headers=SITE)
+    bad = client.post("/api/account/login", headers=SITE,
+                      json={"username": "touristtina", "password": "nope nope nope"})
+    assert bad.status_code == 400 and "don't match" in bad.json()["message"]
+    ok = client.post("/api/account/login", headers=SITE,
+                     json={"username": "touristtina", "password": GOOD})
+    assert ok.status_code == 200 and ok.json()["places"][0]["name"] == "My hotel"
+    assert "recovery_code" not in ok.json()
+
+
+def test_recover_and_change_password_over_the_api(client):
+    code = _register(client).json()["recovery_code"]
+    client.post("/api/account/signout", headers=SITE)
+    r = client.post("/api/account/recover", headers=SITE, json={
+        "username": "TouristTina", "recovery_code": code, "new_password": "my new long password"})
+    assert r.status_code == 200 and r.json()["recovery_code"] != code
+    r = client.post("/api/account/password", headers=SITE, json={
+        "current_password": "my new long password", "new_password": "another long password"})
+    assert r.status_code == 200 and r.json()["ok"]
+    assert client.get("/api/account").json()["signed_in"]
+
+
+def test_password_endpoints_refuse_other_sites_and_floods(client):
+    evil = {"Origin": "https://evil.example"}
+    assert client.post("/api/account/login", json={"username": "a", "password": "b"},
+                       headers=evil).status_code == 403
+    for i in range(3):
+        assert _register(client, username=f"user{i}x").status_code == 200
+    assert _register(client, username="onemore").status_code == 429
+
+
+def test_taken_usernames_are_refused_over_the_api(client):
+    _register(client)
+    r = _register(client, username="touristTINA")
+    assert r.status_code == 409 and "taken" in r.json()["message"]
+
+
+def test_email_codes_stay_off_until_switched_on(isolated_settings, monkeypatch, tmp_path):
+    from transit_mcp.chat import app as app_mod
+
+    settings = isolated_settings.model_copy(update={
+        "anthropic_api_key": "k", "app_env": "production", "accounts_db": tmp_path / "a.db",
+        "smtp_host": "smtp.test", "smtp_username": "u", "smtp_password": "p"})
+    monkeypatch.setattr(app_mod, "get_settings", lambda: settings)
+
+    async def nothing(self):
+        self._tools = []
+
+    monkeypatch.setattr(app_mod.McpBridge, "start", nothing)
+    monkeypatch.setattr(app_mod.McpBridge, "stop", nothing)
+    with TestClient(app_mod.app, base_url="https://testserver") as c:
+        assert c.get("/api/account").json() == {"signed_in": False, "enabled": True,
+                                                "email_codes": False}
+        r = c.post("/api/account/code", json={"email": "v@example.com"}, headers=SITE)
+        assert r.status_code == 503 and "username and password" in r.json()["message"]
+        assert _register(c).status_code == 200                       # passwords still work

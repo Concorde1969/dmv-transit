@@ -160,6 +160,9 @@ class Settings(BaseSettings):
     accounts_max_places: int = Field(default=50, alias="ACCOUNTS_MAX_PLACES")
     # Accounts nobody has used for this long are deleted with their places.
     accounts_inactive_days: int = Field(default=730, alias="ACCOUNTS_INACTIVE_DAYS")
+    # Sign-in by emailed code, besides username and password. Needs working SMTP below
+    # (Amazon SES out of its sandbox); off until then.
+    accounts_email_codes: bool = Field(default=False, alias="ACCOUNTS_EMAIL_CODES")
     # Sign-in code emails the whole site may send a day.
     accounts_daily_emails: int = Field(default=500, alias="ACCOUNTS_DAILY_EMAILS")
     # Outgoing mail for sign-in codes (Amazon SES SMTP on the public site).

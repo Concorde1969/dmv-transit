@@ -1,10 +1,16 @@
 """Accounts: visitors save their hotel or home and the places they want to visit, then
 pick them with one tap when planning a trip.
 
-Sign-in is by email code: the visitor types an email address, we send a 6-digit code
-(``mailer.py``), and typing it back signs them in — no passwords. A code works for
-10 minutes and for 5 tries. Signed-in browsers hold a random session token in an
-HttpOnly cookie; only its hash is stored.
+Visitors sign in with a username and password. Passwords are stored only as salted
+scrypt hashes; there is no email, so a recovery code shown once at sign-up is the way
+back in after a forgotten password. Five wrong tries lock an account for 15 minutes.
+
+Sign-in by email code (``mailer.py``) also works when it's switched on
+(``ACCOUNTS_EMAIL_CODES``): the visitor types an email address and types back the
+6-digit code we send. A code works for 10 minutes and for 5 tries.
+
+Signed-in browsers hold a random session token in an HttpOnly cookie; only its hash is
+stored.
 
 Everything lives in its own SQLite file (``ACCOUNTS_DB``), separate from the chat log:
 accounts are never linked to the anonymous usage log. An account and its places are
@@ -14,9 +20,11 @@ visit (:meth:`AccountStore.prune`).
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import logging
+import os
 import re
 import secrets
 import sqlite3
@@ -33,17 +41,41 @@ CODE_TRIES = 5
 SESSION_TTL_S = 90 * 86_400
 KINDS = ("hotel", "home", "attraction", "work", "other")
 EMAIL = re.compile(r"^[^\s@<>()\[\],;:\"]{1,64}@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$")
+USERNAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{2,29}$")
+MIN_PASSWORD = 10
+MAX_FAILS = 5
+LOCK_S = 15 * 60
+SCRYPT_N, SCRYPT_R, SCRYPT_P = 2 ** 15, 8, 1         # about 32 MB and 0.1 s per check
+# Passwords long enough to pass the length rule that people still pick.
+COMMON_PASSWORDS = {
+    "1234567890", "12345678910", "0123456789", "0987654321", "1111111111", "1234512345",
+    "password12", "password123", "password1234", "password!!", "passw0rd12", "qwertyuiop",
+    "qwerty1234", "qwerty12345", "1q2w3e4r5t", "1qaz2wsx3edc", "abcdefghij", "abc1234567",
+    "iloveyou12", "iloveyou123", "letmein123", "welcome123", "welcome1234", "football12",
+    "baseball12", "princess12", "sunshine12", "superman12", "trustno1234", "monkey1234",
+    "dragon1234", "asdfghjkl1", "zxcvbnm123", "changeme12", "changeme123", "metro12345",
+    "dmvtransit", "dmvtransit1", "washington", "washington1", "washingtondc",
+}
+
+USERS_TABLE = """
+CREATE TABLE IF NOT EXISTS {name} (
+    id            INTEGER PRIMARY KEY,
+    email         TEXT UNIQUE,                    -- lower case; email-code sign-in
+    username      TEXT UNIQUE COLLATE NOCASE,     -- password sign-in
+    password_hash TEXT,                           -- scrypt, salted
+    recovery_hash TEXT,                           -- keyed hash of the recovery code
+    failed_logins INTEGER NOT NULL DEFAULT 0,
+    locked_until  REAL NOT NULL DEFAULT 0,
+    created_at    TEXT NOT NULL,
+    last_seen     TEXT NOT NULL                   -- UTC date, for deleting unused accounts
+);
+"""
 
 SCHEMA = """
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS users (
-    id          INTEGER PRIMARY KEY,
-    email       TEXT NOT NULL UNIQUE,      -- lower case
-    created_at  TEXT NOT NULL,
-    last_seen   TEXT NOT NULL              -- UTC date, for deleting unused accounts
-);
+""" + USERS_TABLE.format(name="users") + """
 -- One code at a time per email address; only its keyed hash is kept.
 CREATE TABLE IF NOT EXISTS login_codes (
     email       TEXT PRIMARY KEY,
@@ -85,6 +117,45 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def hash_password(password: str) -> str:
+    salt = os.urandom(16)
+    key = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=SCRYPT_N, r=SCRYPT_R,
+                         p=SCRYPT_P, maxmem=64 * 1024 * 1024, dklen=32)
+    return f"scrypt${SCRYPT_N}${SCRYPT_R}${SCRYPT_P}${salt.hex()}${key.hex()}"
+
+
+def check_password(password: str, stored: str | None) -> bool:
+    """True if ``password`` matches ``stored``. With nothing stored, the same work is
+    still done, so a missing account takes as long to answer as a wrong password."""
+    try:
+        _, n, r, p, salt, key = (stored or "").split("$")
+        n, r, p, salt, key = int(n), int(r), int(p), bytes.fromhex(salt), bytes.fromhex(key)
+    except ValueError:
+        n, r, p, salt, key = SCRYPT_N, SCRYPT_R, SCRYPT_P, b"\0" * 16, b""
+    got = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=n, r=r, p=p,
+                         maxmem=64 * 1024 * 1024, dklen=32)
+    return bool(key) and hmac.compare_digest(got, key)
+
+
+def new_recovery_code() -> str:
+    """16 letters and digits in groups of four, e.g. "K7QM-2XPA-9ZD4-HW3R" (80 bits)."""
+    raw = base64.b32encode(secrets.token_bytes(10)).decode("ascii")
+    return "-".join(raw[i:i + 4] for i in range(0, 16, 4))
+
+
+def password_problem(password: str, username: str = "") -> str | None:
+    """Why a new password won't do, or None."""
+    if len(password) < MIN_PASSWORD:
+        return f"Please use at least {MIN_PASSWORD} characters for your password."
+    if len(password) > 200:
+        return "That password is too long. Please use 200 characters or fewer."
+    if password.lower() in COMMON_PASSWORDS or len(set(password)) < 4:
+        return "That password is too easy to guess. Please choose another."
+    if username and username.lower() in password.lower():
+        return "Please don't use your username in your password."
+    return None
+
+
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
@@ -104,6 +175,19 @@ class PlaceError(ValueError):
     """A saved place the store won't accept (shown to the visitor)."""
 
 
+class AuthError(ValueError):
+    """A sign-in that didn't work; the message is shown to the visitor."""
+
+    def __init__(self, message: str, status: int = 400):
+        super().__init__(message)
+        self.status = status
+
+
+WRONG_LOGIN = "That username and password don't match. Please try again."
+LOCKED = ("Too many wrong tries for this account. Please wait 15 minutes and try again, "
+          "or use your recovery code.")
+
+
 class AccountStore:
     def __init__(self, path: str | Path, *, secret: str | None = None,
                  max_places: int = 50, clock=time.time):
@@ -115,6 +199,7 @@ class AccountStore:
         self.conn = sqlite3.connect(str(self.path), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        self._migrate()
         self._secret = (secret or self._stored_secret()).encode("utf-8")
 
     @classmethod
@@ -124,6 +209,24 @@ class AccountStore:
 
     def close(self) -> None:
         self.conn.close()
+
+    def _migrate(self) -> None:
+        """Accounts made before passwords had a required email; make room for usernames,
+        keeping every account, session and place."""
+        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(users)")}
+        if "username" in cols:
+            return
+        self.conn.execute("PRAGMA foreign_keys = OFF")
+        try:
+            with self.conn:
+                self.conn.execute(USERS_TABLE.format(name="users_new"))
+                self.conn.execute("INSERT INTO users_new (id, email, created_at, last_seen) "
+                                  "SELECT id, email, created_at, last_seen FROM users")
+                self.conn.execute("DROP TABLE users")
+                self.conn.execute("ALTER TABLE users_new RENAME TO users")
+        finally:
+            self.conn.execute("PRAGMA foreign_keys = ON")
+        log.info("accounts: added usernames and passwords to the users table")
 
     def _stored_secret(self) -> str:
         with self._lock:
@@ -137,6 +240,117 @@ class AccountStore:
 
     def _code_hash(self, email: str, code: str) -> str:
         return hmac.new(self._secret, f"{email}:{code}".encode(), hashlib.sha256).hexdigest()
+
+    def _recovery_hash(self, code: str) -> str:
+        clean = re.sub(r"[^A-Z0-9]", "", (code or "").upper())
+        return hmac.new(self._secret, f"recovery:{clean}".encode(), hashlib.sha256).hexdigest()
+
+    def _new_session(self, user_id: int) -> str:
+        """Call with the lock held; the caller commits."""
+        token = secrets.token_urlsafe(32)
+        self.conn.execute("INSERT INTO sessions (token_hash, user_id, expires_at) "
+                          "VALUES (?, ?, ?)", (_sha(token), user_id,
+                                               self._clock() + SESSION_TTL_S))
+        return token
+
+    @staticmethod
+    def _user(row) -> dict:
+        return {"id": row["id"], "email": row["email"], "username": row["username"]}
+
+    # -- usernames and passwords -------------------------------------------------------
+    def register(self, username: str, password: str) -> tuple[dict, str, str]:
+        """(user, session token, recovery code) for a new account."""
+        username = (username or "").strip()
+        if not USERNAME.match(username):
+            raise AuthError("Usernames are 3 to 30 letters, numbers, dots, dashes or "
+                            "underscores, starting with a letter or number.", 422)
+        problem = password_problem(password, username)
+        if problem:
+            raise AuthError(problem, 422)
+        pw_hash, code = hash_password(password), new_recovery_code()
+        now = _utc_now()
+        with self._lock:
+            try:
+                cur = self.conn.execute(
+                    "INSERT INTO users (username, password_hash, recovery_hash, created_at, "
+                    "last_seen) VALUES (?, ?, ?, ?, ?)",
+                    (username, pw_hash, self._recovery_hash(code), now, now[:10]))
+            except sqlite3.IntegrityError:
+                raise AuthError("That username is taken. Please choose another.", 409) from None
+            token = self._new_session(cur.lastrowid)
+            self.conn.commit()
+        return {"id": cur.lastrowid, "email": None, "username": username}, token, code
+
+    def _account_for(self, username: str):
+        with self._lock:
+            return self.conn.execute("SELECT * FROM users WHERE username = ?",
+                                     ((username or "").strip(),)).fetchone()
+
+    def _check(self, row, ok: bool) -> None:
+        """Count a try against the account: raise unless it worked."""
+        if row is None:
+            raise AuthError(WRONG_LOGIN)
+        with self._lock:
+            if row["locked_until"] > self._clock():
+                raise AuthError(LOCKED, 429)
+            if not ok:
+                fails = row["failed_logins"] + 1
+                locked = self._clock() + LOCK_S if fails >= MAX_FAILS else 0
+                self.conn.execute("UPDATE users SET failed_logins = ?, locked_until = ? "
+                                  "WHERE id = ?", (0 if locked else fails, locked, row["id"]))
+                self.conn.commit()
+                raise AuthError(LOCKED if locked else WRONG_LOGIN, 429 if locked else 400)
+
+    def password_sign_in(self, username: str, password: str) -> tuple[dict, str]:
+        row = self._account_for(username)
+        ok = check_password(password or "", row["password_hash"] if row else None)
+        self._check(row, ok)
+        with self._lock:
+            self.conn.execute("UPDATE users SET failed_logins = 0, locked_until = 0, "
+                              "last_seen = ? WHERE id = ?", (_utc_now()[:10], row["id"]))
+            token = self._new_session(row["id"])
+            self.conn.commit()
+        return self._user(row), token
+
+    def recover(self, username: str, code: str, new_password: str) -> tuple[dict, str, str]:
+        """Set a new password with the recovery code: (user, token, new recovery code).
+        Every other sign-in of the account ends, and the old code stops working."""
+        row = self._account_for(username)
+        ok = bool(row) and bool(row["recovery_hash"]) and hmac.compare_digest(
+            row["recovery_hash"], self._recovery_hash(code))
+        self._check(row, ok)
+        problem = password_problem(new_password, row["username"])
+        if problem:
+            raise AuthError(problem, 422)
+        pw_hash, new_code = hash_password(new_password), new_recovery_code()
+        with self._lock:
+            self.conn.execute(
+                "UPDATE users SET password_hash = ?, recovery_hash = ?, failed_logins = 0, "
+                "locked_until = 0, last_seen = ? WHERE id = ?",
+                (pw_hash, self._recovery_hash(new_code), _utc_now()[:10], row["id"]))
+            self.conn.execute("DELETE FROM sessions WHERE user_id = ?", (row["id"],))
+            token = self._new_session(row["id"])
+            self.conn.commit()
+        return self._user(row), token, new_code
+
+    def change_password(self, user_id: int, current: str, new: str,
+                        keep_token: str | None) -> None:
+        """Change a signed-in account's password; its other sign-ins end."""
+        with self._lock:
+            row = self.conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        if row is None or not row["password_hash"]:
+            raise AuthError("This account signs in by email and has no password.", 422)
+        self._check(row, check_password(current or "", row["password_hash"]))
+        problem = password_problem(new, row["username"])
+        if problem:
+            raise AuthError(problem, 422)
+        pw_hash = hash_password(new)
+        with self._lock:
+            self.conn.execute("UPDATE users SET password_hash = ? WHERE id = ?",
+                              (pw_hash, user_id))
+            self.conn.execute("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?",
+                              (user_id, _sha(keep_token or "")))
+            self.conn.commit()
 
     # -- sign-in codes -----------------------------------------------------------------
     def issue_code(self, email: str) -> str:
@@ -172,7 +386,6 @@ class AccountStore:
     # -- users and sessions ------------------------------------------------------------
     def sign_in(self, email: str) -> tuple[dict, str, bool]:
         """(user, session token, whether the account is new) for a checked email."""
-        token = secrets.token_urlsafe(32)
         now = _utc_now()
         with self._lock:
             row = self.conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
@@ -185,11 +398,10 @@ class AccountStore:
                 user_id = row["id"]
                 self.conn.execute("UPDATE users SET last_seen = ? WHERE id = ?",
                                   (now[:10], user_id))
-            self.conn.execute("INSERT INTO sessions (token_hash, user_id, expires_at) "
-                              "VALUES (?, ?, ?)", (_sha(token), user_id,
-                                                   self._clock() + SESSION_TTL_S))
+            token = self._new_session(user_id)
             self.conn.commit()
-        return {"id": user_id, "email": email}, token, created
+            username = row["username"] if row is not None else None
+        return {"id": user_id, "email": email, "username": username}, token, created
 
     def user_for_token(self, token: str | None) -> dict | None:
         """The signed-in user, or None. Using a session keeps it alive for 90 days."""
@@ -197,7 +409,7 @@ class AccountStore:
             return None
         with self._lock:
             row = self.conn.execute(
-                "SELECT u.id, u.email, u.last_seen, s.expires_at FROM sessions s "
+                "SELECT u.id, u.email, u.username, u.last_seen, s.expires_at FROM sessions s "
                 "JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?",
                 (_sha(token),)).fetchone()
             if row is None or row["expires_at"] < self._clock():
@@ -209,7 +421,7 @@ class AccountStore:
                 self.conn.execute("UPDATE sessions SET expires_at = ? WHERE token_hash = ?",
                                   (self._clock() + SESSION_TTL_S, _sha(token)))
                 self.conn.commit()
-        return {"id": row["id"], "email": row["email"]}
+        return self._user(row)
 
     def sign_out(self, token: str | None) -> None:
         if token:
