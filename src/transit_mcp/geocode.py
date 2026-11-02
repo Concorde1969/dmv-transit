@@ -48,6 +48,12 @@ class BudgetSpent(GeocodeError):
     """This month's paid geocoding requests are used up."""
 
 
+def _distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    from transit_mcp.ingest.gtfs.clusters import haversine_m
+
+    return haversine_m(lat1, lon1, lat2, lon2)
+
+
 def in_region(lat: float, lon: float) -> bool:
     return REGION["south"] <= lat <= REGION["north"] and REGION["west"] <= lon <= REGION["east"]
 
@@ -246,6 +252,16 @@ SESSION_TOKEN = re.compile(r"^[A-Za-z0-9-]{8,64}$")
 # Asking for the name (a "Pro" field) when a place is picked makes the typing requests
 # before it in the same session free (Google's session pricing).
 _DETAIL_FIELDS = "id,displayName,formattedAddress,location,types"
+# What a tourist asks about a restaurant or attraction. Ratings, price and hours are
+# billed at Google's higher ("Enterprise") tier; GOOGLE_PLACES_SEARCH_MONTHLY_BUDGET caps it.
+_SEARCH_FIELDS = ",".join(f"places.{f}" for f in (
+    "id", "displayName", "formattedAddress", "location", "primaryTypeDisplayName",
+    "rating", "userRatingCount", "priceLevel", "currentOpeningHours.openNow",
+    "regularOpeningHours.weekdayDescriptions", "googleMapsUri", "websiteUri",
+    "businessStatus"))
+_PRICE = {"PRICE_LEVEL_FREE": "free", "PRICE_LEVEL_INEXPENSIVE": "$",
+          "PRICE_LEVEL_MODERATE": "$$", "PRICE_LEVEL_EXPENSIVE": "$$$",
+          "PRICE_LEVEL_VERY_EXPENSIVE": "$$$$"}
 
 
 class PlaceSearch:
@@ -272,6 +288,18 @@ class PlaceSearch:
 
             budget = ApiBudget(service="google_places",
                                monthly_limit=settings.google_places_monthly_budget,
+                               timezone=settings.timezone, db_path=settings.db_path)
+        return cls(settings.google_geocoding_api_key, http=http, budget=budget)
+
+    @classmethod
+    def for_search(cls, settings, *, http: httpx.Client | None = None) -> PlaceSearch:
+        """Text search (restaurants, attractions), on its own monthly budget."""
+        budget = None
+        if settings.google_geocoding_api_key:
+            from transit_mcp.api_budget import ApiBudget
+
+            budget = ApiBudget(service="google_places_search",
+                               monthly_limit=settings.google_places_search_monthly_budget,
                                timezone=settings.timezone, db_path=settings.db_path)
         return cls(settings.google_geocoding_api_key, http=http, budget=budget)
 
@@ -309,6 +337,54 @@ class PlaceSearch:
             while len(self._cache) > self._max:
                 self._cache.popitem(last=False)
         return data
+
+    def search(self, query: str, *, near: tuple[float, float] | None = None,
+               open_now: bool = False, limit: int = 5) -> list[dict]:
+        """Restaurants, attractions and other places matching ``query`` (Text Search),
+        near a point when given, always inside the DC region."""
+        q = " ".join(query.split())[:200]
+        if not self.api_key or len(q) < 2:
+            return []
+        body: dict = {"textQuery": q, "languageCode": "en", "regionCode": "us",
+                      "maxResultCount": max(1, min(limit, 10))}
+        if near:
+            body["locationBias"] = {"circle": {
+                "center": {"latitude": near[0], "longitude": near[1]}, "radius": 1500.0}}
+        else:
+            body["locationRestriction"] = {"rectangle": {
+                "low": {"latitude": REGION["south"], "longitude": REGION["west"]},
+                "high": {"latitude": REGION["north"], "longitude": REGION["east"]}}}
+        if open_now:
+            body["openNow"] = True
+        near_key = (round(near[0], 3), round(near[1], 3)) if near else None
+        data = self._call("POST", "/places:searchText", cache_key=("ts", q.lower(), near_key,
+                                                                    open_now, limit),
+                          ttl=900 if open_now else 6 * 3600, body=body,
+                          fields=_SEARCH_FIELDS)
+        out = []
+        for p in data.get("places") or []:
+            loc = p.get("location") or {}
+            lat, lon = loc.get("latitude"), loc.get("longitude")
+            if lat is None or lon is None or not in_region(lat, lon):
+                continue
+            if p.get("businessStatus") not in (None, "OPERATIONAL"):
+                continue
+            item = {
+                "name": (p.get("displayName") or {}).get("text"),
+                "type": (p.get("primaryTypeDisplayName") or {}).get("text"),
+                "address": p.get("formattedAddress"),
+                "point": f"{lat:.6f},{lon:.6f}",
+                "rating": p.get("rating"), "ratings": p.get("userRatingCount"),
+                "price": _PRICE.get(p.get("priceLevel")),
+                "open_now": (p.get("currentOpeningHours") or {}).get("openNow"),
+                "hours": (p.get("regularOpeningHours") or {}).get("weekdayDescriptions"),
+                "google_place_id": p.get("id"),
+                "url": p.get("googleMapsUri"), "website": p.get("websiteUri"),
+            }
+            if near:
+                item["meters_away"] = int(_distance_m(near[0], near[1], lat, lon))
+            out.append({k: v for k, v in item.items() if v is not None})
+        return out
 
     def autocomplete(self, query: str, session: str | None = None,
                      limit: int = 6) -> list[dict]:

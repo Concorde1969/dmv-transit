@@ -10,6 +10,7 @@ from typing import Any
 from anthropic import AsyncAnthropic
 
 from transit_mcp.chat.mcp_bridge import McpBridge
+from transit_mcp.chat.trip_tools import PLANNING_PROMPT
 
 SYSTEM_PROMPT = """\
 You are the DMV Regional Transportation Assistant. You help people get around the \
@@ -83,6 +84,7 @@ Which tools to use:
 - `search_transit_info` for "how do I pay / ride / bring a bike..." questions — \
 never for routes or times.
 
+{planning}
 ## How to write
 Your audience is often older adults (55+) who have never used public transit:
 - Warm, patient, and encouraging. Never condescending. Assume no prior knowledge.
@@ -103,14 +105,16 @@ from the tool results, and remind the rider to confirm times with the agency.
 station intercom.
 """
 
+SYSTEM_PROMPT = SYSTEM_PROMPT.replace("{planning}", PLANNING_PROMPT)
+
 # Sent (as a user-role note) when the model answers a rider without calling a tool.
 GROUNDING_NUDGE = (
     "[Automatic check — not from the rider] Your previous reply was NOT shown to the "
     "rider because it didn't use any tools. If the rider's message involves transit "
     "facts of any kind (routes, lines, stations, transfers, schedules, fares, payment, "
-    "accessibility, alerts), call the relevant tools now and answer only from their "
-    "results. If it is purely conversational (a greeting or thanks) or you need to ask "
-    "the rider a clarifying question, just reply again briefly."
+    "accessibility, alerts) or places to eat, visit or stay, call the relevant tools now "
+    "and answer only from their results. If it is purely conversational (a greeting or "
+    "thanks) or you need to ask the rider a clarifying question, just reply again briefly."
 )
 
 
@@ -167,13 +171,20 @@ async def run_chat(
     messages: list[dict],
     max_tokens: int,
     max_iterations: int,
+    local=None,
+    context: str | None = None,
 ) -> AsyncIterator[dict]:
     """Drive one user turn to completion, yielding SSE-ready event dicts.
 
     ``messages`` is mutated in place with the assistant + tool_result turns so the
-    caller can persist the updated transcript.
+    caller can persist the updated transcript. ``local`` (chat/trip_tools.py) adds tools
+    that run in this process for the signed-in rider; ``context`` is a note for this
+    turn (today's date, who is signed in).
     """
-    tools = bridge.anthropic_tools
+    tools = bridge.anthropic_tools + (list(local.definitions) if local else [])
+    system = [{"type": "text", "text": SYSTEM_PROMPT}]
+    if context:
+        system.append({"type": "text", "text": context})
     # Until a tool has been called this turn, hold text back: an answer written
     # without looking anything up is discarded and the model is asked (once) to use
     # the tools. After the first tool call, stream normally.
@@ -186,7 +197,7 @@ async def run_chat(
             async with client.messages.stream(
                 model=model,
                 max_tokens=max_tokens,
-                system=SYSTEM_PROMPT,
+                system=system,
                 messages=messages,
                 tools=tools,
             ) as stream:
@@ -231,7 +242,11 @@ async def run_chat(
                 "input": tu.input,
             }
             started = time.monotonic()
-            text, is_error = await bridge.call_tool(tu.name, tu.input or {})
+            changed = False
+            if local is not None and tu.name in local.names:
+                text, is_error, changed = await local.call(tu.name, tu.input or {})
+            else:
+                text, is_error = await bridge.call_tool(tu.name, tu.input or {})
             duration_ms = int((time.monotonic() - started) * 1000)
             tool_result_blocks.append(
                 {
@@ -250,6 +265,8 @@ async def run_chat(
                 "preview": preview,
                 "duration_ms": duration_ms,
             }
+            if changed:
+                yield {"type": "account_changed"}
 
         messages.append({"role": "user", "content": tool_result_blocks})
 

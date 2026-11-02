@@ -384,6 +384,30 @@ details.trace summary { cursor: pointer; }
 .suggest li.saved small { grid-column: 2; margin-top: 0; }
 .suggest li.saved .sg-icon { grid-row: span 2; color: var(--k); display: grid; place-items: center; }
 
+.plan-cta {
+  display: flex; align-items: center; gap: 12px; width: 100%; margin-top: 12px;
+  padding: 12px 16px; border-radius: var(--r-control); border: 2px solid var(--action);
+  background: var(--live-tint); color: var(--ink); text-align: left; cursor: pointer;
+}
+.plan-cta svg { color: var(--action); flex: none; }
+.plan-cta strong { display: block; font-size: 18px; }
+.plan-cta small { display: block; color: var(--ink-2); font-size: 14.5px; line-height: 1.35; }
+.plan-cta:hover { background: #fff; }
+.plan-intro { margin-top: 4px; }
+.plan-intro p { color: var(--ink); }
+.plan-days { list-style: none; margin: 8px 0 12px; padding: 0; display: grid; gap: 12px; }
+.plan-day > ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+.plan-stop { display: grid; grid-template-columns: 92px 1fr auto; gap: 10px; align-items: center;
+  padding: 8px 12px; border-radius: 12px; background: #fff; border: 2px solid var(--rule); }
+.plan-time { font-weight: 650; color: var(--action); font-size: 15px; font-variant-numeric: tabular-nums; }
+.plan-name { min-width: 0; overflow-wrap: anywhere; }
+.plan-name small { display: block; color: var(--ink-2); font-size: 14px; }
+.plan-stop .link-btn { min-height: 40px; padding: 4px; }
+@media (max-width: 720px) {
+  .plan-cta small { display: none; }
+  .plan-stop { grid-template-columns: 1fr auto; }
+  .plan-time { grid-column: 1 / -1; }
+}
 .save-place {
   display: inline-flex; align-items: center; gap: 8px; margin: 8px 8px 0; min-height: 44px;
   padding: 0 14px; border-radius: 12px; border: 2px dashed #AFC4B8; background: transparent;

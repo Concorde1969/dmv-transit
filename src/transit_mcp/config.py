@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     # "Places API (New)" must be enabled for it), else from the Geocoding API.
     google_places_monthly_budget: int = Field(default=9000,
                                               alias="GOOGLE_PLACES_MONTHLY_BUDGET")
+    # The trip-planning assistant's restaurant and attraction searches (Places Text
+    # Search with ratings, price and hours: Google's higher-priced tier).
+    google_places_search_monthly_budget: int = Field(
+        default=1000, alias="GOOGLE_PLACES_SEARCH_MONTHLY_BUDGET")
     geocode_api_key: str | None = Field(default=None, alias="GEOCODE_API_KEY")
 
     # Storage

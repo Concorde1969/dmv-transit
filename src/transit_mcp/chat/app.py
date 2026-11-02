@@ -15,12 +15,14 @@ import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from anthropic import AsyncAnthropic
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from transit_mcp.chat import trip_tools
 from transit_mcp.chat.account_api import router as account_router
 from transit_mcp.chat.account_api import start_accounts
 from transit_mcp.chat.agent import INTERNAL_EVENTS, run_chat
@@ -111,7 +113,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="DMV Regional Transportation Assistant", lifespan=lifespan,
               docs_url=None, redoc_url=None, openapi_url=None)
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+class _Static(StaticFiles):
+    """The site's own scripts, styles and pages are checked for a newer copy on every
+    visit (an unchanged file costs a tiny 304), so a deploy never pairs a new page with
+    old scripts. Fonts, icons and the map's libraries keep the browser's normal caching."""
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        if path.rsplit(".", 1)[-1] in ("js", "css", "html"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/static", _Static(directory=str(STATIC_DIR)), name="static")
 app.include_router(trip_router)
 app.include_router(reports_router)
 app.include_router(account_router)
@@ -119,12 +133,12 @@ app.include_router(account_router)
 
 @app.get("/")
 async def index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+    return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/privacy")
 async def privacy() -> FileResponse:
-    return FileResponse(STATIC_DIR / "privacy.html")
+    return FileResponse(STATIC_DIR / "privacy.html", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -268,7 +282,10 @@ async def chat(request: Request) -> StreamingResponse:
                 rec.first_text_ms = int((time.monotonic() - started) * 1000)
             rec.answer += event.get("text", "")
         elif kind == "tool_call":
-            rec.tools.append({"name": event.get("name"), "input": event.get("input")})
+            # A rider's own places and plan stay out of the log; only the tool is noted.
+            private = event.get("name") in trip_tools.NAMES
+            rec.tools.append({"name": event.get("name"),
+                              "input": {"private": True} if private else event.get("input")})
         elif kind == "tool_result" and rec.tools:
             rec.tools[-1].update(is_error=bool(event.get("is_error")),
                                  duration_ms=event.get("duration_ms"))
@@ -279,6 +296,8 @@ async def chat(request: Request) -> StreamingResponse:
             rec.nudged = True
         elif kind == "error":
             rec.outcome, rec.error = "error", str(event.get("message"))[:2000]
+
+    tools = trip_tools.TripTools(request)
 
     async def event_stream() -> AsyncIterator[str]:
         async with session.lock:
@@ -294,6 +313,8 @@ async def chat(request: Request) -> StreamingResponse:
                     messages=session.messages,
                     max_tokens=settings.chat_max_tokens,
                     max_iterations=settings.chat_max_tool_iterations,
+                    local=tools,
+                    context=trip_tools.context_note(tools.user, ZoneInfo(settings.timezone)),
                 ):
                     note(event)
                     if event.get("type") in INTERNAL_EVENTS:

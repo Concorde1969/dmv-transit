@@ -155,6 +155,19 @@ emailed code is also built in, switched on with `ACCOUNTS_EMAIL_CODES=true` once
 works (Amazon SES on the public site; see deploy/README.md); a local server without
 SMTP prints the code in its log.
 
+### Plan my trip (assistant)
+
+Signed-in visitors can plan a trip by chatting: "Plan my trip" opens the assistant in
+planning mode. It saves their hotel and places, puts stops on days with "be there by"
+or "leave at" times, and works out the buses and trains between them for each day
+(timetable trips that arrive with time to spare, or a walk when it's close). Questions
+about places to eat or visit are answered with Google Places Text Search (rating,
+price, opening hours), never from the model's memory, capped by
+`GOOGLE_PLACES_SEARCH_MONTHLY_BUDGET`. Anyone can ask questions; saving and planning
+need an account. The plan is stored in the account, shown under My places, and the
+planning tools run only in the web app, not on the MCP server, so `/mcp` holds no
+personal data. Tool inputs are left out of the chat log.
+
 ## Command line
 
 All commands run from the project folder (`.venv\Scripts\transit-mcp.exe …`, or just

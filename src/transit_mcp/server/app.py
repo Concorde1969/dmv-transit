@@ -304,6 +304,7 @@ def plan_trip(origin: str, destination: str, depart_at: str | None = None) -> di
         depart_at: When to leave, in local Eastern time, as "YYYY-MM-DDTHH:MM"
             (e.g. "2026-11-02T09:30"). Leave it out to leave now.
     """
+    from transit_mcp.planning.describe import brief_option, clock
     from transit_mcp.planning.live import LivePlanner, LiveSettings
 
     h = _trip_helpers()
@@ -329,41 +330,10 @@ def plan_trip(origin: str, destination: str, depart_at: str | None = None) -> di
                              realtime=None if later else h["realtime"], agencies=h["agencies"],
                              tz=settings.timezone, now=start).plan(o, d)
 
-    def clock(epoch):
-        # "%I" (not the Linux-only "%-I"), then drop the leading zero: "5:04 PM"
-        return datetime.fromtimestamp(epoch, tz).strftime("%I:%M %p").lstrip("0") \
-            if epoch else None
-
-    def brief(opt):
-        steps = []
-        for leg in opt["legs"]:
-            if leg.get("airport"):
-                a = leg["airport"]
-                steps.append(f"{'free airport shuttle' if a['mode'] == 'shuttle' else 'walk'} "
-                             f"about {round(leg['duration_s'] / 60)} min between the "
-                             f"{a['name']} terminal and {a['station']}: {a['text']} "
-                             f"(directions from {a['source']})")
-            elif leg["mode"] == "walk":
-                steps.append(f"walk {round(leg['duration_s'] / 60)} min"
-                             + (f" (wait {round(leg['wait_s'] / 60)} min)"
-                                if leg.get("transfer") else ""))
-            else:
-                name = leg["route_short_name"] or leg["route_long_name"] or leg["route_id"]
-                steps.append(
-                    f"{leg['agency_name']} {name} toward {leg['headsign'] or '?'}: board "
-                    f"{leg['board']['name']} at {clock(leg['board']['expected'])}"
-                    f"{' (live)' if leg['live'] else ' (scheduled)'}, ride {leg['stops']} "
-                    f"stops to {leg['alight']['name']}, arrive {clock(leg['alight']['expected'])}")
-        return {"leave_at": clock(opt["leave_at"]), "arrive_at": clock(opt["arrive_at"]),
-                "minutes": round(opt["duration_s"] / 60), "transfers": opt["transfers"],
-                "wait_minutes": round(opt["wait_s"] / 60),
-                "walk_minutes": round(opt["walk_s"] / 60), "live": opt["live"],
-                "fare_estimate": opt["fare_estimate"], "steps": steps}
-
     return {
         "from": o.label, "to": d.label,
-        "leaving_after": start.strftime("%A, %B %d, %Y, ") + clock(start.timestamp()),
-        "options": [brief(x) for x in result["options"]],
+        "leaving_after": start.strftime("%A, %B %d, %Y, ") + clock(start.timestamp(), tz),
+        "options": [brief_option(x, tz) for x in result["options"]],
         "notice": result.get("notice"),
         "note": "Departure times marked (live) include real-time updates; others are the "
                 "timetable. This is an unofficial tool, not affiliated with WMATA or any "

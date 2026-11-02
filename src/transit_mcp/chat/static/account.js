@@ -1,7 +1,7 @@
 // "My places": sign in with a username and password (or an emailed code, when the site
 // has that switched on), then save a hotel, home and places to visit (/api/account,
 // chat/account_api.py). app.js shows them as quick picks and map pins.
-import { KIND, esc, guessKind, isoDay, placeStatus, savedPoint, sortPlaces } from "/static/places.js";
+import { KIND, esc, guessKind, isoDay, placeStatus, savedPoint, shortDate, sortPlaces } from "/static/places.js";
 import { track } from "/static/track.js";
 
 const $ = (id) => document.getElementById(id);
@@ -17,6 +17,7 @@ let typedUser = "";          // carried between the sign-in, sign-up and recover
 let editing = null;          // the place being edited, or a draft {name, lat, lon, ...}
 let afterSignIn = null;      // a place to save once signed in
 let confirmDelete = null;    // place id waiting for "Delete" to be pressed again
+let planAfterSignIn = false; // "Plan my trip" was pressed while signed out
 
 async function api(path, opts = {}) {
   const r = await fetch(path, {
@@ -37,7 +38,8 @@ function publish() {
 function setAccount(data) {
   Object.assign(acct, { enabled: data.enabled ?? acct.enabled, signed_in: !!data.signed_in,
     email_codes: data.email_codes ?? acct.email_codes, username: data.username || "",
-    email: data.email || "", places: data.places || [], max_places: data.max_places || acct.max_places });
+    email: data.email || "", places: data.places || [], plan: data.plan || [],
+    max_places: data.max_places || acct.max_places });
   publish();
 }
 
@@ -77,9 +79,16 @@ function wireShow() {
 function signedIn(data) {
   setAccount(data);
   if (data.recovery_code) { recoveryCode = data.recovery_code; view = "recovery"; }
+  else if (planAfterSignIn) return startPlanning();
   else if (afterSignIn) { editing = afterSignIn; afterSignIn = null; view = "form"; }
   else view = "list";
   render();
+}
+
+function startPlanning() {
+  planAfterSignIn = false; view = "list";
+  close(true);
+  window.dmvChat?.planner();
 }
 
 // One handler for the password forms: post, then sign in or say what went wrong.
@@ -97,7 +106,10 @@ function submitter(formId, buttonId, url, payload, check) {
 }
 
 function renderSignin() {
-  body.innerHTML = `${INTRO}
+  const intro = planAfterSignIn
+    ? `<p class="acct-intro"><strong>Sign in or create an account to plan your trip.</strong> The assistant saves your places and your plan to it, so you'll find them on any device.</p>`
+    : INTRO;
+  body.innerHTML = `${intro}
     <form class="acct-form" id="signinForm" novalidate>
       ${field("acctUser", "Username", USER_ATTRS(typedUser))}
       ${field("acctPass", "Password", 'type="password" data-pass autocomplete="current-password" maxlength="200" required')}
@@ -164,6 +176,7 @@ function renderRecovery() {
   $("savedIt").addEventListener("change", (e) => { $("codeDone").disabled = !e.target.checked; });
   $("codeDone").addEventListener("click", () => {
     recoveryCode = "";
+    if (planAfterSignIn) return startPlanning();
     if (afterSignIn) { editing = afterSignIn; afterSignIn = null; view = "form"; } else view = "list";
     render();
   });
@@ -265,6 +278,7 @@ function renderCode() {
     $("codeSend").disabled = true; status("Checking…", true);
     try {
       setAccount(await api("/api/account/verify", { method: "POST", body: JSON.stringify({ email: pendingEmail, code }) }));
+      if (planAfterSignIn) return startPlanning();
       if (afterSignIn) { editing = afterSignIn; afterSignIn = null; view = "form"; }
       else view = "list";
       render();
@@ -309,6 +323,7 @@ function renderList() {
     ${acct.places.length ? "" : `<p class="acct-intro">Add your hotel (with your check-in and check-out dates) and the attractions you want to visit. They'll appear as buttons under "Where to?" and as pins on the map.</p>`}
     ${current.length ? `<ul class="place-list">${current.map(({ p, s }) => placeRow(p, s)).join("")}</ul>` : ""}
     ${past.length ? `<h3 class="acct-sub">Past stays and visits</h3><ul class="place-list">${past.map(({ p, s }) => placeRow(p, s)).join("")}</ul>` : ""}
+    ${planSection()}
     <p class="acct-status" id="acctStatus" role="status" aria-live="polite"></p>
     <div class="acct-foot">
       <button class="btn quiet" type="button" id="signOut">Sign out</button>
@@ -329,6 +344,8 @@ function renderList() {
     view = "signin"; render();
   });
   $("changePassword")?.addEventListener("click", () => { view = "password"; render(); });
+  $("planWithBot")?.addEventListener("click", () => { close(true); window.dmvChat?.planner(); });
+  body.querySelectorAll(".plan-stop [data-stop]").forEach((b) => b.addEventListener("click", () => removeStop(+b.dataset.stop)));
   $("deleteAccount").addEventListener("click", async () => {
     if (confirmDelete !== "account") { confirmDelete = "account"; renderList(); $("deleteAccount").focus(); return; }
     try {
@@ -336,6 +353,35 @@ function renderList() {
       confirmDelete = null; setAccount(data); view = "signin"; render(); status(data.message, true);
     } catch (err) { status(err.message); }
   });
+}
+
+// The trip plan, day by day (built by chatting with the assistant).
+function clock12(hhmm) {
+  if (!hhmm) return "";
+  const [h, m] = hhmm.split(":").map(Number);
+  return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+}
+
+function planSection() {
+  const today = isoDay();
+  const stops = (acct.plan || []).filter((s) => s.day >= today);
+  const days = [...new Set(stops.map((s) => s.day))];
+  const list = days.map((d) => `<li class="plan-day"><strong>${esc(shortDate(d))}</strong><ul>${
+    stops.filter((s) => s.day === d).map((s) => `<li class="plan-stop">
+      <span class="plan-time">${s.arrive_by ? `by ${esc(clock12(s.arrive_by))}` : s.leave_at ? `leave ${esc(clock12(s.leave_at))}` : ""}</span>
+      <span class="plan-name">${esc(s.name)}${s.notes ? `<small>${esc(s.notes)}</small>` : ""}</span>
+      <button class="link-btn" type="button" data-stop="${s.id}" aria-label="Remove ${esc(s.name)} from your plan">Remove</button>
+    </li>`).join("")}</ul></li>`).join("");
+  return `<h3 class="acct-sub">Your trip plan</h3>
+    ${stops.length ? `<ol class="plan-days">${list}</ol>` : `<p class="acct-fine">No plan yet. Tell the assistant your days, the places you'd like to go and any times you need to be somewhere.</p>`}
+    <button class="btn quiet" type="button" id="planWithBot">${stops.length ? "Keep planning with the assistant" : "Plan with the assistant"}</button>`;
+}
+
+async function removeStop(id) {
+  try {
+    const data = await api(`/api/account/plan/${id}`, { method: "DELETE" });
+    acct.plan = data.plan; renderList(); status("Removed from your plan.", true);
+  } catch (err) { status(err.message); }
 }
 
 async function removePlace(p) {
@@ -490,7 +536,8 @@ function wireSearch(p) {
 }
 
 // ------------------------------------------------------------------ drawer
-function open(nextView) {
+function open(nextView, opts = {}) {
+  if (opts.reason === "plan") planAfterSignIn = true;
   if (!drawer.classList.contains("open")) track("account_opened", { detail: { signed_in: acct.signed_in } });
   window.dmvChat?.close?.(true);
   window.dmvReports?.close?.(true);
@@ -523,6 +570,14 @@ btn.addEventListener("click", () => (drawer.classList.contains("open") ? close()
 $("closeAccount").addEventListener("click", () => close());
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && drawer.classList.contains("open")) close(); });
 
-window.dmvAccount = { open, close, savePlace, status: placeStatus };
+// After the assistant saves something: new pins, quick picks and lists.
+async function refresh() {
+  try {
+    setAccount(await api("/api/account"));
+    if (drawer.classList.contains("open") && view === "list") renderList();
+  } catch (_) { /* keep what's shown */ }
+}
+
+window.dmvAccount = { open, close, savePlace, refresh, signedIn: () => acct.signed_in, status: placeStatus };
 
 api("/api/account").then(setAccount).catch(() => publish());

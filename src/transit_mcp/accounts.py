@@ -43,6 +43,8 @@ KINDS = ("hotel", "home", "attraction", "work", "other")
 EMAIL = re.compile(r"^[^\s@<>()\[\],;:\"]{1,64}@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$")
 USERNAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{2,29}$")
 MIN_PASSWORD = 10
+MAX_PLAN_STOPS = 100
+HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 MAX_FAILS = 5
 LOCK_S = 15 * 60
 SCRYPT_N, SCRYPT_R, SCRYPT_P = 2 ** 15, 8, 1         # about 32 MB and 0.1 s per check
@@ -104,6 +106,23 @@ CREATE TABLE IF NOT EXISTS places (
     updated_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_places_user ON places(user_id);
+-- The trip plan: places to be at on a day, with the times that matter (local HH:MM).
+CREATE TABLE IF NOT EXISTS plan_stops (
+    id              INTEGER PRIMARY KEY,
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    day             TEXT NOT NULL,             -- YYYY-MM-DD
+    arrive_by       TEXT,                      -- must be there by
+    leave_at        TEXT,                      -- will leave at
+    name            TEXT NOT NULL,
+    lat             REAL NOT NULL,
+    lon             REAL NOT NULL,
+    address         TEXT,
+    google_place_id TEXT,
+    notes           TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_plan_stops_user ON plan_stops(user_id, day);
 """
 
 
@@ -173,6 +192,19 @@ class PlaceInput:
 
 class PlaceError(ValueError):
     """A saved place the store won't accept (shown to the visitor)."""
+
+
+@dataclass
+class PlanStop:
+    day: date
+    name: str
+    lat: float
+    lon: float
+    arrive_by: str | None = None
+    leave_at: str | None = None
+    address: str | None = None
+    google_place_id: str | None = None
+    notes: str | None = None
 
 
 class AuthError(ValueError):
@@ -432,8 +464,8 @@ class AccountStore:
     def delete_user(self, user_id: int) -> None:
         """The account, its places and its sessions."""
         with self._lock:
-            for table, col in (("places", "user_id"), ("sessions", "user_id"),
-                               ("users", "id")):
+            for table, col in (("places", "user_id"), ("plan_stops", "user_id"),
+                               ("sessions", "user_id"), ("users", "id")):
                 self.conn.execute(f"DELETE FROM {table} WHERE {col} = ?", (user_id,))
             self.conn.commit()
 
@@ -503,6 +535,84 @@ class AccountStore:
             self.conn.commit()
         return bool(cur.rowcount)
 
+    # -- the trip plan -----------------------------------------------------------------
+    _STOP = ("id", "day", "arrive_by", "leave_at", "name", "lat", "lon", "address",
+             "google_place_id", "notes")
+
+    def plan(self, user_id: int, day: str | None = None) -> list[dict]:
+        """Stops in order: by day, then by the first time given, then as added."""
+        sql = "SELECT * FROM plan_stops WHERE user_id = ?"
+        args: tuple = (user_id,)
+        if day:
+            sql, args = sql + " AND day = ?", (user_id, day)
+        with self._lock:
+            rows = self.conn.execute(
+                sql + " ORDER BY day, COALESCE(arrive_by, leave_at, '99:99'), id", args).fetchall()
+        return [{k: r[k] for k in self._STOP} for r in rows]
+
+    @staticmethod
+    def _stop_values(s: PlanStop) -> tuple:
+        name = " ".join((s.name or "").split())[:80]
+        if not name:
+            raise PlaceError("Please give the stop a name.")
+        for t in (s.arrive_by, s.leave_at):
+            if t and not HHMM.match(t):
+                raise PlaceError("Times must be 24-hour HH:MM, like 09:30 or 14:00.")
+        if s.arrive_by and s.leave_at and s.leave_at < s.arrive_by:
+            raise PlaceError("The time to leave is before the time to arrive.")
+        clean = lambda v, n: " ".join((v or "").split())[:n] or None  # noqa: E731
+        return (s.day.isoformat(), s.arrive_by or None, s.leave_at or None, name,
+                round(s.lat, 6), round(s.lon, 6), clean(s.address, 200),
+                clean(s.google_place_id, 300), clean(s.notes, 300))
+
+    def add_stop(self, user_id: int, s: PlanStop) -> dict:
+        values = self._stop_values(s)
+        now = _utc_now()
+        with self._lock:
+            (n,) = self.conn.execute("SELECT COUNT(*) FROM plan_stops WHERE user_id = ?",
+                                     (user_id,)).fetchone()
+            if n >= MAX_PLAN_STOPS:
+                raise PlaceError(f"A plan can have up to {MAX_PLAN_STOPS} stops. "
+                                 "Remove some to add more.")
+            cur = self.conn.execute(
+                "INSERT INTO plan_stops (user_id, day, arrive_by, leave_at, name, lat, lon, "
+                "address, google_place_id, notes, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (user_id, *values, now, now))
+            self.conn.commit()
+            row = self.conn.execute("SELECT * FROM plan_stops WHERE id = ?",
+                                    (cur.lastrowid,)).fetchone()
+        return {k: row[k] for k in self._STOP}
+
+    def update_stop(self, user_id: int, stop_id: int, **changes) -> dict | None:
+        """Change a stop's day (a date), times or notes; "" clears a time or note."""
+        with self._lock:
+            row = self.conn.execute("SELECT * FROM plan_stops WHERE id = ? AND user_id = ?",
+                                    (stop_id, user_id)).fetchone()
+        if row is None:
+            return None
+        cur = {k: row[k] for k in self._STOP}
+        day = changes.get("day") or date.fromisoformat(cur["day"])
+        merged = PlanStop(day=day, name=cur["name"], lat=cur["lat"], lon=cur["lon"],
+                          address=cur["address"], google_place_id=cur["google_place_id"],
+                          **{k: (changes[k] if changes.get(k) is not None else cur[k]) or None
+                             for k in ("arrive_by", "leave_at", "notes")})
+        values = self._stop_values(merged)
+        with self._lock:
+            self.conn.execute(
+                "UPDATE plan_stops SET day = ?, arrive_by = ?, leave_at = ?, name = ?, lat = ?, "
+                "lon = ?, address = ?, google_place_id = ?, notes = ?, updated_at = ? "
+                "WHERE id = ? AND user_id = ?", (*values, _utc_now(), stop_id, user_id))
+            self.conn.commit()
+            row = self.conn.execute("SELECT * FROM plan_stops WHERE id = ?", (stop_id,)).fetchone()
+        return {k: row[k] for k in self._STOP}
+
+    def delete_stop(self, user_id: int, stop_id: int) -> bool:
+        with self._lock:
+            cur = self.conn.execute("DELETE FROM plan_stops WHERE id = ? AND user_id = ?",
+                                    (stop_id, user_id))
+            self.conn.commit()
+        return bool(cur.rowcount)
+
     # -- housekeeping ------------------------------------------------------------------
     def prune(self, inactive_days: int) -> int:
         """Drop used-up codes and sessions, and accounts unused for ``inactive_days``.
@@ -516,6 +626,7 @@ class AccountStore:
                 "SELECT id FROM users WHERE last_seen < ?", (cutoff,))]
             for user_id in stale:
                 self.conn.execute("DELETE FROM places WHERE user_id = ?", (user_id,))
+                self.conn.execute("DELETE FROM plan_stops WHERE user_id = ?", (user_id,))
                 self.conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
                 self.conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
             self.conn.commit()

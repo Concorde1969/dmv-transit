@@ -8,6 +8,14 @@ const SUGGESTIONS = [
   "Which stations have working elevators right now?",
 ];
 
+// Starters for trip planning (signed-in riders).
+const PLAN_SUGGESTIONS = [
+  "Help me plan my trip to DC",
+  "I'm staying near Union Station from Friday to Sunday",
+  "Find a good lunch spot near the National Mall",
+  "How do I get around on my first day?",
+];
+
 const drawer = $("drawer"), log = $("chatLog"), intro = $("chatIntro");
 const input = $("chatInput"), sendBtn = $("chatSend"), askBtn = $("askBtn");
 let sessionId = sessionStorage.getItem("tmcp_sid");
@@ -121,6 +129,8 @@ async function send(text) {
           bubble.innerHTML = md(answer); scrollDown();
         } else if (evt.type === "tool_result") {
           for (const s of evt.sources || []) if (s.url) turn.sources.set(s.url, s);
+        } else if (evt.type === "account_changed") {
+          window.dmvAccount?.refresh();
         } else if (evt.type === "error") {
           clearThinking();
           const box = document.createElement("div");
@@ -189,8 +199,25 @@ for (const s of SUGGESTIONS) {
   chips.appendChild(c);
 }
 
+for (const s of PLAN_SUGGESTIONS) {
+  const c = document.createElement("button");
+  c.className = "chip"; c.type = "button"; c.textContent = s;
+  c.addEventListener("click", () => send(s));
+  $("planChips").appendChild(c);
+}
+
+// "Plan my trip": signed-in riders get the planner's starters; others sign in first.
+function planner() {
+  track("planner_opened", { detail: { signed_in: Boolean(window.dmvAccount?.signedIn()) } });
+  if (!window.dmvAccount?.signedIn()) { window.dmvAccount?.open("signin", { reason: "plan" }); return; }
+  open();
+  if (!log.querySelector(".msg")) { intro.hidden = false; $("planIntro").hidden = false; }
+}
+$("planTripBtn").addEventListener("click", planner);
+
 window.dmvChat = {
   ask(text) { open(); send(text); },
+  planner,
   about() { open(); intro.hidden = false; $("aboutText").hidden = false; },
   close,
 };

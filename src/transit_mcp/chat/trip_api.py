@@ -305,7 +305,7 @@ def trip(request: Request, body: TripRequestBody) -> JSONResponse:
 EVENTS = {"page_view", "option_selected", "details_opened", "ask_about_trip",
           "report_from_trip", "assistant_opened", "report_form_opened", "location_used",
           "location_denied", "swap_places", "suggestion_picked", "account_opened",
-          "saved_place_used", "saved_place_pin"}
+          "saved_place_used", "saved_place_pin", "planner_opened"}
 
 
 class EventBody(BaseModel):

@@ -163,7 +163,8 @@ def _event(request: Request, event: str, **detail) -> None:
 def _account(svc: AccountService, user: dict) -> dict:
     return {"signed_in": True, "enabled": True, "email_codes": svc.email_codes,
             "username": user.get("username"), "email": user.get("email"),
-            "places": svc.store.places(user["id"]), "kinds": list(KINDS),
+            "places": svc.store.places(user["id"]), "plan": svc.store.plan(user["id"]),
+            "kinds": list(KINDS),
             "max_places": svc.store.max_places}
 
 
@@ -384,6 +385,15 @@ def update_place(request: Request, place_id: int, body: PlaceBody) -> JSONRespon
     if place is None:
         return _message("That place isn't in your list any more.", 404)
     return JSONResponse({"ok": True, "place": place, "places": svc.store.places(user["id"])})
+
+
+@router.delete("/api/account/plan/{stop_id}")
+def delete_plan_stop(request: Request, stop_id: int) -> JSONResponse:
+    svc, user, refused = _place_request(request)
+    if refused:
+        return refused
+    svc.store.delete_stop(user["id"], stop_id)
+    return JSONResponse({"ok": True, "plan": svc.store.plan(user["id"])})
 
 
 @router.delete("/api/account/places/{place_id}")
