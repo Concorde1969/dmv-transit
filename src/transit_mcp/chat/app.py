@@ -47,6 +47,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 # know .mjs (MapLibre ships as .mjs).
 mimetypes.add_type("text/javascript", ".mjs")
 mimetypes.add_type("application/x-protobuf", ".pbf")
+mimetypes.add_type("image/webp", ".webp")    # missing from some servers' MIME lists
 MAX_BODY_BYTES = 8 * 1024
 log = logging.getLogger("transit_mcp.chat")
 

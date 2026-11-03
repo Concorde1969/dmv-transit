@@ -399,3 +399,5 @@ def test_scripts_are_revalidated_but_fonts_are_cached(isolated_settings, monkeyp
         for path in ("/", "/static/chat.js", "/static/app.css"):
             assert c.get(path).headers["cache-control"] == "no-cache", path
         assert "cache-control" not in c.get("/static/fonts/KaushanScript-Regular.ttf").headers
+        logo = c.get("/static/brand/aerolink.webp")     # served behind nosniff: type must be right
+        assert logo.status_code == 200 and logo.headers["content-type"] == "image/webp"
