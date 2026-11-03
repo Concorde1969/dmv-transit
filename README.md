@@ -242,16 +242,11 @@ tool has a title and read-only annotations. The pages the directories ask for ar
 `/mcp-server` (documentation), `/privacy` and `/terms`.
 
 `server.json` describes the server for the [official MCP Registry](https://registry.modelcontextprotocol.io)
-as `com.dmvtransit/transit`. To publish a new version, raise `version`, then (with the
-registry's `mcp-publisher` and the domain's signing key, which stays outside the repo):
-
-```
-mcp-publisher login dns --domain dmvtransit.com --private-key <hex key>
-mcp-publisher publish
-```
-
-The DNS TXT record on dmvtransit.com (`v=MCPv1; k=ed25519; p=<public key>`) proves the name.
-Published versions can't be deleted.
+as `com.dmvtransit/transit` (published 1.0.0 on 2026-11-03). To publish a new version,
+raise `version` and run `python tools/registry_publish.py` (add `--dry-run` to test the
+sign-in only). It signs in with HTTP domain verification: the public key is served at
+`/.well-known/mcp-registry-auth`, and the private key stays outside the repo in
+`~/.dmvtransit/mcp-registry-key.pem`; keep it safe. Published versions can't be deleted.
 
 ## MCP tools
 
