@@ -71,6 +71,10 @@ def metro_db(tmp_db):
     ("rosslyn metro", "C05"),
     ("C05", "C05"),
     ("Shady Grove", "A15"),
+    ("Reagan National Airport (DCA)", "C10"),   # the name, or what's in brackets
+    ("Ronald Reagan Washington National Airport", "C10"),
+    ("Dulles Airport (IAD)", "N10"),
+    ("Rosslyn (Blue/Orange/Silver)", "C05"),
 ])
 def test_resolve_station(metro_db, text, code):
     assert resolve_station(metro_db, text)["code"] == code

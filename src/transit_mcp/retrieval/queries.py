@@ -110,6 +110,7 @@ def feed_provenance(db: Database, feed_id: str) -> dict:
 # ---------------------------------------------------------------------------
 _WORD_RE = re.compile(r"[a-z0-9']+")
 _STATION_SUFFIXES = (" metro station", " station", " metro")
+_BRACKETED = re.compile(r"^(.*?)\s*\(([^)]*)\)\s*$")     # "Reagan National Airport (DCA)"
 
 
 def _words(text: str) -> list[str]:
@@ -134,8 +135,17 @@ def resolve_station(db: Database, name_or_code: str) -> sqlite3.Row | None:
 
     Order: station code → alias ("DCA", "Reagan") → exact name → every word of the
     query appearing as a whole word in the name (so "National Airport" never
-    matches "Washington Dulles *Inter*national Airport") → plain substring.
+    matches "Washington Dulles *Inter*national Airport") → plain substring. A name
+    with a bracketed part ("Reagan National Airport (DCA)") tries the name, then
+    what's in the brackets.
     """
+    m = _BRACKETED.match(name_or_code.strip())
+    if m:
+        return _resolve_station(db, m.group(1)) or _resolve_station(db, m.group(2))
+    return _resolve_station(db, name_or_code)
+
+
+def _resolve_station(db: Database, name_or_code: str) -> sqlite3.Row | None:
     token = name_or_code.strip()
     for suffix in _STATION_SUFFIXES:
         if token.lower().endswith(suffix) and len(token) > len(suffix):
