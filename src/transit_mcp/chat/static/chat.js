@@ -1,11 +1,23 @@
-// The assistant drawer: questions answered by Claude from the agencies' data (/api/chat).
+// The assistant, in the panel's thread: questions answered by Claude from the agencies'
+// data (/api/chat). It can also put trips on the map (the "show_trip" event).
 import { track } from "/static/track.js";
+import { announce, append, follow, isEmpty, showIntro, thread } from "/static/thread.js";
+
 const $ = (id) => document.getElementById(id);
-const SUGGESTIONS = [
-  "I've never used the Metro. How does it work?",
-  "How do I pay to ride the bus or the train?",
-  "What will it cost to go from Shady Grove to downtown DC?",
-  "Which stations have working elevators right now?",
+const svg = (body) => `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+const ICON = {
+  go: svg('<path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>'),
+  plan: svg('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h3"/>'),
+  ask: svg('<path d="M21 12a8 8 0 0 1-11.5 7.2L4 20l1-4.6A8 8 0 1 1 21 12z"/>'),
+};
+
+// What the welcome offers: a trip, planning a visit, and the questions people ask most.
+const STARTERS = [
+  { icon: "go", text: "Take me to the National Mall" },
+  { icon: "plan", text: "Plan my visit, day by day", planner: true },
+  { icon: "ask", text: "I've never used the Metro. How does it work?" },
+  { icon: "ask", text: "How do I pay to ride the bus or the train?" },
+  { icon: "ask", text: "Which stations have working elevators right now?" },
 ];
 
 // Starters for trip planning (signed-in riders).
@@ -16,8 +28,7 @@ const PLAN_SUGGESTIONS = [
   "How do I get around on my first day?",
 ];
 
-const drawer = $("drawer"), log = $("chatLog"), intro = $("chatIntro");
-const input = $("chatInput"), sendBtn = $("chatSend"), askBtn = $("askBtn");
+const input = $("chatInput"), sendBtn = $("chatSend"), resetBtn = $("resetChat");
 let sessionId = sessionStorage.getItem("tmcp_sid");
 if (!sessionId) {
   sessionId = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
@@ -59,15 +70,12 @@ function md(src) {
   return html || "<p></p>";
 }
 
-const scrollDown = () => { log.scrollTop = log.scrollHeight; };
-
-function addMessage(role) {
-  intro.hidden = true;
+// A message in the thread. ``more`` continues the assistant's answer after a trip card.
+function addMessage(role, { more = false } = {}) {
   const el = document.createElement("div");
-  el.className = `msg ${role}`;
-  el.innerHTML = `<div class="who">${role === "user" ? "You asked" : "Assistant"}</div><div class="bubble"></div>`;
-  log.appendChild(el);
-  scrollDown();
+  el.className = `msg ${role}${more ? " more" : ""}`;
+  el.innerHTML = `${more ? "" : `<div class="who">${role === "user" ? "You" : "Assistant"}</div>`}<div class="bubble"></div>`;
+  append(el);
   return el.querySelector(".bubble");
 }
 
@@ -88,7 +96,7 @@ function renderTrace(turn) {
     body.appendChild(row);
   }
   d.appendChild(body);
-  log.appendChild(d);
+  append(d);
 }
 
 async function send(text) {
@@ -96,18 +104,19 @@ async function send(text) {
   if (streaming || !text) return;
   streaming = true; sendBtn.disabled = true;
   input.value = ""; autosize();
+  window.dmvPanel?.expand();
   addMessage("user").textContent = text;
-  const bubble = addMessage("assistant");
+  let bubble = addMessage("assistant");
   const thinking = document.createElement("div");
   thinking.className = "thinking"; thinking.textContent = "Looking that up…";
-  log.appendChild(thinking); scrollDown();
+  append(thinking);
   let answer = "";
   const turn = { sources: new Map() };
   const clearThinking = () => thinking.remove();
   try {
     const resp = await fetch("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id: sessionId, message: text }),
+      body: JSON.stringify({ session_id: sessionId, message: text, screen: window.dmvTrip?.screen() || null }),
     });
     const reader = resp.body.getReader();
     const dec = new TextDecoder();
@@ -126,9 +135,15 @@ async function send(text) {
         if (evt.type === "text") {
           answer += evt.text;
           if (answer.trim()) clearThinking();
-          bubble.innerHTML = md(answer); scrollDown();
+          bubble.innerHTML = md(answer); follow();
         } else if (evt.type === "tool_result") {
           for (const s of evt.sources || []) if (s.url) turn.sources.set(s.url, s);
+        } else if (evt.type === "show_trip") {
+          // The trip card goes here in the thread; the rest of the answer follows it.
+          if (!answer.trim()) bubble.closest(".msg").remove();
+          window.dmvTrip?.show(evt);
+          bubble = addMessage("assistant", { more: true }); answer = "";
+          append(thinking);
         } else if (evt.type === "account_changed") {
           window.dmvAccount?.refresh();
         } else if (evt.type === "error") {
@@ -143,12 +158,15 @@ async function send(text) {
     bubble.innerHTML = '<div class="chat-error">Couldn\'t reach the assistant. Check your connection and try again.</div>';
   }
   clearThinking();
+  const msg = bubble.closest(".msg");
   if (!answer && !bubble.querySelector(".chat-error")) {
-    bubble.innerHTML = "<p>No answer came back. Try asking about a specific place, station, or route.</p>";
+    if (msg.classList.contains("more")) msg.remove();
+    else bubble.innerHTML = "<p>No answer came back. Try asking about a specific place, station, or route.</p>";
   }
   renderTrace(turn);
+  announce("The assistant answered.");
   streaming = false; sendBtn.disabled = false;
-  input.focus();
+  input.focus({ preventScroll: true });
 }
 
 function autosize() {
@@ -156,21 +174,25 @@ function autosize() {
   input.style.height = Math.min(input.scrollHeight, 160) + "px";
 }
 
-function open() {
-  if (!drawer.classList.contains("open")) track("assistant_opened");
-  window.dmvReports?.close(true);
-  window.dmvAccount?.close(true);
-  drawer.classList.add("open");
-  drawer.setAttribute("aria-hidden", "false");
-  askBtn.setAttribute("aria-expanded", "true");
-  setTimeout(() => input.focus(), 50);
+// A note from the site itself (not the assistant's model): the planner's welcome, About.
+function localNote(html) {
+  const el = document.createElement("div");
+  el.className = "msg assistant note";
+  el.innerHTML = `<div class="who">Assistant</div><div class="bubble">${html}</div>`;
+  return append(el);
 }
-function close(quiet = false) {
-  if (!drawer.classList.contains("open")) return;
-  drawer.classList.remove("open");
-  drawer.setAttribute("aria-hidden", "true");
-  askBtn.setAttribute("aria-expanded", "false");
-  if (!quiet) askBtn.focus();
+
+function chipButton(text, onClick, icon = "") {
+  const c = document.createElement("button");
+  c.className = "chip"; c.type = "button";
+  c.innerHTML = `${icon}<span>${esc(text)}</span>`;
+  c.addEventListener("click", onClick);
+  return c;
+}
+
+function focusComposer() {
+  window.dmvPanel?.expand();
+  setTimeout(() => input.focus(), 50);
 }
 
 input.addEventListener("input", autosize);
@@ -178,46 +200,53 @@ input.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input.value); }
 });
 sendBtn.addEventListener("click", () => send(input.value));
-askBtn.addEventListener("click", () => (drawer.classList.contains("open") ? close() : open()));
-$("closeDrawer").addEventListener("click", () => close());
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && drawer.classList.contains("open")) close(); });
-$("resetChat").addEventListener("click", async () => {
+
+// "Start over": a new conversation; the trip on the map stays.
+resetBtn.addEventListener("click", async () => {
   try {
     await fetch("/api/reset", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ session_id: sessionId }) });
   } catch (_) {}
-  log.querySelectorAll(".msg, details.trace, .thinking").forEach((n) => n.remove());
-  intro.hidden = false;
+  thread.querySelectorAll(".msg, details.trace, .thinking, .trip-block.past").forEach((n) => n.remove());
+  if (isEmpty()) showIntro();
+  track("conversation_reset");
   input.focus();
 });
+// Once a conversation starts, the panel keeps the fine print to one line.
+function syncStarted() {
+  resetBtn.hidden = isEmpty();
+  $("panel").classList.toggle("started", !isEmpty());
+}
+window.addEventListener("dmv:thread", syncStarted);
+syncStarted();   // a trip from a shared link may already be in the thread
 
 const chips = $("chips");
-for (const s of SUGGESTIONS) {
-  const c = document.createElement("button");
-  c.className = "chip"; c.type = "button"; c.textContent = s;
-  c.addEventListener("click", () => send(s));
-  chips.appendChild(c);
+for (const s of STARTERS) {
+  chips.appendChild(chipButton(s.text, () => {
+    track("starter_used", { detail: { kind: s.icon } });
+    s.planner ? planner() : send(s.text);
+  }, ICON[s.icon]));
 }
 
-for (const s of PLAN_SUGGESTIONS) {
-  const c = document.createElement("button");
-  c.className = "chip"; c.type = "button"; c.textContent = s;
-  c.addEventListener("click", () => send(s));
-  $("planChips").appendChild(c);
-}
-
-// "Plan my trip": signed-in riders get the planner's starters; others sign in first.
+// "Plan my visit": signed-in riders get the planner's starters; others sign in first.
 function planner() {
   track("planner_opened", { detail: { signed_in: Boolean(window.dmvAccount?.signedIn()) } });
   if (!window.dmvAccount?.signedIn()) { window.dmvAccount?.open("signin", { reason: "plan" }); return; }
-  open();
-  if (!log.querySelector(".msg")) { intro.hidden = false; $("planIntro").hidden = false; }
+  const note = localNote(`<p><strong>Let's plan your trip.</strong> Tell me where you're
+    staying, which days you're here and what you'd like to do. I'll find places to eat and
+    visit (from Google Maps), keep your plan day by day, and walk you through getting
+    around.</p><div class="starters"></div>`);
+  const box = note.querySelector(".starters");
+  for (const s of PLAN_SUGGESTIONS) box.appendChild(chipButton(s, () => send(s)));
+  focusComposer();
 }
-$("planTripBtn").addEventListener("click", planner);
 
 window.dmvChat = {
-  ask(text) { open(); send(text); },
+  ask(text) { send(text); },
   planner,
-  about() { open(); intro.hidden = false; $("aboutText").hidden = false; },
-  close,
+  about() {
+    track("about_opened");
+    localNote($("aboutTemplate").innerHTML);
+  },
+  close() {},
 };

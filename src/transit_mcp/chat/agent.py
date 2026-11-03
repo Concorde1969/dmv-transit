@@ -62,8 +62,8 @@ IAD = Washington Dulles International Airport). Repeat its line, direction ("tow
 ..."), and change-of-train instructions exactly. Never call a trip "direct", "nonstop", \
 "one seat", or "no transfer" unless the tool result shows `"transfers": 0`.
 - Addresses, hotels and landmarks: use `geocode_address` to find the place, ask the \
-rider if several results fit, then pass its `point` to `plan_trip` for real trip options \
-now or at a later time (`depart_at`).
+rider if several results fit, then pass its `point` to `show_trip` to put live options \
+on their screen for leaving now, or to `plan_trip` for a later time (`depart_at`).
 - Trips involving buses or more than one agency: use `plan_trip` for a particular time \
 and `plan_connection` for general advice and which days it works. Only present options \
 they return; if they return none, say no connection was found in the data rather than \
@@ -245,6 +245,9 @@ async def run_chat(
             changed = False
             if local is not None and tu.name in local.names:
                 text, is_error, changed = await local.call(tu.name, tu.input or {})
+                # What the page should do now (show a trip), in the order asked.
+                while getattr(local, "events", None):
+                    yield local.events.pop(0)
             else:
                 text, is_error = await bridge.call_tool(tu.name, tu.input or {})
             duration_ms = int((time.monotonic() - started) * 1000)

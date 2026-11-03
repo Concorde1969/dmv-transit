@@ -67,6 +67,7 @@ def tools(tmp_path):
     t._state = SimpleNamespace(places_search=places)
     t._trips = lambda: SimpleNamespace(geocoder=FakeGeocoder(), agencies={}, http=None)
     t.places = places
+    t.events = []
     yield t
     store.close()
 
@@ -79,6 +80,8 @@ def call(t, tool, **args):
 def test_every_tool_asks_signed_out_riders_to_sign_in(tools):
     tools.user = None
     for spec in trip_tools.TOOLS:
+        if spec["name"] == "show_trip":          # showing a trip works for everyone
+            continue
         args = {k: "x" for k in spec["input_schema"].get("required", [])}
         if spec["name"] in ("remove_saved_place",):
             args = {"saved_place_id": 1}
@@ -280,6 +283,75 @@ def test_chat_runs_planning_tools_here_and_tells_the_page():
     assert {t["name"] for t in sent["tools"]} == {"get_fare", "save_place"}
     assert sent["system"][1]["text"] == "[Context] today"
     assert "find_places" in sent["system"][0]["text"]
+
+
+def test_show_trip_puts_the_trip_on_the_page(tools, monkeypatch):
+    tools.user = None
+    result, is_error, changed = call(tools, "show_trip", destination="1717 E Capitol St SE")
+    assert not is_error and not changed and result["shown"]
+    assert result["from"] == "the rider's current location" and "browser" in result["note"]
+    (event,) = tools.events
+    assert event["type"] == "show_trip" and event["from"] is None
+    assert event["to"]["label"] == "1717 E Capitol St SE" and not event["to"]["saved"]
+    assert call(tools, "show_trip", destination="nowhere at all")[0]["error"] == "place_not_found"
+
+
+def test_show_trip_from_a_saved_place_gets_timetable_options(tools, monkeypatch):
+    seen = []
+
+    def fake_route(db, settings, agencies, origin, dest, day, *, arrive_by=None, leave_at=None,
+                   now=None):
+        seen.append((origin.label, dest.label, day, leave_at))
+        return {"status": "ok", "option": {"leave_at": "5:04 PM"}}
+
+    monkeypatch.setattr(itinerary, "route", fake_route)
+    monkeypatch.setattr(trip_tools, "Database", lambda path: _NullDb())
+    call(tools, "save_place", name="My hotel", kind="hotel", where=f"{HOTEL[0]},{HOTEL[1]}",
+         address="1 Hotel Way NW")
+    tools.events.clear()
+    result = call(tools, "show_trip", origin="my hotel", destination=f"{MUSEUM[0]},{MUSEUM[1]}")[0]
+    assert result["timetable"]["status"] == "ok" and result["from"]["name"] == "My hotel"
+    (event,) = tools.events
+    assert event["from"]["saved"] and event["from"]["address"] == "1 Hotel Way NW"
+    assert event["to"]["label"] == "The place you chose"        # never bare coordinates
+    assert seen and seen[0][0] == "My hotel" and seen[0][2] == TODAY and seen[0][3]
+
+
+def test_screen_note_describes_the_trip_on_screen():
+    note = trip_tools.screen_note({"from": "My hotel", "to": "Union Station", "options": 3,
+                                   "selected": "leave 5:04 PM; Red Line\n" + "x" * 2000})
+    assert "from My hotel to Union Station, 3 shown" in note and "picked: leave 5:04 PM" in note
+    assert len(note) < 1300 and "\n" not in note
+    assert trip_tools.screen_note(None) == trip_tools.screen_note({"from": "x"}) == ""
+    assert trip_tools.screen_note({"to": ["not", "text"]}) == ""
+    now = datetime(2026, 11, 2, 16, 40, tzinfo=TZ)
+    assert "Union Station" in trip_tools.context_note(None, TZ, now, screen={"to": "Union Station"})
+
+
+def test_chat_sends_page_events_right_after_the_tool():
+    class Shows(_Local):
+        names = frozenset({"show_trip"})
+        definitions = [{"name": "show_trip", "description": "", "input_schema": {}}]
+
+        async def call(self, name, args):
+            self.events = [{"type": "show_trip", "to": {"label": "Zoo"}, "from": None}]
+            return json.dumps({"shown": True}), False, False
+
+    final1 = SimpleNamespace(content=[_tool_use_block("t1", "show_trip", {"destination": "Zoo"})],
+                             stop_reason="tool_use", usage=None, model="m")
+    final2 = SimpleNamespace(content=[_text_block("On your map.")], stop_reason="end_turn",
+                             usage=None, model="m")
+    client = _FakeClient([_FakeStream([], final1), _FakeStream(["On your map."], final2)])
+    local = Shows()
+
+    async def go():
+        return [e async for e in run_chat(client=client, bridge=_FakeBridge(), model="m",
+                                          messages=[{"role": "user", "content": "zoo"}],
+                                          max_tokens=100, max_iterations=4, local=local)]
+
+    types = [e["type"] for e in asyncio.run(go())]
+    assert types.index("show_trip") < types.index("tool_result") < types.index("text")
+    assert local.events == []
 
 
 def test_context_note_gives_the_dates_and_who_is_signed_in():

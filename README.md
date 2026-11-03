@@ -157,8 +157,13 @@ SMTP prints the code in its log.
 
 ### Plan my trip (assistant)
 
-Signed-in visitors can plan a trip by chatting: "Plan my trip" opens the assistant in
-planning mode. It saves their hotel and places, puts stops on days with "be there by"
+The site is one panel beside the map: "Where to?" at the top, then a single
+conversation where trip searches appear as live cards alongside the assistant's answers.
+The assistant can put a trip on the map itself (`show_trip`, for "take me to the Zoo"),
+and each question carries the trip on screen, so "how do I pay for this trip?" means the
+option the rider picked. On phones the panel is a sheet over the map.
+
+Signed-in visitors can plan a trip by chatting: "Plan my visit" starts planning mode. It saves their hotel and places, puts stops on days with "be there by"
 or "leave at" times, and works out the buses and trains between them for each day
 (timetable trips that arrive with time to spare, or a walk when it's close). Questions
 about places to eat or visit are answered with Google Places Text Search (rating,

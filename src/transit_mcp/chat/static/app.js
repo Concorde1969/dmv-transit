@@ -1,9 +1,11 @@
 // DMV Transit - map-first, leave-now trip planner.
 // Data: /api/geocode, /api/trip, /api/trip/live (chat/trip_api.py). Map: MapLibre GL with a
 // self-hosted Protomaps basemap (/tiles/dmv.pmtiles); all files are served by this site.
+// Each search becomes a trip card in the panel's thread, next to the assistant's answers.
 import * as ML from "/static/map/vendor/maplibre-gl.mjs";
 import { KIND, savedPoint, sortPlaces } from "/static/places.js";
 import { ago, reportItem } from "/static/reports.js";
+import { announce, append } from "/static/thread.js";
 import { track } from "/static/track.js";
 
 const maplibregl = ML.default || ML;
@@ -51,6 +53,7 @@ const ICONS = {
   walk: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13" cy="4" r="2"/><path d="M10 22l2-7-3-3 1-5 4 3 3 1M9 12l-3 3"/></svg>',
   chev: '<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
   back: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>',
+  route: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H15a3.5 3.5 0 0 0 0-7H9a3.5 3.5 0 0 1 0-7h6.5"/></svg>',
 };
 
 // Readable text on any route color: feeds' own text colors are sometimes unreadable
@@ -124,10 +127,29 @@ async function initMap() {
 
 function applyPadding() {
   if (!map) return;
+  const box = $("panel").getBoundingClientRect();
   map.setPadding(isPhone()
-    ? { top: 70, bottom: Math.round(innerHeight * 0.55), left: 20, right: 20 }
-    : { top: 80, bottom: 40, left: Math.round($("panel").getBoundingClientRect().right) + 40, right: 80 });
+    ? { top: 80, bottom: Math.round(innerHeight - box.top) + 20, left: 20, right: 20 }
+    : { top: 80, bottom: 40, left: Math.round(box.right) + 40, right: 80 });
 }
+
+// ------------------------------------------------------------------ phone sheet
+// On phones the panel is a sheet over the map: normal (the map shows above it) or tall
+// (for reading answers). Questions make it tall; a new trip brings the map back.
+const panel = $("panel"), sheetToggle = $("sheetToggle");
+function setTall(tall) {
+  panel.classList.toggle("tall", tall);
+  document.body.classList.toggle("sheet-tall", tall);
+  sheetToggle.setAttribute("aria-expanded", String(tall));
+  sheetToggle.setAttribute("aria-label", tall ? "Show more of the map" : "Make the panel taller");
+}
+sheetToggle.addEventListener("click", () => setTall(!panel.classList.contains("tall")));
+new ResizeObserver(() => {
+  // The map's corner controls (and its attribution) sit just above the sheet.
+  document.documentElement.style.setProperty("--sheet", isPhone() ? `${Math.round(innerHeight - panel.getBoundingClientRect().top)}px` : "0px");
+  applyPadding();
+}).observe(panel);
+window.dmvPanel = { expand: () => isPhone() && setTall(true), lower: () => isPhone() && setTall(false) };
 
 function addTripLayers() {
   const empty = { type: "FeatureCollection", features: [] };
@@ -389,6 +411,18 @@ $("useLoc").addEventListener("click", async () => {
   }
 });
 
+// A trip the assistant found ("show_trip" from the chat): fill in the ends and plan it.
+// Its places are labelled "assistant" (or "saved"), so their names stay out of the log.
+function show(evt) {
+  const end = (p) => p && { lat: p.lat, lon: p.lon, label: p.label, source: p.saved ? "saved" : "assistant", address: p.address };
+  if (!evt.to) return;
+  state.from = end(evt.from); state.to = end(evt.to);
+  fromInput.value = state.from ? state.from.label : "My location";
+  toInput.value = state.to.label;
+  track("assistant_trip");
+  planTrip();
+}
+
 // ------------------------------------------------------------------ saved places
 // Quick picks under "Where to?" and pins on the map (the list itself is in account.js).
 function goTo(point) {
@@ -401,7 +435,7 @@ function startFrom(point) {
   hideSuggestions();
   if (state.to) planTrip(); else toInput.focus();
 }
-window.dmvTrip = { goTo, startFrom };
+window.dmvTrip = { goTo, startFrom, show, screen };
 
 function renderQuick() {
   const box = $("quickPlaces");
@@ -462,15 +496,87 @@ window.addEventListener("dmv:places", (e) => {
   if (state.plan && state.view === "list") render();
 });
 
-// ------------------------------------------------------------------ planning
-const results = $("results");
+// ------------------------------------------------------------------ trip cards
+// The newest search is a live card in the thread; earlier ones fold into a summary with
+// "Check again".
+let block = null, results = null;
 
+function newBlock() {
+  if (block) freeze(block);
+  block = document.createElement("section");
+  block.className = "trip-block";
+  block.ends = { from: state.from, to: state.to };
+  block.at = new Date();
+  const from = state.from?.label || "My location";
+  block.setAttribute("aria-label", `Trips to ${state.to.label}`);
+  block.innerHTML = `<div class="trip-head">${ICONS.route}<div class="trip-ends">
+      <strong>${esc(state.to.label)}</strong><small>From ${esc(from)}</small></div></div>
+    <div class="trip-body"></div>`;
+  results = block.querySelector(".trip-body");
+  append(block, { top: true });
+  window.dmvPanel?.lower();
+}
+
+function freeze(el) {
+  el.classList.add("past");
+  const n = el.plan?.options?.length || 0;
+  const when = el.at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const body = el.querySelector(".trip-body");
+  body.innerHTML = `<p class="trip-past">${n ? `${plural(n, "way", "ways")} to go` : "No trips found"} at ${esc(when)}.</p>
+    <button class="btn small quiet" type="button">Check again</button>`;
+  body.querySelector("button").addEventListener("click", () => {
+    state.from = el.ends.from; state.to = el.ends.to;
+    fromInput.value = state.from?.label || "My location"; toInput.value = state.to.label;
+    el.remove();
+    planTrip();
+  });
+}
+
+// A notice with no trip card yet (e.g. location is off) goes in the thread on its own.
 function showNotice(text, extraHtml = "") {
+  if (!results) {
+    const el = document.createElement("div");
+    el.className = "msg notice";
+    el.textContent = text;
+    append(el);
+    return;
+  }
   results.innerHTML = `<div class="notice">${esc(text)}${extraHtml}</div>`;
 }
 
+// What's on screen, for the assistant: "the trip I'm looking at" means this one.
+function describe(opt) {
+  const parts = [`leave ${clock(opt.leave_at)}`];
+  for (const leg of opt.legs) {
+    if (leg.mode === "walk") {
+      const m = mins(leg.duration_s);
+      if (m) parts.push(`walk ${m} min${leg.to ? ` to ${leg.to.name}` : ""}`);
+    } else {
+      const live = leg.live ? (leg.delay_s >= 60 ? `live, ${mins(leg.delay_s)} min late` : "live") : "scheduled";
+      parts.push(`${leg.agency_name} ${routeLabel(leg)}${leg.headsign ? ` toward ${leg.headsign}` : ""} from ${leg.board.name} at ${clock(leg.board.expected)} to ${leg.alight.name} at ${clock(leg.alight.expected)} (${live})`);
+    }
+  }
+  parts.push(`arrive ${clock(opt.arrive_at)}`);
+  if (opt.fare_estimate != null) parts.push(`about $${opt.fare_estimate.toFixed(2)}`);
+  return parts.join("; ");
+}
+
+function screen() {
+  if (!block || !state.plan) return null;
+  const opt = state.plan.options?.[state.selected];
+  return {
+    from: block.ends.from?.label || "the rider's current location",
+    to: block.ends.to.label,
+    options: state.plan.options?.length || 0,
+    selected: opt ? describe(opt) : null,
+  };
+}
+
+// ------------------------------------------------------------------ planning
 async function planTrip() {
   if (!state.to) return;
+  newBlock();
+  const card = block;
   let from = state.from;
   if (!from) {
     results.innerHTML = `<div class="status-line">Finding where you are…</div>`;
@@ -480,6 +586,7 @@ async function planTrip() {
       fromInput.value = ""; fromInput.focus(); return;
     }
   }
+  if (card !== block) return;   // a newer search started meanwhile
   results.innerHTML = `<div class="status-line">Checking departures near you…</div>`;
   stopLive();
   syncUrl();
@@ -491,11 +598,14 @@ async function planTrip() {
     });
     data = await r.json();
   } catch (_) {
-    showNotice("Couldn't reach the trip planner. Check your connection and try again.");
+    if (card === block) showNotice("Couldn't reach the trip planner. Check your connection and try again.");
     return;
   }
+  if (card !== block) return;
   state.plan = data; state.selected = data.options?.length ? 0 : null; state.view = "list";
   state.searchId = data.search_id || null;
+  block.plan = data;
+  announce(data.options?.length ? `${plural(data.options.length, "way", "ways")} to go to ${state.to.label}.` : (data.notice || "No trips found."));
   render();
   drawPlan();
   startLive();
@@ -511,7 +621,7 @@ function render() {
   if (state.view === "detail" && state.selected != null) return renderDetail(plan.options[state.selected]);
   const n = plan.options.length;
   const liveNote = plan.live_available === false ? " Live times are paused; showing the timetable." : "";
-  results.innerHTML = `<div class="status-line">${plural(n, "way", "ways")} to go in the next ${span(plan.window_min)}. Trips may include walking to and from stops; walking time is shown on each trip.${liveNote}</div>`
+  results.innerHTML = `<div class="status-line">${plural(n, "way", "ways")} to go in the next ${span(plan.window_min)}. Tap a trip to see it on the map, and again for directions.${liveNote}</div>`
     + saveButton()
     + plan.options.map((opt, i) => optionCard(opt, i)).join("");
   $("savePlace")?.addEventListener("click", () => {
@@ -653,7 +763,7 @@ function renderDetail(opt) {
 
 // ------------------------------------------------------------------ live updates
 function tick() {
-  if (!state.plan?.options?.length) return;
+  if (!state.plan?.options?.length || !results) return;
   results.querySelectorAll(".count[data-leave]").forEach((el, i) => {
     const opt = state.plan.options[i];
     if (!opt) return;

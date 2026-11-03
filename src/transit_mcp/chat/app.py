@@ -229,6 +229,7 @@ async def chat(request: Request) -> StreamingResponse:
     body = await _read_json(request)
     session_id = str((body or {}).get("session_id") or "default")[:64]
     user_message = str((body or {}).get("message") or "").strip()
+    screen = (body or {}).get("screen")
     rec = TurnRecord(
         conversation_id=session_id,
         visitor_id=chatlog.visitor_id(client_ip) if chatlog else "",
@@ -314,7 +315,8 @@ async def chat(request: Request) -> StreamingResponse:
                     max_tokens=settings.chat_max_tokens,
                     max_iterations=settings.chat_max_tool_iterations,
                     local=tools,
-                    context=trip_tools.context_note(tools.user, ZoneInfo(settings.timezone)),
+                    context=trip_tools.context_note(tools.user, ZoneInfo(settings.timezone),
+                                                    screen=screen),
                 ):
                     note(event)
                     if event.get("type") in INTERNAL_EVENTS:
