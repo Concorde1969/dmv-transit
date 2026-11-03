@@ -181,6 +181,16 @@ button, input, textarea { font: inherit; color: inherit; }
 }
 .chip svg { flex: none; color: var(--action); }
 .chip:hover { border-color: var(--action); }
+/* A quiet link at the foot of the welcome: travel booking (AeroLink). */
+.plug {
+  display: flex; align-items: center; gap: 10px; margin: 16px 2px 2px; padding: 8px 2px;
+  color: var(--ink-2); font-size: 14.5px; text-decoration: none; border-top: 1px solid var(--rule);
+}
+.plug img { flex: none; width: 66px; height: auto; }
+.plug span { text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+.plug svg { flex: none; color: var(--ink-3); }
+.plug:hover { color: var(--ink); }
+.plug:hover span { text-decoration-color: currentColor; }
 
 .trip-block {
   margin: 4px 0 18px; padding: 12px 12px 14px; border-radius: 20px; background: var(--panel-2);

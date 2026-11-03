@@ -220,6 +220,8 @@ function syncStarted() {
 window.addEventListener("dmv:thread", syncStarted);
 syncStarted();   // a trip from a shared link may already be in the thread
 
+$("aerolinkPlug").addEventListener("click", () => track("aerolink_clicked"));
+
 const chips = $("chips");
 for (const s of STARTERS) {
   chips.appendChild(chipButton(s.text, () => {
