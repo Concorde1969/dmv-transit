@@ -75,7 +75,7 @@ function addMessage(role, { more = false } = {}) {
   const el = document.createElement("div");
   el.className = `msg ${role}${more ? " more" : ""}`;
   el.innerHTML = `${more ? "" : `<div class="who">${role === "user" ? "You" : "Assistant"}</div>`}<div class="bubble"></div>`;
-  append(el);
+  append(el, { force: role === "user" });
   return el.querySelector(".bubble");
 }
 

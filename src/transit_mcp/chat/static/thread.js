@@ -9,25 +9,40 @@ const announcer = $("announce");
 // Is the rider reading the newest part? Then keep up with new text; if they scrolled
 // back to read something, leave them there.
 let stick = true;
+// A trip card being shown: the thread holds it in view until the rider scrolls or sends
+// something new, even while the assistant's answer keeps arriving below it.
+let pinned = null;
 thread.addEventListener("scroll", () => {
   stick = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 80;
 });
+for (const kind of ["wheel", "touchmove", "keydown"]) {
+  thread.addEventListener(kind, () => { pinned = null; }, { passive: true });
+}
+
+function toTop(el) {
+  thread.scrollTo({ top: Math.max(0, el.offsetTop - thread.offsetTop - 8),
+    behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+}
 
 export function follow() {
+  if (pinned) return;
   if (stick) thread.scrollTop = thread.scrollHeight;
 }
 
-// Adds an item at the end of the thread; ``top`` scrolls to its start instead of the end.
-export function append(el, { top = false } = {}) {
+// Brings an item (a trip card) to the top of the thread and keeps it there.
+export function pin(el) {
+  pinned = el;
+  toTop(el);
+}
+
+// Adds an item at the end of the thread. ``top`` pins it in view; ``force`` (the rider's
+// own message) always scrolls to it.
+export function append(el, { top = false, force = false } = {}) {
   intro.hidden = true;
   thread.appendChild(el);
-  if (top) {
-    thread.scrollTop = el.offsetTop - thread.offsetTop - 8;
-    stick = false;
-  } else {
-    stick = true;
-    follow();
-  }
+  if (top) pin(el);
+  else if (force) { pinned = null; stick = true; follow(); }
+  else follow();
   window.dispatchEvent(new CustomEvent("dmv:thread"));
   return el;
 }
@@ -37,6 +52,7 @@ export function isEmpty() {
 }
 
 export function showIntro() {
+  pinned = null;
   intro.hidden = false;
   thread.scrollTop = 0;
 }

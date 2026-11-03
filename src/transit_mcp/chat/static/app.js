@@ -5,7 +5,7 @@
 import * as ML from "/static/map/vendor/maplibre-gl.mjs";
 import { KIND, savedPoint, sortPlaces } from "/static/places.js";
 import { ago, reportItem } from "/static/reports.js";
-import { announce, append } from "/static/thread.js";
+import { announce, append, pin } from "/static/thread.js";
 import { track } from "/static/track.js";
 
 const maplibregl = ML.default || ML;
@@ -605,6 +605,7 @@ async function planTrip() {
   state.plan = data; state.selected = data.options?.length ? 0 : null; state.view = "list";
   state.searchId = data.search_id || null;
   block.plan = data;
+  pin(block);   // the options just arrived: bring the card into view
   announce(data.options?.length ? `${plural(data.options.length, "way", "ways")} to go to ${state.to.label}.` : (data.notice || "No trips found."));
   render();
   drawPlan();

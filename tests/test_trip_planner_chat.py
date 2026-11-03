@@ -289,32 +289,27 @@ def test_show_trip_puts_the_trip_on_the_page(tools, monkeypatch):
     tools.user = None
     result, is_error, changed = call(tools, "show_trip", destination="1717 E Capitol St SE")
     assert not is_error and not changed and result["shown"]
-    assert result["from"] == "the rider's current location" and "browser" in result["note"]
+    assert result["from"] == "the rider's current location" and "trip card" in result["note"]
     (event,) = tools.events
     assert event["type"] == "show_trip" and event["from"] is None
     assert event["to"]["label"] == "1717 E Capitol St SE" and not event["to"]["saved"]
     assert call(tools, "show_trip", destination="nowhere at all")[0]["error"] == "place_not_found"
 
 
-def test_show_trip_from_a_saved_place_gets_timetable_options(tools, monkeypatch):
-    seen = []
-
-    def fake_route(db, settings, agencies, origin, dest, day, *, arrive_by=None, leave_at=None,
-                   now=None):
-        seen.append((origin.label, dest.label, day, leave_at))
-        return {"status": "ok", "option": {"leave_at": "5:04 PM"}}
-
-    monkeypatch.setattr(itinerary, "route", fake_route)
-    monkeypatch.setattr(trip_tools, "Database", lambda path: _NullDb())
+def test_show_trip_from_a_saved_place_with_everyday_names(tools):
     call(tools, "save_place", name="My hotel", kind="hotel", where=f"{HOTEL[0]},{HOTEL[1]}",
          address="1 Hotel Way NW")
     tools.events.clear()
     result = call(tools, "show_trip", origin="my hotel", destination=f"{MUSEUM[0]},{MUSEUM[1]}")[0]
-    assert result["timetable"]["status"] == "ok" and result["from"]["name"] == "My hotel"
+    assert result["from"]["name"] == "My hotel" and "timetable" not in result
+    assert "Don't list" in result["note"]                       # the card shows the details
     (event,) = tools.events
     assert event["from"]["saved"] and event["from"]["address"] == "1 Hotel Way NW"
     assert event["to"]["label"] == "The place you chose"        # never bare coordinates
-    assert seen and seen[0][0] == "My hotel" and seen[0][2] == TODAY and seen[0][3]
+    call(tools, "show_trip", destination="1717 E Capitol St SE",
+         destination_name="  RFK   Campus ")
+    assert tools.events[-1]["to"]["label"] == "RFK Campus"
+    assert tools.events[-1]["to"]["address"] == "1717 E Capitol St SE, Washington, DC"
 
 
 def test_screen_note_describes_the_trip_on_screen():
