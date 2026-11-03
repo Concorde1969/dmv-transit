@@ -106,20 +106,19 @@ class Gate:
 
 def create_app(settings=None, keys: McpKeys | None = None):
     settings = settings or get_settings()
-    # One self-contained JSON answer per request, so nothing is kept between calls. The
-    # gate decides who gets in (Caddy passes on the public host name), so the SDK's
-    # localhost-only check for browsers on this machine doesn't apply.
-    mcp.settings.stateless_http = True
-    mcp.settings.json_response = True
-    mcp.settings.transport_security = TransportSecuritySettings(
-        enable_dns_rebinding_protection=False)
     # Callers here get their own Google allowance for address lookups.
     server_app.GEOCODE_BUDGET.update(
         service="google_geocoding_mcp",
         monthly_limit=settings.mcp_google_geocoding_monthly_budget)
     server_app._geocoder.cache_clear()
     is_open = settings.mcp_open
-    return Gate(mcp.streamable_http_app(),
+    # One self-contained JSON answer per request, so nothing is kept between calls. The
+    # gate decides who gets in (Caddy passes on the public host name), so the SDK's
+    # localhost-only check for browsers on this machine doesn't apply.
+    app = mcp.streamable_http_app(
+        json_response=True, stateless_http=True,
+        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False))
+    return Gate(app,
                 keys or McpKeys.from_settings(settings),
                 RateLimiter(settings.mcp_rate_per_minute, settings.mcp_rate_per_day),
                 open_limiter=(RateLimiter(settings.mcp_open_rate_per_minute,

@@ -233,7 +233,8 @@ To add one, copy `agencies/_template.toml` — see [agencies/README.md](agencies
 ## Publishing the MCP server
 
 The MCP server at `https://dmvtransit.com/mcp` is open: anyone can connect without a key
-(`MCP_OPEN`), at 30 requests a minute and 400 a day per network address
+(`MCP_OPEN`), at 120 requests a minute and 3,000 a day per network address (ChatGPT and
+Claude call from shared servers)
 (`MCP_OPEN_RATE_PER_MINUTE`, `MCP_OPEN_RATE_PER_DAY`) and 8,000 a day for all keyless
 callers (`MCP_OPEN_DAILY_CAP`). Keys from `transit-mcp mcp-keys add` get higher limits.
 Address lookups there use their own Google allowance

@@ -219,6 +219,25 @@ def test_anyone_can_connect_without_a_key(web):
     assert web.post("/mcp", json=LIST, headers=ACCEPT).json()["result"]["tools"]
 
 
+def test_clients_on_the_2026_protocol_connect_too(web):
+    # MCP's 2026-07-28 revision: no initialize; server/discover, a per-request envelope
+    # and method headers. ChatGPT and other new clients speak it.
+    meta = {"io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {}}
+
+    def ask(i, method):
+        return web.post("/mcp", json={"jsonrpc": "2.0", "id": i, "method": method,
+                                      "params": {"_meta": meta}},
+                        headers={**ACCEPT, "MCP-Protocol-Version": "2026-07-28",
+                                 "Mcp-Method": method})
+
+    found = ask(1, "server/discover")
+    assert found.status_code == 200, found.text
+    assert "2026-07-28" in found.json()["result"]["supportedVersions"]
+    tools = ask(2, "tools/list").json()["result"]["tools"]
+    assert len(tools) == 18 and all(t["annotations"]["readOnlyHint"] for t in tools)
+
+
 def test_a_wrong_key_is_still_refused(web):
     r = web.post("/mcp", json=INIT, headers=_auth("dmvt_nope"))
     assert r.status_code == 401 and "isn't valid" in r.json()["error"]
@@ -322,7 +341,7 @@ def test_every_tool_has_a_title_and_is_marked_read_only():
     # Claude's and ChatGPT's directories check these on every tool.
     for t in asyncio.run(server.mcp.list_tools()):
         assert t.title and t.annotations.title == t.title, t.name
-        assert t.annotations.readOnlyHint is True and t.annotations.destructiveHint is False
+        assert t.annotations.read_only_hint is True and t.annotations.destructive_hint is False
 
 
 def test_registry_entry_points_at_the_public_server():

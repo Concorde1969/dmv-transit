@@ -14,7 +14,7 @@ from datetime import datetime
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
 from transit_mcp.config import get_settings
@@ -65,7 +65,10 @@ a specific app, exact-change cash, or advance online booking). Cite `url` / `far
 fields and flag any `stale` result as possibly out of date.
 """
 
-mcp = FastMCP("dmv-transit", instructions=_INSTRUCTIONS)
+# MCP SDK 2.x: serves clients on the 2026-07-28 protocol (server/discover) and older ones
+# (initialize) alike.
+mcp = MCPServer("dmv-transit", title="DMV Transit", instructions=_INSTRUCTIONS,
+                website_url="https://dmvtransit.com/mcp-server", version="1.0.0")
 # httpx logs every URL at INFO, and Google's APIs take their key in the URL.
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -106,8 +109,8 @@ def tool(fn):
     return mcp.tool(
         title=title,
         description=f"{inspect.cleandoc(fn.__doc__ or '')}\n\n{GROUNDING}",
-        annotations=ToolAnnotations(title=title, readOnlyHint=True, destructiveHint=False,
-                                    idempotentHint=True, openWorldHint=True),
+        annotations=ToolAnnotations(title=title, read_only_hint=True, destructive_hint=False,
+                                    idempotent_hint=True, open_world_hint=True),
     )(fn)
 
 

@@ -43,7 +43,7 @@ class McpBridge:
             {
                 "name": t.name,
                 "description": (t.description or "").strip(),
-                "input_schema": t.inputSchema or {"type": "object", "properties": {}},
+                "input_schema": t.input_schema or {"type": "object", "properties": {}},
             }
             for t in listed.tools
         ]
@@ -68,10 +68,11 @@ class McpBridge:
             return (f"Tool call failed: {exc}", True)
 
         parts: list[str] = []
-        for block in result.content:
+        for block in getattr(result, "content", None) or []:
             text = getattr(block, "text", None)
             if text is not None:
                 parts.append(text)
             else:
                 parts.append(str(block))
-        return ("\n".join(parts).strip() or "(no content)", bool(result.isError))
+        return ("\n".join(parts).strip() or "(no content)",
+                bool(getattr(result, "is_error", False)))
