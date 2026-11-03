@@ -153,6 +153,12 @@ async def mcp_registry_auth() -> FileResponse:
     return FileResponse(STATIC_DIR / "mcp-registry-auth", media_type="text/plain")
 
 
+@app.get("/.well-known/openai-apps-challenge", include_in_schema=False)
+async def openai_apps_challenge() -> FileResponse:
+    """OpenAI's domain check for the ChatGPT app directory: the token, as plain text."""
+    return FileResponse(STATIC_DIR / "openai-apps-challenge", media_type="text/plain")
+
+
 @app.get("/mcp-server")
 async def mcp_server_docs() -> FileResponse:
     """How to connect AI assistants to the MCP server at /mcp (served by server/http.py)."""

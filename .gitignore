@@ -44,3 +44,6 @@ chat-exports/
 # Personal scripts with hard-coded keys - never commit (see tools/ for the key-free version)
 /stop_clusters.py
 /transit_router.py
+
+# OpenAI plugin package, built from openai-plugin/dmv-transit/
+openai-plugin/*.zip

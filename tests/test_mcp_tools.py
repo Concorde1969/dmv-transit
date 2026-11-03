@@ -372,3 +372,5 @@ def test_privacy_page_is_served(monkeypatch, isolated_settings):
         assert "as is" in c.get("/terms").text
         proof = c.get("/.well-known/mcp-registry-auth")
         assert proof.status_code == 200 and proof.text.startswith("v=MCPv1; k=ed25519; p=")
+        token = c.get("/.well-known/openai-apps-challenge")
+        assert token.status_code == 200 and token.text == "B-hcKGPU0Hd6EIOL8YrCv5GzdEvJ-2ZombAJANVlsFU"

@@ -1,0 +1,91 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "dmv-transit",
+  "version": "1.0.0",
+  "description": "Plan public transit trips across DC, Maryland and Virginia from the agencies' own data.",
+  "author": {
+    "name": "Kaleb Neal",
+    "url": "https://dmvtransit.com"
+  },
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "DMV Transit",
+        "shortDescription": "DC-area transit trip planner",
+        "longDescription": "Plan public transit trips across the Washington, DC region. Find routes and transfers on Metro, buses and commuter rail, check fares and how to pay, and look up service alerts and Metro elevator and escalator outages. Covers Metro (WMATA), VRE, MARC, Maryland's MTA, Fairfax Connector, ART, DASH, CUE, Loudoun, OmniRide, Annapolis Transit, the Charm City Circulator, Virginia Breeze and intercity coaches. Routes and schedules come from the agencies' published timetables, and fares and payment from their own web pages, with a source link for each answer. DMV Transit is independent and unaffiliated with transit agencies; always confirm times with the agency before you travel.",
+        "developerName": "Kaleb Neal",
+        "category": "Travel",
+        "capabilities": [
+          "Plan transit trips",
+          "Check fares and payment",
+          "Service alerts and elevator outages"
+        ],
+        "websiteURL": "https://dmvtransit.com",
+        "supportURL": "https://dmvtransit.com/mcp-server",
+        "privacyPolicyURL": "https://dmvtransit.com/privacy",
+        "termsOfServiceURL": "https://dmvtransit.com/terms",
+        "defaultPrompt": [
+          "How do I get from Union Station to Reagan National Airport by Metro?",
+          "Are any elevators out at Metro Center right now?",
+          "How much does MARC cost from Baltimore Penn Station to Union Station?"
+        ],
+        "logo": "./assets/logo.png",
+        "composerIcon": "./assets/icon.png"
+      },
+      "review": {
+        "test_cases": {
+          "positive": [
+            {
+              "description": "Metro trip with a transfer",
+              "prompt": "How do I get from Union Station to Reagan National Airport (DCA) by Metro?",
+              "tools_triggered": "get_metro_route",
+              "expected_behavior": "Red Line toward Shady Grove to Gallery Place-Chinatown, then the Yellow Line toward Huntington to Ronald Reagan Washington National Airport, with fares from WMATA's data."
+            },
+            {
+              "description": "Trip across agencies",
+              "prompt": "What's the best way from King Street-Old Town in Alexandria to Tysons by transit right now?",
+              "tools_triggered": "plan_trip",
+              "expected_behavior": "Trip options with lines, departure and arrival times, walking and estimated fares, from the agencies' timetables."
+            },
+            {
+              "description": "Live accessibility status",
+              "prompt": "Are any elevators out at Metro Center right now?",
+              "tools_triggered": "get_elevator_escalator_status",
+              "expected_behavior": "Lists any elevators or escalators out of service at Metro Center with location, reason and estimated return, or says none are reported."
+            },
+            {
+              "description": "Commuter rail fare and payment",
+              "prompt": "How much does MARC cost from Baltimore Penn Station to Union Station, and how do I pay?",
+              "tools_triggered": "estimate_trip_cost, how_to_pay",
+              "expected_behavior": "A $9.00 one-way Penn Line fare, paid with the CharmPass app or MARC ticket machines, with a link to MTA's MARC fares page."
+            },
+            {
+              "description": "First-time rider guidance",
+              "prompt": "I'm visiting DC for the first time. How do I pay for Metro and buses?",
+              "tools_triggered": "how_to_pay, search_transit_info",
+              "expected_behavior": "Explains paying with a SmarTrip card or contactless card or phone, from WMATA's own pages, with source links."
+            }
+          ],
+          "negative": [
+            {
+              "description": "Outside the service area",
+              "prompt": "Plan a subway trip from Times Square to Brooklyn in New York City."
+            },
+            {
+              "description": "Purchases are not supported",
+              "prompt": "Buy me a SmarTrip card and load $20 on it."
+            },
+            {
+              "description": "Unrelated request",
+              "prompt": "What's the weather in Washington, DC tomorrow?"
+            }
+          ]
+        },
+        "commerce": false
+      },
+      "publication": {
+        "release_notes": "Initial release."
+      }
+    }
+  }
+}
