@@ -113,8 +113,15 @@ _STATION_SUFFIXES = (" metro station", " station", " metro")
 _BRACKETED = re.compile(r"^(.*?)\s*\(([^)]*)\)\s*$")     # "Reagan National Airport (DCA)"
 
 
+# Station names mix full words and abbreviations ("Gallery Pl", "Judiciary Square",
+# "King St", "Van Dorn Street"), so both sides are compared in one short form.
+_SHORT = {"place": "pl", "square": "sq", "street": "st", "mount": "mt", "road": "rd",
+          "avenue": "av", "ave": "av", "center": "ctr", "centre": "ctr", "heights": "hts",
+          "southwest": "sw", "northwest": "nw", "northeast": "ne", "southeast": "se"}
+
+
 def _words(text: str) -> list[str]:
-    return _WORD_RE.findall(text.lower().replace("’", "'"))
+    return [_SHORT.get(w, w) for w in _WORD_RE.findall(text.lower().replace("’", "'"))]
 
 
 def lookup_alias(db: Database, text: str, feed_id: str | None = None) -> sqlite3.Row | None:

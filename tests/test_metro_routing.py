@@ -80,6 +80,18 @@ def test_resolve_station(metro_db, text, code):
     assert resolve_station(metro_db, text)["code"] == code
 
 
+def test_resolve_station_reads_abbreviations_either_way(metro_db):
+    metro_db.conn.executemany(
+        "INSERT OR IGNORE INTO stations (code, name) VALUES (?, ?)",
+        [("Z01", "Gallery Pl-Chinatown"), ("Z02", "L'Enfant Plaza"),
+         ("Z03", "Judiciary Square"), ("Z04", "King St-Old Town")])
+    name = lambda text: resolve_station(metro_db, text)["name"]  # noqa: E731
+    assert name("Gallery Place") == name("Gallery Place-Chinatown") == "Gallery Pl-Chinatown"
+    assert name("Judiciary Sq") == "Judiciary Square"
+    assert name("King Street") == "King St-Old Town"
+    assert name("L'Enfant Plaza") == "L'Enfant Plaza"
+
+
 def test_unknown_station_does_not_resolve(metro_db):
     assert resolve_station(metro_db, "Union Station") is None
 
