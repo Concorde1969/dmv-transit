@@ -16,7 +16,7 @@ import httpx
 REGISTRY = "https://registry.modelcontextprotocol.io"
 DOMAIN = "dmvtransit.com"
 KEY = Path.home() / ".dmvtransit" / "mcp-registry-key.pem"
-SERVER_JSON = Path(r"C:\Users\kaleb_neal\Documents\transit_mcp\server.json")
+SERVER_JSON = Path(__file__).resolve().parents[1] / "server.json"
 
 ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 with tempfile.TemporaryDirectory() as d:
