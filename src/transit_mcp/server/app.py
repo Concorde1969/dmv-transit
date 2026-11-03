@@ -15,6 +15,7 @@ from functools import lru_cache
 from zoneinfo import ZoneInfo
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 from transit_mcp.config import get_settings
 from transit_mcp.db.database import Database
@@ -75,9 +76,39 @@ GROUNDING = ("Answer only from this tool's results: never add routes, hours, pho
              "transit agency.")
 
 
+# Each tool's name for people (apps show it) and what it does: every tool only reads.
+TITLES = {
+    "search_transit_info": "Search the agencies' rider pages",
+    "get_service_alerts": "Service alerts",
+    "get_rider_reports": "Rider reports",
+    "get_elevator_escalator_status": "Metro elevators and escalators",
+    "get_station_info": "Metro station details",
+    "get_fare": "Metro fare",
+    "geocode_address": "Find an address or place",
+    "plan_trip": "Plan a trip",
+    "get_metro_route": "Metro route between stations",
+    "list_topics": "Rider guide topics",
+    "get_guide": "Rider guide",
+    "list_agencies": "Transit agencies",
+    "find_stops_near": "Stops near a place",
+    "get_route": "Bus or train route",
+    "transfers_at": "Transfers at a stop",
+    "how_to_pay": "How to pay",
+    "plan_connection": "Connections between agencies",
+    "estimate_trip_cost": "Trip cost estimate",
+}
+
+
 def tool(fn):
-    """``@mcp.tool()`` with the grounding rule added to the description."""
-    return mcp.tool(description=f"{inspect.cleandoc(fn.__doc__ or '')}\n\n{GROUNDING}")(fn)
+    """``@mcp.tool()`` with the grounding rule added to the description, a title, and
+    read-only annotations (nothing here changes anything)."""
+    title = TITLES[fn.__name__]
+    return mcp.tool(
+        title=title,
+        description=f"{inspect.cleandoc(fn.__doc__ or '')}\n\n{GROUNDING}",
+        annotations=ToolAnnotations(title=title, readOnlyHint=True, destructiveHint=False,
+                                    idempotentHint=True, openWorldHint=True),
+    )(fn)
 
 
 def _db() -> Database:
@@ -181,11 +212,16 @@ _trip_tools: dict = {}
 _HOUSE_NUMBER = re.compile(r"\s*\d+[a-zA-Z]?\s+\S")      # "1717 E Capitol St SE"
 
 
+# Whose Google allowance address lookups count against; the public web server
+# (server/http.py) gives its callers their own, apart from the website's.
+GEOCODE_BUDGET: dict = {}
+
+
 @lru_cache(maxsize=1)
 def _geocoder():
     from transit_mcp.geocode import Geocoder
 
-    return Geocoder.from_settings(get_settings())
+    return Geocoder.from_settings(get_settings(), **GEOCODE_BUDGET)
 
 
 def _trip_helpers():

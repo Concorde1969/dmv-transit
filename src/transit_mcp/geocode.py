@@ -73,13 +73,17 @@ class Geocoder:
         self._last = 0.0
 
     @classmethod
-    def from_settings(cls, settings, *, http: httpx.Client | None = None) -> Geocoder:
-        """Google if its key is set, else geocode.maps.co (or nothing, if neither)."""
+    def from_settings(cls, settings, *, http: httpx.Client | None = None,
+                      service: str = "google_geocoding",
+                      monthly_limit: int | None = None) -> Geocoder:
+        """Google if its key is set, else geocode.maps.co (or nothing, if neither).
+        ``service`` and ``monthly_limit`` pick whose Google allowance it counts against."""
         if settings.google_geocoding_api_key:
             from transit_mcp.api_budget import ApiBudget
 
-            budget = ApiBudget(service="google_geocoding",
-                               monthly_limit=settings.google_geocoding_monthly_budget,
+            budget = ApiBudget(service=service,
+                               monthly_limit=(settings.google_geocoding_monthly_budget
+                                              if monthly_limit is None else monthly_limit),
                                timezone=settings.timezone, db_path=settings.db_path)
             return cls(settings.google_geocoding_api_key, provider="google", http=http,
                        budget=budget)

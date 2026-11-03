@@ -141,6 +141,24 @@ async def privacy() -> FileResponse:
     return FileResponse(STATIC_DIR / "privacy.html", headers={"Cache-Control": "no-cache"})
 
 
+@app.get("/terms")
+async def terms() -> FileResponse:
+    return FileResponse(STATIC_DIR / "terms.html", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/.well-known/mcp-registry-auth", include_in_schema=False)
+async def mcp_registry_auth() -> FileResponse:
+    """The public key that proves the MCP Registry name com.dmvtransit/* is ours; the
+    private key never leaves the publisher's machine."""
+    return FileResponse(STATIC_DIR / "mcp-registry-auth", media_type="text/plain")
+
+
+@app.get("/mcp-server")
+async def mcp_server_docs() -> FileResponse:
+    """How to connect AI assistants to the MCP server at /mcp (served by server/http.py)."""
+    return FileResponse(STATIC_DIR / "mcp-server.html", headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon() -> FileResponse:
     return FileResponse(STATIC_DIR / "brand" / "favicon.ico",

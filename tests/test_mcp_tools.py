@@ -3,14 +3,18 @@ web address with API keys (server/app.py, server/http.py, mcp_keys.py)."""
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
 
-from transit_mcp.chat.guard import RateLimiter
+from transit_mcp.chat.guard import DailyCap, RateLimiter
 from transit_mcp.geocode import BudgetSpent, GeocodeError
 from transit_mcp.mcp_keys import McpKeys
 from transit_mcp.planning import live
@@ -189,23 +193,89 @@ ACCEPT = {"Accept": "application/json, text/event-stream"}
 def web(tmp_path_factory):
     # The SDK's HTTP session manager starts once per process, so one app for these tests.
     keys = McpKeys(tmp_path_factory.mktemp("mcp") / "keys.db")
-    settings = type("S", (), {"mcp_rate_per_minute": 1000, "mcp_rate_per_day": 0})()
+    settings = SimpleNamespace(
+        mcp_rate_per_minute=1000, mcp_rate_per_day=0, mcp_open=True,
+        mcp_open_rate_per_minute=1000, mcp_open_rate_per_day=0, mcp_open_daily_cap=0,
+        mcp_google_geocoding_monthly_budget=5, timezone="America/New_York")
     app = mcp_http.create_app(settings, keys)
-    with TestClient(app, base_url="https://dmvtransit.com") as client:
-        client.keys, client.guard = keys, app
-        yield client
-    keys.close()
+    try:
+        with TestClient(app, base_url="https://dmvtransit.com") as client:
+            client.keys, client.guard = keys, app
+            yield client
+    finally:
+        keys.close()
+        server.GEOCODE_BUDGET.clear()
+        server._geocoder.cache_clear()
 
 
 def _auth(key):
     return {**ACCEPT, "Authorization": f"Bearer {key}"}
 
 
-def test_no_key_no_entry(web):
+def test_anyone_can_connect_without_a_key(web):
     r = web.post("/mcp", json=INIT, headers=ACCEPT)
-    assert r.status_code == 401 and r.headers["www-authenticate"] == "Bearer"
-    assert web.post("/mcp", json=INIT, headers=_auth("dmvt_nope")).status_code == 401
-    assert web.get("/mcp", headers=ACCEPT).status_code == 401
+    assert r.status_code == 200, r.text
+    assert r.json()["result"]["serverInfo"]["name"] == "dmv-transit"
+    assert web.post("/mcp", json=LIST, headers=ACCEPT).json()["result"]["tools"]
+
+
+def test_a_wrong_key_is_still_refused(web):
+    r = web.post("/mcp", json=INIT, headers=_auth("dmvt_nope"))
+    assert r.status_code == 401 and "isn't valid" in r.json()["error"]
+
+
+def test_mcp_callers_get_their_own_google_allowance(web):
+    assert server.GEOCODE_BUDGET == {"service": "google_geocoding_mcp", "monthly_limit": 5}
+
+
+def test_keyless_callers_are_limited_per_network(web):
+    saved = web.guard.open_limiter
+    web.guard.open_limiter = RateLimiter(1, 0)
+    try:
+        assert web.post("/mcp", json=INIT, headers=ACCEPT).status_code == 200
+        r = web.post("/mcp", json=INIT, headers=ACCEPT)
+        assert r.status_code == 429 and r.headers["retry-after"] == "60"
+        assert "mcp-server" in r.json()["error"]
+        _, key = web.keys.add("past the open limit")
+        assert web.post("/mcp", json=INIT, headers=_auth(key)).status_code == 200
+    finally:
+        web.guard.open_limiter = saved
+
+
+def _gate_call(gate, headers=(), client=("203.0.113.5", 1234)):
+    """One request straight through a Gate, with a stand-in for the MCP app."""
+    sent = []
+
+    async def app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    async def receive():
+        return {"type": "http.request", "body": b""}
+
+    async def send(msg):
+        sent.append(msg)
+
+    gate.app = app
+    asyncio.run(gate({"type": "http", "headers": list(headers), "client": client},
+                     receive, send))
+    body = sent[-1]["body"]
+    return sent[0]["status"], (json.loads(body) if body != b"ok" else None)
+
+
+def test_a_closed_server_still_needs_a_key(keys):
+    gate = mcp_http.Gate(None, keys, RateLimiter(10, 0))
+    status, body = _gate_call(gate)
+    assert status == 401 and "API key is required" in body["error"]
+
+
+def test_all_keyless_callers_share_a_daily_cap(keys):
+    gate = mcp_http.Gate(None, keys, RateLimiter(10, 0), open_limiter=RateLimiter(10, 0),
+                         open_cap=DailyCap(2))
+    assert _gate_call(gate, client=("198.51.100.1", 1))[0] == 200
+    assert _gate_call(gate, client=("198.51.100.2", 1))[0] == 200
+    status, body = _gate_call(gate, client=("198.51.100.3", 1))
+    assert status == 429 and "busy today" in body["error"]
 
 
 def test_a_key_opens_the_tools_on_the_public_host_name(web):
@@ -241,13 +311,24 @@ def test_each_key_has_its_own_limit(web):
 
 
 def test_every_tool_carries_the_grounding_rule():
-    import asyncio
-
     tools = asyncio.run(server.mcp.list_tools())
     assert len(tools) == 18
     for t in tools:
         assert t.description.endswith(server.GROUNDING), t.name
         assert len(t.description) > len(server.GROUNDING) + 40, t.name   # docstring kept
+
+
+def test_every_tool_has_a_title_and_is_marked_read_only():
+    # Claude's and ChatGPT's directories check these on every tool.
+    for t in asyncio.run(server.mcp.list_tools()):
+        assert t.title and t.annotations.title == t.title, t.name
+        assert t.annotations.readOnlyHint is True and t.annotations.destructiveHint is False
+
+
+def test_registry_entry_points_at_the_public_server():
+    entry = json.loads((Path(__file__).parents[1] / "server.json").read_text("utf-8"))
+    assert entry["name"] == "com.dmvtransit/transit" and len(entry["description"]) <= 100
+    assert entry["remotes"] == [{"type": "streamable-http", "url": "https://dmvtransit.com/mcp"}]
 
 
 def test_privacy_page_is_served(monkeypatch, isolated_settings):
@@ -264,4 +345,11 @@ def test_privacy_page_is_served(monkeypatch, isolated_settings):
     with TestClient(app_mod.app) as c:
         r = c.get("/privacy")
         assert r.status_code == 200 and "What we keep" in r.text
+        assert "The MCP server for AI assistants" in r.text
         assert 'href="/privacy"' in c.get("/").text
+        docs = c.get("/mcp-server")
+        assert docs.status_code == 200 and "https://dmvtransit.com/mcp" in docs.text
+        assert 'href="/terms"' in docs.text and 'href="/privacy"' in docs.text
+        assert "as is" in c.get("/terms").text
+        proof = c.get("/.well-known/mcp-registry-auth")
+        assert proof.status_code == 200 and proof.text.startswith("v=MCPv1; k=ed25519; p=")

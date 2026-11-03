@@ -1,0 +1,18 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.dmvtransit/transit",
+  "title": "DMV Transit",
+  "description": "Unofficial DC, Maryland and Virginia transit: trips, Metro, buses, rail, fares and alerts.",
+  "version": "1.0.0",
+  "websiteUrl": "https://dmvtransit.com/mcp-server",
+  "repository": {
+    "url": "https://github.com/Concorde1969/dmv-transit",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://dmvtransit.com/mcp"
+    }
+  ]
+}

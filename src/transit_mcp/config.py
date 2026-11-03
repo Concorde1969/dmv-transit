@@ -183,6 +183,16 @@ class Settings(BaseSettings):
     # Requests each API key may make.
     mcp_rate_per_minute: int = Field(default=120, alias="MCP_RATE_PER_MINUTE")
     mcp_rate_per_day: int = Field(default=1500, alias="MCP_RATE_PER_DAY")
+    # Open to anyone without a key (for AI apps' directories), at smaller limits per
+    # network address, and all keyless requests together capped per day.
+    mcp_open: bool = Field(default=True, alias="MCP_OPEN")
+    mcp_open_rate_per_minute: int = Field(default=30, alias="MCP_OPEN_RATE_PER_MINUTE")
+    mcp_open_rate_per_day: int = Field(default=400, alias="MCP_OPEN_RATE_PER_DAY")
+    mcp_open_daily_cap: int = Field(default=8000, alias="MCP_OPEN_DAILY_CAP")
+    # Google address lookups by MCP callers: their own monthly allowance, apart from the
+    # website's (GOOGLE_GEOCODING_MONTHLY_BUDGET).
+    mcp_google_geocoding_monthly_budget: int = Field(
+        default=2000, alias="MCP_GOOGLE_GEOCODING_MONTHLY_BUDGET")
 
     # --- Scheduled data refresh (`transit-mcp scheduler`) ---
     refresh_alerts_minutes: int = Field(default=15, alias="REFRESH_ALERTS_MINUTES")

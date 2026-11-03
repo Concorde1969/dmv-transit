@@ -230,6 +230,29 @@ assistant points riders to each agency's own fare page from its GTFS feed.
 
 To add one, copy `agencies/_template.toml` — see [agencies/README.md](agencies/README.md).
 
+## Publishing the MCP server
+
+The MCP server at `https://dmvtransit.com/mcp` is open: anyone can connect without a key
+(`MCP_OPEN`), at 30 requests a minute and 400 a day per network address
+(`MCP_OPEN_RATE_PER_MINUTE`, `MCP_OPEN_RATE_PER_DAY`) and 8,000 a day for all keyless
+callers (`MCP_OPEN_DAILY_CAP`). Keys from `transit-mcp mcp-keys add` get higher limits.
+Address lookups there use their own Google allowance
+(`MCP_GOOGLE_GEOCODING_MONTHLY_BUDGET`), so outside use never spends the website's. Every
+tool has a title and read-only annotations. The pages the directories ask for are
+`/mcp-server` (documentation), `/privacy` and `/terms`.
+
+`server.json` describes the server for the [official MCP Registry](https://registry.modelcontextprotocol.io)
+as `com.dmvtransit/transit`. To publish a new version, raise `version`, then (with the
+registry's `mcp-publisher` and the domain's signing key, which stays outside the repo):
+
+```
+mcp-publisher login dns --domain dmvtransit.com --private-key <hex key>
+mcp-publisher publish
+```
+
+The DNS TXT record on dmvtransit.com (`v=MCPv1; k=ed25519; p=<public key>`) proves the name.
+Published versions can't be deleted.
+
 ## MCP tools
 
 | Tool | Purpose |
