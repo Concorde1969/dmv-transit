@@ -56,7 +56,7 @@ class FakePlaces:
 @pytest.fixture
 def tools(tmp_path):
     store = AccountStore(tmp_path / "a.db")
-    user, _, _ = store.register("tina", "a long walk to the metro")
+    user, _, _ = store.sign_in("tina@example.com")
     t = trip_tools.TripTools.__new__(trip_tools.TripTools)
     t.settings = SimpleNamespace(timezone="America/New_York", db_path=tmp_path / "t.db",
                                  trip_walk_m_per_min=70)
@@ -351,9 +351,9 @@ def test_chat_sends_page_events_right_after_the_tool():
 
 def test_context_note_gives_the_dates_and_who_is_signed_in():
     now = datetime(2026, 11, 2, 16, 40, tzinfo=TZ)
-    note = trip_tools.context_note({"username": "tina"}, TZ, now)
+    note = trip_tools.context_note({"email": "tina@example.com"}, TZ, now)
     assert "Monday, November 02, 2026" in note and "Sat Nov 07 = 2026-11-07" in note
-    assert "signed in as tina" in note
+    assert "The rider is signed in" in note and "tina@example.com" not in note   # no email to the model
     assert "NOT signed in" in trip_tools.context_note(None, TZ, now)
 
 

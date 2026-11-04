@@ -1,14 +1,8 @@
 """Accounts behind the map's "My places" panel (see :mod:`transit_mcp.accounts`).
 
-    POST   /api/account/register     {username, password}          -> new account, signed in,
-                                                                     and its recovery code
-    POST   /api/account/login        {username, password}          -> signs in (session cookie)
-    POST   /api/account/recover      {username, recovery_code, new_password}
-                                                                   -> new password and code
-    POST   /api/account/password     {current_password, new_password}
     POST   /api/account/code         {email}        -> emails a 6-digit sign-in code
-    POST   /api/account/verify       {email, code}  -> signs in (session cookie)
-                                     (these two only with ACCOUNTS_EMAIL_CODES)
+    POST   /api/account/verify       {email, code}  -> signs in (session cookie), making
+                                                       the account on first sign-in
     GET    /api/account                             -> who is signed in, their places
     POST   /api/account/signout
     DELETE /api/account                             -> deletes the account and its places
@@ -31,14 +25,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from transit_mcp.accounts import (
-    KINDS,
-    AccountStore,
-    AuthError,
-    PlaceError,
-    PlaceInput,
-    normalize_email,
-)
+from transit_mcp.accounts import KINDS, AccountStore, PlaceError, PlaceInput, normalize_email
 from transit_mcp.chat.guard import DailyCap, RateLimiter
 from transit_mcp.geocode import in_region
 from transit_mcp.mailer import Mailer, MailError, code_email
@@ -59,8 +46,6 @@ class AccountService:
         self.settings = settings
         self.store = AccountStore.from_settings(settings)
         self.mailer = Mailer.from_settings(settings)
-        self.login_limiter = RateLimiter(10, 100)    # password and recovery tries per visitor
-        self.register_limiter = RateLimiter(3, 20)   # new accounts per visitor
         self.ip_limiter = RateLimiter(5, 30)        # code emails per visitor
         self.email_limiter = RateLimiter(2, 8)      # code emails per address
         self.verify_limiter = RateLimiter(10, 60)   # code checks per visitor
@@ -68,9 +53,9 @@ class AccountService:
         self.daily_emails = DailyCap(settings.accounts_daily_emails, settings.timezone)
 
     @property
-    def email_codes(self) -> bool:
-        """Email codes stay built but off until SES (or another sender) is ready."""
-        return self.settings.accounts_email_codes and self.mailer.available
+    def available(self) -> bool:
+        """Signing in needs a working mail sender (SMTP settings set)."""
+        return self.mailer.available
 
     def close(self) -> None:
         self.store.close()
@@ -90,22 +75,6 @@ def start_accounts(settings) -> AccountService | None:
 
 class EmailBody(BaseModel):
     email: str = Field(max_length=254)
-
-
-class CredentialsBody(BaseModel):
-    username: str = Field(max_length=60)
-    password: str = Field(max_length=200)
-
-
-class RecoverBody(BaseModel):
-    username: str = Field(max_length=60)
-    recovery_code: str = Field(max_length=40)
-    new_password: str = Field(max_length=200)
-
-
-class PasswordBody(BaseModel):
-    current_password: str = Field(max_length=200)
-    new_password: str = Field(max_length=200)
 
 
 class VerifyBody(BaseModel):
@@ -161,8 +130,7 @@ def _event(request: Request, event: str, **detail) -> None:
 
 
 def _account(svc: AccountService, user: dict) -> dict:
-    return {"signed_in": True, "enabled": True, "email_codes": svc.email_codes,
-            "username": user.get("username"), "email": user.get("email"),
+    return {"signed_in": True, "enabled": True, "email": user.get("email"),
             "places": svc.store.places(user["id"]), "plan": svc.store.plan(user["id"]),
             "kinds": list(KINDS),
             "max_places": svc.store.max_places}
@@ -175,83 +143,11 @@ def _signed_in(request: Request, svc: AccountService, user: dict, token: str,
     return response
 
 
-def _password_request(request: Request, limiter_name: str):
-    svc = _svc(request)
-    if svc is None:
-        return None, _message(UNAVAILABLE, 503)
-    if not _same_site(request):
-        return svc, _message("Please sign in from the DMV Transit page.", 403)
-    if getattr(svc, limiter_name).check(_ip(request)):
-        return svc, _message(SLOW_DOWN, 429)
-    return svc, None
-
-
-@router.post("/api/account/register")
-async def register(request: Request, body: CredentialsBody) -> JSONResponse:
-    svc, refused = _password_request(request, "register_limiter")
-    if refused:
-        return refused
-    try:
-        user, token, code = await asyncio.to_thread(svc.store.register, body.username,
-                                                    body.password)
-    except AuthError as exc:
-        return _message(str(exc), exc.status)
-    _event(request, "account_registered")
-    return _signed_in(request, svc, user, token, created=True, recovery_code=code)
-
-
-@router.post("/api/account/login")
-async def login(request: Request, body: CredentialsBody) -> JSONResponse:
-    svc, refused = _password_request(request, "login_limiter")
-    if refused:
-        return refused
-    try:
-        user, token = await asyncio.to_thread(svc.store.password_sign_in, body.username,
-                                              body.password)
-    except AuthError as exc:
-        return _message(str(exc), exc.status)
-    _event(request, "account_signed_in", method="password")
-    return _signed_in(request, svc, user, token)
-
-
-@router.post("/api/account/recover")
-async def recover(request: Request, body: RecoverBody) -> JSONResponse:
-    svc, refused = _password_request(request, "login_limiter")
-    if refused:
-        return refused
-    try:
-        user, token, code = await asyncio.to_thread(
-            svc.store.recover, body.username, body.recovery_code, body.new_password)
-    except AuthError as exc:
-        return _message(str(exc), exc.status)
-    _event(request, "account_recovered")
-    return _signed_in(request, svc, user, token, recovery_code=code)
-
-
-@router.post("/api/account/password")
-async def change_password(request: Request, body: PasswordBody) -> JSONResponse:
-    svc, refused = _password_request(request, "login_limiter")
-    if refused:
-        return refused
-    token = request.cookies.get(COOKIE)
-    user = svc.store.user_for_token(token)
-    if user is None:
-        return _message("Please sign in first.", 401)
-    try:
-        await asyncio.to_thread(svc.store.change_password, user["id"], body.current_password,
-                                body.new_password, token)
-    except AuthError as exc:
-        return _message(str(exc), exc.status)
-    return JSONResponse({"ok": True, "message": "Your password is changed. Any other "
-                         "devices signed in to this account are signed out."})
-
-
 @router.post("/api/account/code")
 async def send_code(request: Request, body: EmailBody) -> JSONResponse:
     svc = _svc(request)
-    if svc is None or not svc.email_codes:
-        return _message("Email sign-in isn't available. Please sign in with your username "
-                        "and password.", 503)
+    if svc is None or not svc.available:
+        return _message(UNAVAILABLE, 503)
     if not _same_site(request):
         return _message("Please sign in from the DMV Transit page.", 403)
     email = normalize_email(body.email)
@@ -281,7 +177,7 @@ async def send_code(request: Request, body: EmailBody) -> JSONResponse:
 @router.post("/api/account/verify")
 async def verify(request: Request, body: VerifyBody) -> JSONResponse:
     svc = _svc(request)
-    if svc is None or not svc.email_codes:
+    if svc is None or not svc.available:
         return _message(UNAVAILABLE, 503)
     if not _same_site(request):
         return _message("Please sign in from the DMV Transit page.", 403)
@@ -303,8 +199,7 @@ def account(request: Request) -> JSONResponse:
         return JSONResponse({"signed_in": False, "enabled": False})
     user = _user(request, svc)
     if user is None:
-        response = JSONResponse({"signed_in": False, "enabled": True,
-                                 "email_codes": svc.email_codes})
+        response = JSONResponse({"signed_in": False, "enabled": svc.available})
         if COOKIE in request.cookies:
             response.delete_cookie(COOKIE, path="/")
         return response

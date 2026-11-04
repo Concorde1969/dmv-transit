@@ -308,19 +308,18 @@ snapshots.
 
 ## Accounts (My places)
 
-Visitors sign in with a username and password (no email needed) and save their hotel,
-home and places to visit; they show as quick picks under "Where to?" and as pins on
+Visitors sign in with their email address and a 6-digit code we email them (no
+password), and save their hotel, home and places to visit; they show as quick picks under "Where to?" and as pins on
 the map. Accounts and places are kept in `/data/accounts.db` (inside the snapshots),
 separate from the chat log, and are deleted when the visitor deletes their account or
 after `ACCOUNTS_INACTIVE_DAYS` (two years) unused.
 
-Passwords are stored as salted scrypt hashes. A recovery code, shown once at sign-up,
-is the only way to reset a forgotten password; five wrong tries lock an account for
-15 minutes. Turn accounts on or off with `ACCOUNTS_ENABLED` in your local `.env`, then
-run `push-env.ps1`.
+A code works for 10 minutes and 5 tries; only keyed hashes of codes and sessions are
+stored. Accounts stay hidden until SMTP is set. Turn accounts on or off with
+`ACCOUNTS_ENABLED` in your local `.env`, then run `push-env.ps1`. (Password sign-in was
+removed on 2026-11-04; password-only accounts are deleted at startup.)
 
-**Sign-in by email code (optional, off).** The code is built in and switched on with
-`ACCOUNTS_EMAIL_CODES=true` once email sending works. Sign-in codes go out through
+**Sending the codes.** Sign-in codes go out through
 **Amazon SES** in the project's selected Region
 (us-east-2). One-time setup:
 

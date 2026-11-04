@@ -1,19 +1,16 @@
-// "My places": sign in with a username and password (or an emailed code, when the site
-// has that switched on), then save a hotel, home and places to visit (/api/account,
-// chat/account_api.py). app.js shows them as quick picks and map pins.
+// "My places": sign in with an emailed code (no password), then save a hotel, home and
+// places to visit (/api/account, chat/account_api.py). app.js shows them as quick picks
+// and map pins.
 import { KIND, esc, guessKind, isoDay, placeStatus, savedPoint, shortDate, sortPlaces } from "/static/places.js";
 import { track } from "/static/track.js";
 
 const $ = (id) => document.getElementById(id);
 const drawer = $("accountDrawer"), body = $("accountBody"), btn = $("accountBtn"), btnText = $("accountBtnText");
 
-const acct = { enabled: false, signed_in: false, email_codes: false, username: "", email: "",
-  places: [], max_places: 50 };
-// signin | register | recovery | recover | password | email | code | list | form
+const acct = { enabled: false, signed_in: false, email: "", places: [], max_places: 50 };
+// signin (type your email) | code (type the emailed code) | list | form
 let view = "signin";
 let pendingEmail = "";
-let recoveryCode = "";       // shown once, after signing up or recovering
-let typedUser = "";          // carried between the sign-in, sign-up and recovery forms
 let editing = null;          // the place being edited, or a draft {name, lat, lon, ...}
 let afterSignIn = null;      // a place to save once signed in
 let confirmDelete = null;    // place id waiting for "Delete" to be pressed again
@@ -37,7 +34,6 @@ function publish() {
 
 function setAccount(data) {
   Object.assign(acct, { enabled: data.enabled ?? acct.enabled, signed_in: !!data.signed_in,
-    email_codes: data.email_codes ?? acct.email_codes, username: data.username || "",
     email: data.email || "", places: data.places || [], plan: data.plan || [],
     max_places: data.max_places || acct.max_places });
   publish();
@@ -51,11 +47,6 @@ function status(msg, ok = false) {
 
 function render() {
   if (view === "signin") return renderSignin();
-  if (view === "register") return renderRegister();
-  if (view === "recovery") return renderRecovery();
-  if (view === "recover") return renderRecover();
-  if (view === "password") return renderPassword();
-  if (view === "email") return renderEmail();
   if (view === "code") return renderCode();
   if (view === "form") return renderForm();
   return renderList();
@@ -63,24 +54,11 @@ function render() {
 
 const INTRO = `<p class="acct-intro">Save your hotel and the places you want to see, then plan a trip to any of them with one tap.</p>`;
 
-function field(id, label, attrs, hint = "") {
-  return `<label for="${id}">${label}</label>
-    <input id="${id}" ${attrs} />${hint ? `<p class="acct-fine">${hint}</p>` : ""}`;
-}
-const USER_ATTRS = (value) => `autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="30" required value="${esc(value)}"`;
-const SHOW = `<label class="show-pass"><input type="checkbox" id="showPass" /> Show password</label>`;
-
-function wireShow() {
-  $("showPass")?.addEventListener("change", (e) => {
-    body.querySelectorAll('input[data-pass]').forEach((i) => { i.type = e.target.checked ? "text" : "password"; });
-  });
-}
-
+// After signing in: back to what the visitor was doing.
 function signedIn(data) {
   setAccount(data);
-  if (data.recovery_code) { recoveryCode = data.recovery_code; view = "recovery"; }
-  else if (planAfterSignIn) return startPlanning();
-  else if (afterSignIn) { editing = afterSignIn; afterSignIn = null; view = "form"; }
+  if (planAfterSignIn) return startPlanning();
+  if (afterSignIn) { editing = afterSignIn; afterSignIn = null; view = "form"; }
   else view = "list";
   render();
 }
@@ -91,161 +69,18 @@ function startPlanning() {
   window.dmvChat?.planner();
 }
 
-// One handler for the password forms: post, then sign in or say what went wrong.
-function submitter(formId, buttonId, url, payload, check) {
-  $(formId).addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const data = payload();
-    const problem = check(data);
-    if (problem) return status(problem);
-    typedUser = data.username ?? typedUser;
-    $(buttonId).disabled = true; status("Checking…", true);
-    try { signedIn(await api(url, { method: "POST", body: JSON.stringify(data) })); }
-    catch (err) { status(err.message); $(buttonId).disabled = false; }
-  });
-}
-
 function renderSignin() {
   const intro = planAfterSignIn
-    ? `<p class="acct-intro"><strong>Sign in or create an account to plan your trip.</strong> The assistant saves your places and your plan to it, so you'll find them on any device.</p>`
+    ? `<p class="acct-intro"><strong>Sign in to plan your trip.</strong> The assistant saves your places and your plan to your account, so you'll find them on any device.</p>`
     : INTRO;
   body.innerHTML = `${intro}
-    <form class="acct-form" id="signinForm" novalidate>
-      ${field("acctUser", "Username", USER_ATTRS(typedUser))}
-      ${field("acctPass", "Password", 'type="password" data-pass autocomplete="current-password" maxlength="200" required')}
-      ${SHOW}
-      <p class="acct-status" id="acctStatus" role="status" aria-live="polite"></p>
-      <button class="btn primary" type="submit" id="signinSend">Sign in</button>
-      <div class="acct-links">
-        <button class="link-btn" type="button" id="toRegister">Create an account</button>
-        <button class="link-btn" type="button" id="toRecover">Forgot your password?</button>
-        ${acct.email_codes ? `<button class="link-btn" type="button" id="toEmail">Email me a code instead</button>` : ""}
-      </div>
-    </form>`;
-  wireShow();
-  submitter("signinForm", "signinSend", "/api/account/login",
-    () => ({ username: $("acctUser").value.trim(), password: $("acctPass").value }),
-    (d) => (!d.username || !d.password ? "Please type your username and password." : null));
-  $("toRegister").addEventListener("click", () => { typedUser = $("acctUser").value.trim(); view = "register"; render(); });
-  $("toRecover").addEventListener("click", () => { typedUser = $("acctUser").value.trim(); view = "recover"; render(); });
-  $("toEmail")?.addEventListener("click", () => { view = "email"; render(); });
-  setTimeout(() => (typedUser ? $("acctPass") : $("acctUser"))?.focus(), 50);
-}
-
-function renderRegister() {
-  body.innerHTML = `${INTRO}
-    <form class="acct-form" id="registerForm" novalidate>
-      <h3 class="acct-sub">Create an account</h3>
-      ${field("acctUser", "Choose a username", USER_ATTRS(typedUser), "3 to 30 letters or numbers. Dots, dashes and underscores are fine too.")}
-      ${field("acctPass", "Choose a password", 'type="password" data-pass autocomplete="new-password" maxlength="200" required', "At least 10 characters. A short sentence you'll remember works well.")}
-      ${SHOW}
-      <p class="acct-status" id="acctStatus" role="status" aria-live="polite"></p>
-      <button class="btn primary" type="submit" id="registerSend">Create account</button>
-      <p class="acct-fine">No email needed. Next you'll get a recovery code to keep, in case you forget your password.</p>
-      <div class="acct-links"><button class="link-btn" type="button" id="toSignin">I already have an account</button></div>
-    </form>`;
-  wireShow();
-  submitter("registerForm", "registerSend", "/api/account/register",
-    () => ({ username: $("acctUser").value.trim(), password: $("acctPass").value }),
-    (d) => (!/^[A-Za-z0-9][A-Za-z0-9._-]{2,29}$/.test(d.username)
-      ? "Usernames are 3 to 30 letters, numbers, dots, dashes or underscores, starting with a letter or number."
-      : d.password.length < 10 ? "Please use at least 10 characters for your password." : null));
-  $("toSignin").addEventListener("click", () => { view = "signin"; render(); });
-  setTimeout(() => $("acctUser")?.focus(), 50);
-}
-
-function renderRecovery() {
-  body.innerHTML = `
-    <div class="acct-form">
-      <h3 class="acct-sub">Save your recovery code</h3>
-      <p class="acct-intro">If you ever forget your password, this code is the only way back into your account. Write it down or take a screenshot, and keep it somewhere safe.</p>
-      <p class="recovery-code" id="recoveryCode">${esc(recoveryCode)}</p>
-      <button class="btn quiet" type="button" id="copyCode">Copy code</button>
-      <label class="show-pass"><input type="checkbox" id="savedIt" /> I've saved my recovery code</label>
-      <p class="acct-status" id="acctStatus" role="status" aria-live="polite"></p>
-      <button class="btn primary" type="button" id="codeDone" disabled>Continue</button>
-    </div>`;
-  $("copyCode").addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText(recoveryCode); status("Copied.", true); }
-    catch (_) {
-      const r = document.createRange(); r.selectNodeContents($("recoveryCode"));
-      getSelection().removeAllRanges(); getSelection().addRange(r);
-      status("Selected. Copy it with Ctrl+C, or long-press on a phone.", true);
-    }
-  });
-  $("savedIt").addEventListener("change", (e) => { $("codeDone").disabled = !e.target.checked; });
-  $("codeDone").addEventListener("click", () => {
-    recoveryCode = "";
-    if (planAfterSignIn) return startPlanning();
-    if (afterSignIn) { editing = afterSignIn; afterSignIn = null; view = "form"; } else view = "list";
-    render();
-  });
-  setTimeout(() => $("copyCode")?.focus(), 50);
-}
-
-function renderRecover() {
-  body.innerHTML = `
-    <form class="acct-form" id="recoverForm" novalidate>
-      <h3 class="acct-sub">Forgot your password?</h3>
-      <p class="acct-intro">Use the recovery code you saved when you made your account to set a new password.</p>
-      ${field("acctUser", "Username", USER_ATTRS(typedUser))}
-      ${field("acctCode", "Recovery code", 'autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="40" placeholder="XXXX-XXXX-XXXX-XXXX" required')}
-      ${field("acctPass", "New password", 'type="password" data-pass autocomplete="new-password" maxlength="200" required', "At least 10 characters.")}
-      ${SHOW}
-      <p class="acct-status" id="acctStatus" role="status" aria-live="polite"></p>
-      <button class="btn primary" type="submit" id="recoverSend">Set new password</button>
-      <p class="acct-fine">Without your recovery code, a forgotten password can't be reset. You can make a new account instead.</p>
-      <div class="acct-links"><button class="link-btn" type="button" id="toSignin">Back to sign in</button></div>
-    </form>`;
-  wireShow();
-  submitter("recoverForm", "recoverSend", "/api/account/recover",
-    () => ({ username: $("acctUser").value.trim(), recovery_code: $("acctCode").value.trim(), new_password: $("acctPass").value }),
-    (d) => (!d.username || !d.recovery_code ? "Please type your username and recovery code."
-      : d.new_password.length < 10 ? "Please use at least 10 characters for your new password." : null));
-  $("toSignin").addEventListener("click", () => { view = "signin"; render(); });
-  setTimeout(() => (typedUser ? $("acctCode") : $("acctUser"))?.focus(), 50);
-}
-
-function renderPassword() {
-  body.innerHTML = `
-    <form class="acct-form" id="passwordForm" novalidate>
-      <h3 class="acct-sub">Change your password</h3>
-      ${field("acctOld", "Current password", 'type="password" data-pass autocomplete="current-password" maxlength="200" required')}
-      ${field("acctPass", "New password", 'type="password" data-pass autocomplete="new-password" maxlength="200" required', "At least 10 characters.")}
-      ${SHOW}
-      <p class="acct-status" id="acctStatus" role="status" aria-live="polite"></p>
-      <div class="form-actions">
-        <button class="btn primary" type="submit" id="passwordSend">Change password</button>
-        <button class="btn quiet" type="button" id="passwordCancel">Cancel</button>
-      </div>
-    </form>`;
-  wireShow();
-  $("passwordForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const payload = { current_password: $("acctOld").value, new_password: $("acctPass").value };
-    if (payload.new_password.length < 10) return status("Please use at least 10 characters for your new password.");
-    $("passwordSend").disabled = true; status("Saving…", true);
-    try {
-      const data = await api("/api/account/password", { method: "POST", body: JSON.stringify(payload) });
-      view = "list"; render(); status(data.message, true);
-    } catch (err) { status(err.message); $("passwordSend").disabled = false; }
-  });
-  $("passwordCancel").addEventListener("click", () => { view = "list"; render(); });
-  setTimeout(() => $("acctOld")?.focus(), 50);
-}
-
-function renderEmail() {
-  body.innerHTML = `
-    <p class="acct-intro">Save your hotel and the places you want to see, then plan a trip to any of them with one tap.</p>
     <form class="acct-form" id="emailForm" novalidate>
       <label for="acctEmail">Your email</label>
       <input id="acctEmail" type="email" autocomplete="email" inputmode="email" maxlength="254" required value="${esc(pendingEmail)}" />
       <p class="acct-status" id="acctStatus" role="status" aria-live="polite"></p>
       <button class="btn primary" type="submit" id="emailSend">Email me a sign-in code</button>
-      <p class="acct-fine">We email you a 6-digit code each time you sign in. Your email is used only for signing in.</p>
-      <div class="acct-links"><button class="link-btn" type="button" id="toSignin">Use a username and password</button></div>
+      <p class="acct-fine">No password: we email you a 6-digit code each time you sign in, and your first sign-in makes your account. Your email is used only for signing in.</p>
     </form>`;
-  $("toSignin").addEventListener("click", () => { view = "signin"; render(); });
   $("emailForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const email = $("acctEmail").value.trim();
@@ -277,18 +112,14 @@ function renderCode() {
     if (code.length !== 6) return status("The code has 6 digits. Please check the email.");
     $("codeSend").disabled = true; status("Checking…", true);
     try {
-      setAccount(await api("/api/account/verify", { method: "POST", body: JSON.stringify({ email: pendingEmail, code }) }));
-      if (planAfterSignIn) return startPlanning();
-      if (afterSignIn) { editing = afterSignIn; afterSignIn = null; view = "form"; }
-      else view = "list";
-      render();
+      signedIn(await api("/api/account/verify", { method: "POST", body: JSON.stringify({ email: pendingEmail, code }) }));
     } catch (err) { status(err.message); $("codeSend").disabled = false; }
   });
   $("resend").addEventListener("click", async () => {
     try { status((await api("/api/account/code", { method: "POST", body: JSON.stringify({ email: pendingEmail }) })).message, true); }
     catch (err) { status(err.message); }
   });
-  $("otherEmail").addEventListener("click", () => { view = "email"; render(); });
+  $("otherEmail").addEventListener("click", () => { view = "signin"; render(); });
   setTimeout(() => $("acctCode")?.focus(), 50);
 }
 
@@ -318,7 +149,7 @@ function renderList() {
   const sorted = sortPlaces(acct.places);
   const current = sorted.filter(({ s }) => !s.past), past = sorted.filter(({ s }) => s.past);
   body.innerHTML = `
-    <p class="acct-who">Signed in as <strong>${esc(acct.username || acct.email)}</strong></p>
+    <p class="acct-who">Signed in as <strong>${esc(acct.email)}</strong></p>
     <button class="btn primary add-place" type="button" id="addPlace">Add a place</button>
     ${acct.places.length ? "" : `<p class="acct-intro">Add your hotel (with your check-in and check-out dates) and the attractions you want to visit. They'll appear as buttons under "Where to?" and as pins on the map.</p>`}
     ${current.length ? `<ul class="place-list">${current.map(({ p, s }) => placeRow(p, s)).join("")}</ul>` : ""}
@@ -327,7 +158,6 @@ function renderList() {
     <p class="acct-status" id="acctStatus" role="status" aria-live="polite"></p>
     <div class="acct-foot">
       <button class="btn quiet" type="button" id="signOut">Sign out</button>
-      ${acct.username ? `<button class="link-btn" type="button" id="changePassword">Change password</button>` : ""}
       <button class="link-btn danger" type="button" id="deleteAccount">${confirmDelete === "account" ? "Press again to delete your account and all saved places" : "Delete my account"}</button>
     </div>`;
   $("addPlace").addEventListener("click", () => { editing = { kind: "attraction" }; view = "form"; render(); });
@@ -343,7 +173,6 @@ function renderList() {
     try { setAccount(await api("/api/account/signout", { method: "POST" })); } catch (_) { setAccount({ signed_in: false }); }
     view = "signin"; render();
   });
-  $("changePassword")?.addEventListener("click", () => { view = "password"; render(); });
   $("planWithBot")?.addEventListener("click", () => { close(true); window.dmvChat?.planner(); });
   body.querySelectorAll(".plan-stop [data-stop]").forEach((b) => b.addEventListener("click", () => removeStop(+b.dataset.stop)));
   $("deleteAccount").addEventListener("click", async () => {
@@ -541,8 +370,8 @@ function open(nextView, opts = {}) {
   if (!drawer.classList.contains("open")) track("account_opened", { detail: { signed_in: acct.signed_in } });
   window.dmvChat?.close?.(true);
   window.dmvReports?.close?.(true);
-  const SIGNED_OUT = ["signin", "register", "recover", "email", "code"];
-  view = nextView || (acct.signed_in ? (["form", "password", "recovery"].includes(view) ? view : "list")
+  const SIGNED_OUT = ["signin", "code"];
+  view = nextView || (acct.signed_in ? (view === "form" ? view : "list")
     : (SIGNED_OUT.includes(view) ? view : "signin"));
   confirmDelete = null;
   render();
@@ -563,7 +392,7 @@ function close(quiet = false) {
 function savePlace(draft) {
   const p = { ...draft, kind: guessKind(draft.kind) };
   if (acct.signed_in) { editing = p; open("form"); }
-  else { afterSignIn = p; open(["code", "email", "register"].includes(view) ? view : "signin"); }
+  else { afterSignIn = p; open(view === "code" ? "code" : "signin"); }
 }
 
 btn.addEventListener("click", () => (drawer.classList.contains("open") ? close() : open()));

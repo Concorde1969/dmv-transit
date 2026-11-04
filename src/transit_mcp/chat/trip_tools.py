@@ -29,7 +29,8 @@ _TIME = re.compile(r"^\s*(\d{1,2}):(\d{2})\s*$")
 MAX_HOPS = 8
 SIGN_IN = {"error": "sign_in_required",
            "message": "Planning a trip needs a free account. Ask the rider to use the Sign in "
-                      "button at the top of the page (no email needed), then try again."}
+                      "button at the top of the page (just an email address, no password), "
+                      "then try again."}
 
 _WHERE = ("Where it is: a 'point' (\"lat,lon\") from find_places or geocode_address, a "
           "street address, or the name of one of the rider's saved places.")
@@ -159,7 +160,8 @@ You are also a friendly trip planner for visitors to the DC area, and the conver
 the planner. The trip tools (find_places, my_trip, save_place, add_to_plan, \
 change_plan_stop, remove_from_plan, remove_saved_place, directions_for_day) work only for \
 signed-in riders. If one returns sign_in_required, explain kindly that planning needs a \
-free account (the Sign in button at the top of the page; no email needed), and keep \
+free account (the Sign in button at the top of the page; an email address, no \
+password), and keep \
 helping with transit questions.
 - Get to know the trip a little at a time (one or two questions per reply): where \
 they're staying and their check-in and check-out dates, which days they're here, what \
@@ -208,8 +210,7 @@ def context_note(user: dict | None, tz: ZoneInfo, now: datetime | None = None,
     now = now or datetime.now(tz)
     week = ", ".join(f"{(now + timedelta(days=i)):%a %b %d} = {(now + timedelta(days=i)):%Y-%m-%d}"
                      for i in range(8))
-    who = (f"The rider is signed in as {user.get('username') or 'an account'}; the trip "
-           "tools work." if user else
+    who = ("The rider is signed in; the trip tools work." if user else
            "The rider is NOT signed in; trip tools other than show_trip will ask them to "
            "sign in.")
     return (f"[Context, not from the rider] It is now {now:%A, %B %d, %Y, %I:%M %p} Eastern. "
