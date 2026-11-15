@@ -129,7 +129,9 @@ function applyPadding() {
   if (!map) return;
   const box = $("panel").getBoundingClientRect();
   map.setPadding(isPhone()
-    ? { top: 80, bottom: Math.round(innerHeight - box.top) + 20, left: 20, right: 20 }
+    // Below the floating logo, which sits under the phone's status bar.
+    ? { top: Math.round(document.querySelector(".brand").getBoundingClientRect().bottom) + 16,
+        bottom: Math.round(innerHeight - box.top) + 20, left: 20, right: 20 }
     : { top: 80, bottom: 40, left: Math.round(box.right) + 40, right: 80 });
 }
 

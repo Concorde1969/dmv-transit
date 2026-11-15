@@ -530,7 +530,7 @@ details.trace summary { cursor: pointer; }
     border-radius: var(--r-panel) var(--r-panel) 0 0;
     transition: height .28s cubic-bezier(.2,.8,.2,1);
   }
-  .panel.tall { height: calc(100dvh - 76px); }
+  .panel.tall { height: calc(100dvh - 76px - env(safe-area-inset-top, 0px)); }
   .sheet-handle {
     display: grid; place-items: center; flex: none; width: 100%; height: 28px; padding: 0;
     border: 0; background: transparent; cursor: pointer;
@@ -547,15 +547,18 @@ details.trace summary { cursor: pointer; }
   .suggest { left: 14px; right: 14px; }
   .thread { padding: 12px 14px 6px; }
   .composer { padding: 8px 10px 8px; }
-  .topbar { top: 10px; right: 10px; }
+  /* Below the status bar and notch (the page draws edge to edge: viewport-fit=cover). */
+  .topbar { top: calc(10px + env(safe-area-inset-top, 0px));
+    right: calc(10px + env(safe-area-inset-right, 0px)); }
   .ask-btn { min-height: 48px; }
   .option { grid-template-columns: 80px 1fr; }
   .use-loc-text, .fine-long { display: none; }
-  .fine { padding: 0 16px 10px; font-size: 12.5px; }
+  .fine { padding: 0 16px calc(10px + env(safe-area-inset-bottom, 0px)); font-size: 12.5px; }
   .fine-credit { display: inline; }
   .panel.started .fine-credit { display: none; }
   /* The brand floats over the map's top corner, out of the sheet's way. */
-  .brand { position: fixed; z-index: 5; top: 10px; left: 10px; padding: 6px 12px 5px;
+  .brand { position: fixed; z-index: 5; top: calc(10px + env(safe-area-inset-top, 0px));
+    left: calc(10px + env(safe-area-inset-left, 0px)); padding: 6px 12px 5px;
     border-radius: 14px; box-shadow: var(--shadow-panel), inset 0 -7px 0 -4px var(--brand-cream); }
   .brand-logo { width: 74px; }
   .credit { display: none; }
