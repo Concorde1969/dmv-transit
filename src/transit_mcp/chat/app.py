@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import mimetypes
+import threading
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -26,6 +27,8 @@ from transit_mcp.chat import trip_tools
 from transit_mcp.chat.account_api import router as account_router
 from transit_mcp.chat.account_api import start_accounts
 from transit_mcp.chat.agent import INTERNAL_EVENTS, run_chat
+from transit_mcp.chat.explore_api import ExploreCache
+from transit_mcp.chat.explore_api import router as explore_router
 from transit_mcp.chat.guard import (
     MESSAGES,
     DailyCap,
@@ -98,6 +101,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             log.exception("rider reports unavailable")
             app.state.reports = None
     app.state.accounts = start_accounts(settings)   # saved places (chat/account_api.py)
+    # The Explore map's network takes a few seconds to build: start on it now, in the
+    # background, so the first visitor to open Explore doesn't wait (chat/explore_api.py).
+    app.state.explore = ExploreCache()
+    if settings.is_production:
+        names = {s: a["name"] for s, a in agency_info(settings).items()}
+        threading.Thread(target=app.state.explore.warm, args=(settings, names),
+                         daemon=True).start()
     try:
         yield
     finally:
@@ -128,6 +138,7 @@ class _Static(StaticFiles):
 
 app.mount("/static", _Static(directory=str(STATIC_DIR)), name="static")
 app.include_router(trip_router)
+app.include_router(explore_router)
 app.include_router(reports_router)
 app.include_router(account_router)
 

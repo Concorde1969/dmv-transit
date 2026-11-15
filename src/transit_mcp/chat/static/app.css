@@ -522,6 +522,46 @@ details.trace summary { cursor: pointer; }
 .pl-dates .two > div { display: grid; gap: 4px; }
 .form-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
 
+/* ---------- Explore: every stop and route ---------- */
+.explore-btn svg { color: var(--action); }
+.explore-btn[aria-pressed="true"] { background: var(--action); color: #fff; }
+.explore-btn[aria-pressed="true"] svg { color: #fff; }
+.explore-card {
+  position: fixed; z-index: 5; top: 76px; right: 14px; width: 300px;
+  max-height: calc(100vh - 150px); overflow: auto; padding: 12px 14px 12px 16px;
+  background: var(--panel); border-radius: 18px; box-shadow: var(--shadow-panel);
+}
+.explore-card[hidden] { display: none; }
+.xp-head { display: flex; align-items: center; gap: 8px; }
+.xp-head h2 { margin: 0; font-size: 18px; }
+.xp-head .icon-btn { margin-left: auto; width: 40px; height: 40px; }
+.xp-status { margin: 4px 0 8px; font-size: 14px; color: var(--ink-2); line-height: 1.4; }
+.xp-show { border: 0; padding: 0; margin: 0 0 6px; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.xp-show label, .xp-agency { display: flex; align-items: center; gap: 8px; min-height: 36px;
+  font-size: 15px; cursor: pointer; }
+.xp-show input, .xp-agency input { width: 18px; height: 18px; accent-color: var(--action); flex: none; }
+.xp-list { border-top: 1px solid var(--rule); padding-top: 4px; }
+.xp-list summary { cursor: pointer; font-weight: 650; font-size: 15px; min-height: 36px;
+  display: flex; align-items: center; }
+.xp-bulk { display: flex; gap: 14px; }
+.xp-bulk .link-btn { min-height: 32px; padding: 2px 0; font-size: 14px; }
+.xp-agency .xp-name { flex: 1; min-width: 0; line-height: 1.25; }
+.xp-agency small { color: var(--ink-3); font-size: 12.5px; white-space: nowrap; }
+.xp-swatch { display: inline-block; flex: none; width: 12px; height: 12px; border-radius: 50%;
+  margin-right: 6px; vertical-align: -1px; }
+.xp-agency .xp-swatch { margin-right: 0; }
+.xp-popup strong { display: block; font-size: 16px; line-height: 1.3; padding-right: 22px; }
+.xp-popup .xp-long { font-size: 15px; margin-top: 6px; }
+.xp-popup small { display: block; color: var(--ink-2); font-size: 13.5px; margin: 2px 0 8px; }
+.xp-popup .popup-actions { margin-top: 8px; }
+.xp-popup .link-btn { min-height: 36px; font-size: 14.5px; }
+.xp-routes { font-size: 14px; color: var(--ink-2); }
+.xp-pills { display: flex; flex-wrap: wrap; gap: 4px; max-height: 120px; overflow: auto; }
+.xp-pill { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 6px;
+  font-weight: 700; font-size: 13px; line-height: 1; }
+.xp-pill.rail { border-radius: 999px; }
+.xp-note { margin: 6px 0 0; font-size: 13px; color: var(--ink-2); line-height: 1.35; }
+
 /* ---------- phones: the panel is a sheet over the map ---------- */
 @media (max-width: 720px) {
   body { font-size: 17px; }
@@ -563,7 +603,15 @@ details.trace summary { cursor: pointer; }
   .brand-logo { width: 74px; }
   .credit { display: none; }
   .brand-side { gap: 5px; }
-  .report-btn-text, .account-btn-text { display: none; }
+  .report-btn-text, .account-btn-text, .explore-btn-text { display: none; }
+  .explore-btn { padding: 0 14px; }
+  /* Explore on a phone: the card sits under the logo, and the sheet lowers so the map
+     gets most of the screen (the handle still makes it taller). */
+  .explore-card { top: calc(88px + env(safe-area-inset-top, 0px)); left: 10px; right: 10px;
+    width: auto; max-height: calc(58dvh - 100px); padding: 6px 12px; }
+  body.exploring .panel:not(.tall) { height: 38dvh; }
+  .xp-head h2 { font-size: 16px; }
+  .xp-status { font-size: 13px; margin: 2px 0 4px; }
   .account-btn { padding: 0 14px; }
   .pl-dates .two { grid-template-columns: 1fr; }
   .report-btn { padding: 0 14px; }

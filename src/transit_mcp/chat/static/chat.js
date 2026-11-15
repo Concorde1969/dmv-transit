@@ -9,12 +9,14 @@ const ICON = {
   go: svg('<path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>'),
   plan: svg('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h3"/>'),
   ask: svg('<path d="M21 12a8 8 0 0 1-11.5 7.2L4 20l1-4.6A8 8 0 1 1 21 12z"/>'),
+  map: svg('<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/>'),
 };
 
 // What the welcome offers: a trip, planning a visit, and the questions people ask most.
 const STARTERS = [
   { icon: "go", text: "Take me to the National Mall" },
   { icon: "plan", text: "Plan my visit, day by day", planner: true },
+  { icon: "map", text: "Explore every stop and route on the map", explore: true },
   { icon: "ask", text: "I've never used the Metro. How does it work?" },
   { icon: "ask", text: "How do I pay to ride the bus or the train?" },
   { icon: "ask", text: "Which stations have working elevators right now?" },
@@ -226,7 +228,9 @@ const chips = $("chips");
 for (const s of STARTERS) {
   chips.appendChild(chipButton(s.text, () => {
     track("starter_used", { detail: { kind: s.icon } });
-    s.planner ? planner() : send(s.text);
+    if (s.planner) planner();
+    else if (s.explore) window.dmvExplore?.open();
+    else send(s.text);
   }, ICON[s.icon]));
 }
 

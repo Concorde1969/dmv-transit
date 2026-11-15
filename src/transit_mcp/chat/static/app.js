@@ -121,6 +121,7 @@ async function initMap() {
   map.touchZoomRotate.disableRotation();
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
   map.on("load", addTripLayers);
+  window.dmvMap = map;    // explore.js draws the whole network on it
   applyPadding();
   addEventListener("resize", applyPadding);
 }
