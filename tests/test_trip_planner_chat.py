@@ -80,7 +80,7 @@ def call(t, tool, **args):
 def test_every_tool_asks_signed_out_riders_to_sign_in(tools):
     tools.user = None
     for spec in trip_tools.TOOLS:
-        if spec["name"] == "show_trip":          # showing a trip works for everyone
+        if spec["name"] in ("show_trip", "track_flight", "get_to_flight"):   # open to all
             continue
         args = {k: "x" for k in spec["input_schema"].get("required", [])}
         if spec["name"] in ("remove_saved_place",):

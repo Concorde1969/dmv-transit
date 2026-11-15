@@ -1,5 +1,6 @@
 // The assistant, in the panel's thread: questions answered by Claude from the agencies'
 // data (/api/chat). It can also put trips on the map (the "show_trip" event).
+import { flightCard } from "/static/flightcard.js";
 import { track } from "/static/track.js";
 import { announce, append, follow, isEmpty, showIntro, thread } from "/static/thread.js";
 
@@ -10,12 +11,14 @@ const ICON = {
   plan: svg('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h3"/>'),
   ask: svg('<path d="M21 12a8 8 0 0 1-11.5 7.2L4 20l1-4.6A8 8 0 1 1 21 12z"/>'),
   map: svg('<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/>'),
+  flight: svg('<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>'),
 };
 
 // What the welcome offers: a trip, planning a visit, and the questions people ask most.
 const STARTERS = [
   { icon: "go", text: "Take me to the National Mall" },
   { icon: "plan", text: "Plan my visit, day by day", planner: true },
+  { icon: "flight", text: "Help me get to my flight on time" },
   { icon: "map", text: "Explore every stop and route on the map", explore: true },
   { icon: "ask", text: "I've never used the Metro. How does it work?" },
   { icon: "ask", text: "How do I pay to ride the bus or the train?" },
@@ -144,6 +147,12 @@ async function send(text) {
           // The trip card goes here in the thread; the rest of the answer follows it.
           if (!answer.trim()) bubble.closest(".msg").remove();
           window.dmvTrip?.show(evt);
+          bubble = addMessage("assistant", { more: true }); answer = "";
+          append(thinking);
+        } else if (evt.type === "flight") {
+          // A flight card (track_flight / get_to_flight), with the answer after it.
+          if (!answer.trim()) bubble.closest(".msg").remove();
+          append(flightCard(evt));
           bubble = addMessage("assistant", { more: true }); answer = "";
           append(thinking);
         } else if (evt.type === "account_changed") {

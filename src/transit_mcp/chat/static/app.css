@@ -522,6 +522,38 @@ details.trace summary { cursor: pointer; }
 .pl-dates .two > div { display: grid; gap: 4px; }
 .form-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
 
+/* ---------- flight cards (FlightAware) ---------- */
+.flight-card { margin: 4px 0 16px; padding: 12px 14px; border-radius: 20px; background: #fff;
+  border: 2px solid var(--rule); }
+.flight-card.cancelled { border-color: var(--late); }
+.fc-head { display: flex; align-items: center; gap: 10px; }
+.fc-head svg { color: var(--action); flex: none; }
+.fc-head strong { font-size: 19px; }
+.fc-status { margin-left: auto; font-size: 14px; font-weight: 650; padding: 3px 10px;
+  border-radius: 999px; }
+.fc-status.ok { color: var(--live); background: var(--live-tint); }
+.fc-status.late, .fc-status.bad { color: var(--late); background: var(--late-tint); }
+.fc-route { display: flex; align-items: center; gap: 12px; margin: 8px 0 6px; }
+.fc-route span:not(.fc-arrow) { display: flex; flex-direction: column; line-height: 1.15; }
+.fc-route b { font-size: 24px; letter-spacing: .01em; }
+.fc-route small { color: var(--ink-2); font-size: 13.5px; }
+.fc-arrow { flex: 1; height: 2px; background: var(--rule); position: relative; max-width: 120px; }
+.fc-arrow::after { content: ""; position: absolute; right: -1px; top: -4px; border: 5px solid transparent;
+  border-left: 7px solid var(--rule); border-right: 0; }
+.fc-times { margin: 4px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px;
+  align-items: baseline; }
+.fc-times div { display: contents; }    /* both rows share one grid, so the times line up */
+.fc-times dt { color: var(--ink-2); font-size: 14.5px; }
+.fc-times dd { margin: 0; }
+.fc-times dd small { display: block; color: var(--ink-2); font-size: 14px; }
+.fc-time { font-weight: 700; font-size: 18px; font-variant-numeric: tabular-nums; }
+.fc-times s { color: var(--ink-3); font-size: 14px; }
+.fc-plan { margin: 10px 0 0; padding: 10px 12px; border-radius: 14px; background: var(--live-tint); }
+.fc-plan strong { font-size: 18px; }
+.fc-plan small { display: block; color: var(--ink-2); font-size: 13.5px; margin-top: 2px; }
+.flight-card.cancelled .fc-plan { display: none; }
+.fc-src { margin: 8px 0 0; font-size: 12.5px; color: var(--ink-3); }
+
 /* ---------- Explore: every stop and route ---------- */
 .explore-btn svg { color: var(--action); }
 .explore-btn[aria-pressed="true"] { background: var(--action); color: #fff; }

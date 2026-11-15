@@ -153,6 +153,20 @@ Codes go out by SMTP (Amazon SES on the public site; see deploy/README.md); a lo
 server without SMTP prints the code in its log. A code works for 10 minutes and 5
 tries.
 
+### Flights at IAD, DCA and BWI
+
+Ask the assistant about a flight ("I'm on UA 123 out of DCA at 6, leaving from the Capital
+Hilton") and it looks the flight up with FlightAware AeroAPI (`flights.py`): gate times,
+terminal, gate, baggage claim, delays and cancellations, shown as a flight card. For a
+departure it works out when to be at the airport (`FLIGHT_BEFORE_DOMESTIC_MIN` 120 /
+`FLIGHT_BEFORE_INTERNATIONAL_MIN` 180, with "your airline's advice comes first") and plans
+the bus or train to arrive by then; for an arrival, when the rider can leave
+(`FLIGHT_AFTER_*`: deplaning, bags, customs) and the trip from the terminal. Trips that
+start within three hours also go on the map with live times. Needs `FLIGHTAWARE_API_KEY`
+(Standard plan or higher for a public site). Each look-up costs $0.005 and is cached 10
+minutes per flight; `FLIGHTAWARE_MONTHLY_DOLLARS` (default 5) caps the month. Flight
+look-ups run only in the web app, not on the public MCP server.
+
 ### Plan my trip (assistant)
 
 The site is one panel beside the map: "Where to?" at the top, then a single

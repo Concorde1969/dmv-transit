@@ -46,6 +46,20 @@ class Settings(BaseSettings):
         default=1000, alias="GOOGLE_PLACES_SEARCH_MONTHLY_BUDGET")
     geocode_api_key: str | None = Field(default=None, alias="GEOCODE_API_KEY")
 
+    # --- Flights at IAD, DCA and BWI (FlightAware AeroAPI; flights.py) ---
+    flightaware_api_key: str | None = Field(default=None, alias="FLIGHTAWARE_API_KEY")
+    # Monthly spending cap; each flight look-up costs $0.005 (cached 10 minutes).
+    flightaware_monthly_dollars: float = Field(default=5.0, alias="FLIGHTAWARE_MONTHLY_DOLLARS")
+    # When to be at the airport before a departure, and when a rider is ready to leave
+    # after landing (deplaning, bags; customs on international flights). The assistant
+    # says the airline's own advice comes first.
+    flight_before_domestic_min: int = Field(default=120, alias="FLIGHT_BEFORE_DOMESTIC_MIN")
+    flight_before_international_min: int = Field(default=180,
+                                                  alias="FLIGHT_BEFORE_INTERNATIONAL_MIN")
+    flight_after_domestic_min: int = Field(default=30, alias="FLIGHT_AFTER_DOMESTIC_MIN")
+    flight_after_international_min: int = Field(default=60,
+                                                alias="FLIGHT_AFTER_INTERNATIONAL_MIN")
+
     # Storage
     db_path: Path = Field(default=Path("./transit.db"), alias="TRANSIT_MCP_DB")
     cache_dir: Path = Field(default=Path("./.cache"), alias="TRANSIT_MCP_CACHE_DIR")

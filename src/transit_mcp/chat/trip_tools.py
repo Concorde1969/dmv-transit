@@ -18,8 +18,10 @@ from zoneinfo import ZoneInfo
 
 from transit_mcp.accounts import KINDS, PlaceError, PlaceInput, PlanStop
 from transit_mcp.db.database import Database
+from transit_mcp.flights import FlightBudgetSpent, FlightClient, FlightError
 from transit_mcp.geocode import BudgetSpent, GeocodeError, PlaceSearch, in_region
 from transit_mcp.planning import itinerary
+from transit_mcp.planning.airports import load_links
 from transit_mcp.planning.live import Point
 
 log = logging.getLogger("transit_mcp.trip_tools")
@@ -37,7 +39,38 @@ _WHERE = ("Where it is: a 'point' (\"lat,lon\") from find_places or geocode_addr
 _DAY = "The date, YYYY-MM-DD."
 _HHMM = "24-hour local time, HH:MM (e.g. 14:30)."
 
+_FLIGHT = ("The flight number: airline code and number, e.g. 'UA 123', 'AA2045' or "
+           "'B6 1234'.")
+# Show the live trip card too when the airport trip starts this soon.
+SHOW_LIVE_WITHIN = timedelta(hours=3)
+
 TOOLS = [
+    {"name": "track_flight",
+     "description": "Live status of a flight to or from Washington Dulles (IAD), Reagan "
+                    "National (DCA) or BWI, from FlightAware: scheduled and expected gate "
+                    "departure and arrival times, terminal, gate, baggage claim, delays and "
+                    "cancellations, plus when to be at the airport (departures) or when the "
+                    "rider will be ready to leave it (arrivals). The rider sees it as a "
+                    "flight card. Use it for every flight question; never guess flight "
+                    "times, gates or terminals. Works without signing in.",
+     "input_schema": {"type": "object", "properties": {
+         "flight": {"type": "string", "description": _FLIGHT}}, "required": ["flight"]}},
+    {"name": "get_to_flight",
+     "description": "Transit for a flight at IAD, DCA or BWI. For a departure: the bus or "
+                    "train trip from the rider's place that reaches the airport terminal by "
+                    "the time to be there. For an arrival: the trip from the terminal to "
+                    "the rider's place once they're ready to leave. Includes the flight's "
+                    "live status (as track_flight) and the airport's own directions between "
+                    "the terminal and its station. Transit times are from the timetable; "
+                    "when the trip starts within a few hours, live options also appear on "
+                    "the rider's map. Works without signing in.",
+     "input_schema": {"type": "object", "properties": {
+         "flight": {"type": "string", "description": _FLIGHT},
+         "place": {"type": "string", "description": "Where the rider starts (departures) "
+                                                    "or is going (arrivals). " + _WHERE},
+         "place_name": {"type": "string", "description": "Optional. The name to show for "
+                                                        "place, e.g. 'Capital Hilton'."}},
+         "required": ["flight", "place"]}},
     {"name": "show_trip",
      "description": "Put live trip options on the rider's screen: the page plans the trip "
                     "(buses, trains, walking, leaving now) and shows it on the map and in "
@@ -142,6 +175,21 @@ CHANGES = frozenset({"save_place", "remove_saved_place", "add_to_plan", "change_
                      "remove_from_plan"})
 
 PLANNING_PROMPT = """
+## Flights at IAD, DCA and BWI
+When the rider has a flight to catch or is landing, ask for the flight number (airline \
+code and number) if they haven't given it, and where they're starting from or going.
+- Call get_to_flight with both (or track_flight for status alone). Flight times, \
+terminals, gates, baggage claim, delays and cancellations come ONLY from these tools \
+(FlightAware); say so, and never guess them.
+- Departures: tell them when to be at the airport (the result's be_at_airport_by), that \
+this allows the result's minutes_before (the airline's own advice comes first), when to \
+leave and which bus or train, and the airport's terminal directions from the result.
+- Arrivals: when they'll be ready to leave (ready_to_leave_at: time to get off the plane \
+and collect bags, and through customs on international flights), then the trip.
+- If the flight is cancelled or diverted, or the plan says they'd arrive late, say so \
+plainly and tell them to contact the airline.
+- The rider sees a flight card; keep the reply short and don't repeat every time on it.
+
 ## Showing trips on the rider's screen
 The rider sees a map and your conversation side by side, with trip cards in the chat.
 - When they want to go somewhere now or soon, call show_trip with the place's everyday \
@@ -261,6 +309,12 @@ class TripTools:
         self.events: list[dict] = []
 
     # -- plumbing -------------------------------------------------------------------------
+    def _flights(self) -> FlightClient:
+        if getattr(self._state, "flights", None) is None:
+            self._state.flights = FlightClient.from_settings(self.settings,
+                                                             http=self._trips().http)
+        return self._state.flights
+
     def _places(self) -> PlaceSearch:
         if getattr(self._state, "places_search", None) is None:
             self._state.places_search = PlaceSearch.for_search(self.settings,
@@ -357,6 +411,102 @@ class TripTools:
                        "they can tap a trip for directions. Don't list routes, times or "
                        "fares. When they ask about the trip, their next message says which "
                        "option they picked.")
+        return out
+
+    def _flight_info(self, flight: str) -> dict:
+        """The flight's summary, or an error dict for the model."""
+        try:
+            info = self._flights().status(flight)
+        except FlightBudgetSpent as exc:
+            return {"error": "lookups_paused", "message": str(exc)}
+        except FlightError as exc:
+            return {"error": "flight_unavailable", "message": str(exc)}
+        if info is None:
+            return {"error": "flight_not_found",
+                    "message": f"No flight {flight} to or from IAD, DCA or BWI between 12 "
+                               "hours ago and two days from now. Check the airline code and "
+                               "number with the rider."}
+        return info
+
+    def _guidance(self, info: dict) -> dict | None:
+        """When to be at the airport (departure) or ready to leave it (arrival), in local
+        time; None if there's nothing to plan (cancelled, or already gone)."""
+        if info["cancelled"]:
+            return None
+        s, intl = self.settings, info["international"]
+        dep, arr = info["departure"], info["arrival"]
+        dep_at = dep["estimated"] or dep["scheduled"]
+        arr_at = arr["estimated"] or arr["scheduled"]
+        if info["origin"]["ours"] and dep_at and not dep["actual"]:
+            before = s.flight_before_international_min if intl else s.flight_before_domestic_min
+            be_by = datetime.fromisoformat(dep_at).astimezone(self.tz) - timedelta(minutes=before)
+            return {"kind": "departure", "airport": info["origin"]["ours"],
+                    "be_at_airport_by": be_by.isoformat(timespec="minutes"),
+                    "minutes_before": before, "terminal": dep["terminal"]}
+        if info["destination"]["ours"] and arr_at and not info["diverted"]:
+            after = s.flight_after_international_min if intl else s.flight_after_domestic_min
+            ready = datetime.fromisoformat(arr["actual"] or arr_at).astimezone(self.tz) \
+                + timedelta(minutes=after)
+            return {"kind": "arrival", "airport": info["destination"]["ours"],
+                    "ready_to_leave_at": ready.isoformat(timespec="minutes"),
+                    "minutes_after": after, "terminal": arr["terminal"],
+                    "baggage_claim": arr["baggage_claim"]}
+        return None
+
+    def _track_flight(self, flight: str) -> dict:
+        info = self._flight_info(flight)
+        if "error" in info:
+            return info
+        guidance = self._guidance(info)
+        self.events.append({"type": "flight", "flight": info, "guidance": guidance})
+        return {"flight": info, "guidance": guidance, "source": "FlightAware",
+                "note": "Times are local to each airport. The rider sees this as a flight "
+                        "card; the airline's own advice on when to arrive comes first."}
+
+    def _get_to_flight(self, flight: str, place: str, place_name: str | None = None) -> dict:
+        out = self._track_flight(flight)
+        if "error" in out:
+            return out
+        g = out["guidance"]
+        if g is None:
+            out["plan"] = {"status": "none", "note": "The flight is cancelled, diverted or "
+                                                      "has already left; there's no airport "
+                                                      "trip to plan."}
+            return out
+        end = self._end(place, place_name)
+        if end is None:
+            out["plan"] = self._where_error(place)
+            return out
+        link = {a.code: a for a in load_links()}[g["airport"]]
+        airport = Point(link.terminal[0], link.terminal[1], link.name)
+        here = Point(end["lat"], end["lon"], end["label"])
+        departure = g["kind"] == "departure"
+        when = datetime.fromisoformat(g["be_at_airport_by" if departure else "ready_to_leave_at"])
+        now = datetime.now(self.tz)
+        late = when <= now
+        start = now if late else when
+        with Database(self.settings.db_path) as db:
+            agencies = self._trips().agencies
+            if departure and not late:
+                plan = itinerary.route(db, self.settings, agencies, here, airport, when.date(),
+                                       arrive_by=f"{when:%H:%M}", now=now)
+            else:
+                origin, dest = (here, airport) if departure else (airport, here)
+                plan = itinerary.route(db, self.settings, agencies, origin, dest, start.date(),
+                                       leave_at=f"{start:%H:%M}", now=now)
+        if late and departure:
+            plan["note"] = ("It's already past the time to be at the airport; these are the "
+                            "trips leaving now. Tell the rider to contact the airline.")
+        out["plan"] = plan
+        out["airport_directions"] = {"text": link.from_station if departure else link.to_station,
+                                     "source": link.source}
+        # Leaving soon: the live options go on the rider's map too.
+        if start - now <= SHOW_LIVE_WITHIN:
+            terminal = {"lat": link.terminal[0], "lon": link.terminal[1], "label": link.name,
+                        "address": None, "saved": False}
+            self.events.append({"type": "show_trip", "from": end if departure else terminal,
+                                "to": terminal if departure else end})
+            out["live_on_screen"] = True
         return out
 
     def _find_places(self, query: str, near: str | None = None, open_now: bool = False) -> dict:
