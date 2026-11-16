@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Offline - DMV Transit</title>
+<meta name="theme-color" content="#064F30" />
+<link rel="icon" href="/static/brand/icon-192.png" type="image/png" sizes="192x192" />
+<style>
+  :root { --bg: #E7EEE6; --panel: #FAFBF6; --ink: #1B2621; --ink-2: #4A5651; --brand: #064F30;
+          --cream: #EDEBE0; --stripe: #DE6A3A; --action: #0F7368;
+          --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "SF Pro Text",
+                  "Helvetica Neue", Arial, sans-serif; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { display: grid; place-items: center; padding: calc(16px + env(safe-area-inset-top)) 16px 16px;
+         background: var(--bg); color: var(--ink); font: 18px/1.55 var(--font); }
+  main { width: min(440px, 100%); background: var(--panel); border-radius: 22px; overflow: hidden;
+         box-shadow: 0 18px 40px -18px rgba(32, 36, 42, .45); }
+  header { background: var(--brand); border-bottom: 4px solid var(--stripe); padding: 14px 20px 10px; }
+  header img { display: block; width: 104px; height: auto; }
+  .body { padding: 18px 22px 22px; }
+  h1 { margin: 0 0 8px; font-size: 24px; line-height: 1.2; }
+  p { margin: 0 0 14px; color: var(--ink-2); }
+  button { min-height: 52px; padding: 0 22px; border: 0; border-radius: 14px; background: var(--action);
+           color: #fff; font: 650 18px var(--font); cursor: pointer; }
+  button:focus-visible { outline: 3px solid var(--action); outline-offset: 3px; }
+</style>
+</head>
+<body>
+<main>
+  <header><img src="/static/brand/logo.png" width="132" height="94" alt="DMV Transit" /></header>
+  <div class="body">
+    <h1>You're offline</h1>
+    <p>Live trips, the map and the assistant need a connection. Once you're back online,
+    everything picks up where you left off.</p>
+    <p>No signal underground? Metro station signs and platform screens show the next trains.</p>
+    <button type="button" onclick="location.reload()">Try again</button>
+  </div>
+</main>
+</body>
+</html>

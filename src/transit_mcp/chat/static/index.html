@@ -19,6 +19,11 @@
 <link rel="icon" href="/static/brand/icon-32.png" type="image/png" sizes="32x32" />
 <link rel="icon" href="/static/brand/icon-192.png" type="image/png" sizes="192x192" />
 <link rel="apple-touch-icon" href="/static/brand/icon-180.png" />
+<link rel="manifest" href="/static/manifest.webmanifest" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="DMV Transit" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <link rel="stylesheet" href="/static/map/vendor/maplibre-gl.css" />
 <link rel="preload" href="/static/fonts/KaushanScript-Regular.ttf" as="font" type="font/ttf" crossorigin />
 <link rel="stylesheet" href="/static/app.css" />
@@ -138,6 +143,7 @@
     chats are kept for up to one year to improve this service, without names or exact
     locations.</span>
     <a href="#" id="aboutLink">About this site</a> &middot; <a href="/privacy">Privacy</a>
+    <span id="installWrap" hidden>&middot; <a href="#" id="installLink">Install the app</a></span>
     <span class="fine-credit">&middot; Created by Kaleb Neal (<a href="https://www.linkedin.com/in/kaleb-neal" target="_blank" rel="noopener noreferrer">LinkedIn</a>)</span>
   </div>
 </section>

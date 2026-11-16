@@ -50,7 +50,9 @@ STATIC_DIR = Path(__file__).parent / "static"
 # know .mjs (MapLibre ships as .mjs).
 mimetypes.add_type("text/javascript", ".mjs")
 mimetypes.add_type("application/x-protobuf", ".pbf")
-mimetypes.add_type("image/webp", ".webp")    # missing from some servers' MIME lists
+# Missing from some servers' MIME lists:
+mimetypes.add_type("image/webp", ".webp")
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 MAX_BODY_BYTES = 8 * 1024
 log = logging.getLogger("transit_mcp.chat")
 
@@ -146,6 +148,14 @@ app.include_router(account_router)
 @app.get("/")
 async def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/sw.js", include_in_schema=False)
+async def service_worker() -> FileResponse:
+    """The service worker (installing the site as an app, the offline page). Served from
+    the root so it covers the whole site; always checked for a newer copy."""
+    return FileResponse(STATIC_DIR / "sw.js", media_type="text/javascript",
+                        headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/privacy")

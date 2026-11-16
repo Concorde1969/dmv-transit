@@ -845,7 +845,31 @@ if (state.to) toInput.value = state.to.label;
 // A visit: where it came from (the other site's name only) and the screen size.
 let referrer = "";
 try { const r = document.referrer && new URL(document.referrer); referrer = r && r.host !== location.host ? r.host : ""; } catch (_) {}
-track("page_view", { detail: { referrer, trip_link: Boolean(state.to), screen: innerWidth < 720 ? "phone" : innerWidth < 1100 ? "tablet" : "large" } });
+const installed = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+track("page_view", { detail: { referrer, trip_link: Boolean(state.to), app: installed, screen: innerWidth < 720 ? "phone" : innerWidth < 1100 ? "tablet" : "large" } });
+
+// ------------------------------------------------------------------ install as an app
+// The service worker makes the site installable and gives it an offline page (sw.js).
+if ("serviceWorker" in navigator) {
+  addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+}
+// Browsers that offer installing (Chrome, Edge) show "Install the app" in the fine print.
+let installPrompt = null;
+addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  $("installWrap").hidden = false;
+});
+$("installLink").addEventListener("click", async (e) => {
+  e.preventDefault();
+  if (!installPrompt) return;
+  track("app_install_clicked");
+  installPrompt.prompt();
+  await installPrompt.userChoice.catch(() => null);
+  installPrompt = null;
+  $("installWrap").hidden = true;
+});
+addEventListener("appinstalled", () => { $("installWrap").hidden = true; track("app_installed"); });
 
 initMap();
 if (state.to) planTrip(); else toInput.focus();

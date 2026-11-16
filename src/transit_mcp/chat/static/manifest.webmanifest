@@ -1,0 +1,24 @@
+{
+  "name": "DMV Transit",
+  "short_name": "DMV Transit",
+  "description": "An unofficial trip planner and assistant for buses, trains and Metro across DC, Maryland and Virginia, with live departures. Not affiliated with WMATA or any transit agency.",
+  "id": "/",
+  "start_url": "/?source=app",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#E7EEE6",
+  "theme_color": "#064F30",
+  "lang": "en-US",
+  "categories": ["travel", "navigation"],
+  "icons": [
+    {"src": "/static/brand/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/static/brand/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/static/brand/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
+    {"src": "/static/brand/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ],
+  "shortcuts": [
+    {"name": "Explore the map", "short_name": "Explore", "description": "Every stop and route on the map",
+     "url": "/?explore=1", "icons": [{"src": "/static/brand/icon-192.png", "sizes": "192x192"}]}
+  ]
+}

@@ -278,3 +278,12 @@ $("exploreNone").addEventListener("click", () => {
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && state.on && !popup?.isOpen()) setOn(false); });
 
 window.dmvExplore = { open, close: () => setOn(false) };
+
+// The installed app's "Explore the map" shortcut opens /?explore=1.
+if (new URLSearchParams(location.search).get("explore") === "1") {
+  const started = Date.now();
+  const wait = setInterval(() => {
+    if (window.dmvMap) { clearInterval(wait); open(); }
+    else if (Date.now() - started > 15000) clearInterval(wait);
+  }, 200);
+}
