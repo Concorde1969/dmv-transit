@@ -35,6 +35,7 @@ from transit_mcp.ingest.wmata_api import (
     normalize_rail_incidents,
     normalize_station_to_station,
     normalize_stations,
+    parking_details,
     parking_station_codes,
 )
 from transit_mcp.models import Document
@@ -178,6 +179,10 @@ class WmataApiSource:
         try:
             _, parking_data = client.station_parking()
             parking = parking_station_codes(parking_data)
+            details = parking_details(parking_data)
+            if details:      # keep the last good copy if WMATA sends nothing
+                db.replace_wmata_parking(details)
+            stats["parking_stations"] = len(details)
         except Exception as exc:  # noqa: BLE001
             stats["errors"].append(f"parking: {exc}")
             parking = set()

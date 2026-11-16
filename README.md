@@ -153,6 +153,16 @@ Codes go out by SMTP (Amazon SES on the public site; see deploy/README.md); a lo
 server without SMTP prints the code in its log. A code works for 10 minutes and 5
 tries.
 
+### Explore and parking
+
+The map's **Explore** button shows every route and stop in the region from the GTFS
+feeds (`chat/explore_api.py`), the multi-agency transfer hubs, and parking: Metrorail
+station lots from WMATA's parking API (spaces, rider and non-rider rates, refreshed with
+the data), plus MARC and VRE station lots, Union Station's garage and the DCA, IAD and
+BWI airport lots curated from the operators' own pages in
+`planning/parking.toml` (each with its source and the date it was checked). The
+`find_parking` MCP tool answers parking questions from the same data.
+
 ### Flights at IAD, DCA and BWI
 
 Ask the assistant about a flight ("I'm on UA 123 out of DCA at 6, leaving from the Capital

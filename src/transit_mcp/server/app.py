@@ -99,6 +99,7 @@ TITLES = {
     "how_to_pay": "How to pay",
     "plan_connection": "Connections between agencies",
     "estimate_trip_cost": "Trip cost estimate",
+    "find_parking": "Parking and park & ride",
 }
 
 
@@ -432,6 +433,41 @@ def find_stops_near(place: str, radius_m: int = 400, agency: str | None = None) 
     """
     with _db() as db:
         return regional.find_stops_near(db, place, radius_m=radius_m, agency=agency)
+
+
+@tool
+def find_parking(place: str, radius_m: int = 3000) -> dict:
+    """Parking and park & ride near a place: Metrorail station lots (all-day spaces and the
+    daily rate for riders and non-riders), MARC and VRE station lots, Union Station's
+    garage, and parking at Reagan National (DCA), Dulles (IAD) and BWI airports with each
+    lot's rate, spaces and how it connects to the terminal. Also each operator's general
+    rules (when it's free, how to pay, multi-day and overnight parking). Use it for every
+    parking question.
+
+    Args:
+        place: An address, landmark, station, airport ("DCA", "Dulles", "BWI") or "lat,lon".
+        radius_m: How far to look, in meters (default 3000; at most 20000).
+    """
+    from transit_mcp.planning import parking
+
+    with _db() as db:
+        p = _place(db, place)
+        if p is None:
+            return {"place": place, "error": "place_not_found",
+                    "message": "Couldn't find that place. Ask for a station, address or town."}
+        lots = parking.near(db, p.lat, p.lon, max(200, min(int(radius_m), 20000)))
+    operators = {lot["rules"] for lot in lots if lot.get("rules")}
+    all_rules = parking.rules()
+    out = {
+        "place": p.label, "lots": lots,
+        "rules": {k: all_rules[k] for k in sorted(operators) if k in all_rules},
+        "note": ("Spaces and rates come from each operator: Metrorail's from WMATA's data at "
+                 "each refresh, the others from the operators' pages on the date checked. "
+                 "Lots can fill early; confirm with the operator before you park."),
+    }
+    if not lots:
+        out["message"] = "No parking we know of within that distance. Try a larger radius."
+    return out
 
 
 @tool

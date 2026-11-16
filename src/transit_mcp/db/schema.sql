@@ -129,6 +129,21 @@ CREATE TABLE IF NOT EXISTS stations (
 );
 CREATE INDEX IF NOT EXISTS idx_stations_latlon ON stations(lat, lon);
 
+-- Metrorail station parking (WMATA jStationParking): spaces and daily rates per station.
+-- Costs in dollars; NULL where WMATA gives none.
+CREATE TABLE IF NOT EXISTS wmata_parking (
+    code                    TEXT PRIMARY KEY,
+    all_day_spaces          INTEGER NOT NULL DEFAULT 0,
+    rider_cost              REAL,
+    nonrider_cost           REAL,
+    saturday_rider_cost     REAL,
+    saturday_nonrider_cost  REAL,
+    short_term_spaces       INTEGER NOT NULL DEFAULT 0,
+    short_term_notes        TEXT,
+    notes                   TEXT,
+    retrieved_at            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Station order along each Metrorail line (from WMATA's rail GTFS; WMATA's jPath
 -- endpoint omits shared stations on some lines, so it can't be used for transfers).
 CREATE TABLE IF NOT EXISTS rail_line_stops (

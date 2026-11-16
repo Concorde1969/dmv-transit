@@ -1,0 +1,721 @@
+# Parking and park & ride, beyond Metrorail's own lots (those come from WMATA's API at
+# every data refresh: see wmata_parking). Copied from each operator's own pages, checked
+# on the date given; re-check `source` when an operator changes its lots or prices.
+#
+# [[lot]]
+#   id         unique slug
+#   operator   who runs the parking (shown to riders)
+#   kind       station (a rail station's lot) | garage | airport
+#   name       what riders see
+#   stop       "feed:NAME PREFIX": placed at that feed's stop(s) whose name starts so
+#   at         [lat, lon] instead of a stop (airports: the terminal, from airports.toml)
+#   same_as    "wmata:CODE": the same lot as a Metrorail station's; folded into that one
+#   available  false where the operator says there is no parking
+#   spaces, cost, address, notes, options (airports: one entry per lot), source, checked
+
+# --- Rules that apply across an operator's lots --------------------------------------
+
+[rules.wmata]
+source = "https://www.wmata.com/ride/guides/parking.html"
+checked = "2026-11-16"
+text = """Metro has parking at 51 stations. Daily (Park & Ride) parking is a flat fee for \
+the day that varies by station, paid with SmarTrip, a contactless card or phone \
+(tap the same card you rode with for the rider rate, and leave within two hours of \
+starting your ride), or a credit card (a higher non-rider fee applies at 13 stations \
+when the card is swiped). Parking is free for Metro riders on weekends and federal \
+holidays, both hourly and daily. Kiss & Ride lots have hourly parking (pay stations or \
+the ParkMobile app, which adds a service fee) and 15-minute pick-up spaces. Monthly \
+reserved spaces at 40 stations cost $45 or $65 a month plus the daily rate; reserved \
+spaces open to everyone after 10 am. Multi-day parking, up to 10 days, is allowed \
+only at Greenbelt, Huntington, Franconia-Springfield and Wiehle-Reston East. Questions: \
+parking@wmata.com or 202-GO-METRO (202-466-3876)."""
+
+[rules.marc]
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+text = """Most MARC park and ride lots are free. Parking is limited and many lots fill \
+before rush hour is over; Odenton, Point of Rocks and West Baltimore are among the \
+first to fill. Lots run by WMATA (New Carrollton, Greenbelt, College Park, Rockville) \
+follow WMATA's rules and fees."""
+
+[rules.vre]
+source = "https://www.vre.org/"
+checked = "2026-11-16"
+text = """Parking is free at most VRE stations, and cars can be left overnight in most \
+lots (always at your own risk). There is no parking at Alexandria, Crystal City or \
+L'Enfant. Union Station has a large parking garage for a fee. Franconia-Springfield \
+uses Metro's parking facility (SmarTrip required; WMATA 202-637-7000). Parking at \
+Quantico may require security checks. Manassas needs a permit. Fredericksburg has 644 \
+free spaces in lots a few blocks from the station, some limited by residency."""
+
+# --- MARC: Penn Line -------------------------------------------------------------------
+
+[[lot]]
+id = "marc-perryville"
+operator = "MARC"
+kind = "station"
+name = "Perryville MARC station"
+stop = "marc:PERRYVILLE MARC"
+address = "650 Broad St. (Lots A and B); more at the church lot about a block away (Lot C)"
+spaces = 169
+cost = "Free"
+notes = "Parking isn't allowed at the Town Hall lot in Perryville; cars there are towed."
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-aberdeen"
+operator = "MARC"
+kind = "station"
+name = "Aberdeen MARC station"
+stop = "marc:ABERDEEN MARC"
+address = "US Rt. 40 East at 18 E. Belair Ave."
+spaces = 188
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-edgewood"
+operator = "MARC"
+kind = "station"
+name = "Edgewood MARC station"
+stop = "marc:EDGEWOOD MARC"
+address = "2127 Old Edgewood Rd."
+spaces = 294
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-martin-state-airport"
+operator = "MARC"
+kind = "station"
+name = "Martin State Airport MARC station"
+stop = "marc:MARTIN AIRPORT MARC"
+address = "2710 Eastern Blvd."
+spaces = 321
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-penn-station"
+operator = "MARC"
+kind = "station"
+name = "Baltimore Penn Station"
+stop = "marc:PENN STATION MARC"
+address = "1500 N. Charles St."
+spaces = 550
+cost = "Paid (call 410-783-0213 for rates)"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-west-baltimore"
+operator = "MARC"
+kind = "station"
+name = "West Baltimore MARC station"
+stop = "marc:WEST BALTIMORE MARC"
+address = "401 Smallwood St."
+spaces = 327
+cost = "Free"
+notes = "One of the first MARC lots to fill in the morning."
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-halethorpe"
+operator = "MARC"
+kind = "station"
+name = "Halethorpe MARC station"
+stop = "marc:HALETHORPE MARC"
+address = "5833 Southwestern Blvd."
+spaces = 928
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-bwi-rail"
+operator = "MARC"
+kind = "station"
+name = "BWI Rail Station garage"
+stop = "marc:BWI RAIL STATION MARC"
+address = "2 Amtrak Way"
+spaces = 3187
+cost = "$12.00 a day"
+notes = """Free for MARC riders who buy monthly or Transit Link Card tickets through \
+Commuter Direct's Ticket-by-Mail program and register with LAZ Parking (a $20 card \
+activation fee; tickets from the CharmPass app or ticket machines don't qualify). \
+Commuter Direct: 703-228-7433."""
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-odenton"
+operator = "MARC"
+kind = "station"
+name = "Odenton MARC station"
+stop = "marc:ODENTON MARC"
+address = "1400 Odenton Rd."
+spaces = 1977
+cost = "Free"
+notes = "One of the first MARC lots to fill in the morning."
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-bowie-state"
+operator = "MARC"
+kind = "station"
+name = "Bowie State MARC station"
+stop = "marc:BOWIE STATE MARC"
+address = "13900 Old Jericho Park Rd."
+spaces = 675
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-seabrook"
+operator = "MARC"
+kind = "station"
+name = "Seabrook MARC station"
+stop = "marc:SEABROOK MARC"
+address = "6221 Seabrook Rd."
+spaces = 264
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-new-carrollton"
+operator = "MARC"
+same_as = "wmata:D13"
+name = "New Carrollton (Metro garage)"
+spaces = 3519
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+# --- MARC: Camden Line ------------------------------------------------------------------
+
+[[lot]]
+id = "marc-camden-station"
+operator = "MARC"
+kind = "station"
+name = "Camden Station"
+stop = "marc:CAMDEN STATION MARC"
+address = "301 W. Camden St."
+spaces = 1004
+cost = "$15.00 a day"
+notes = "Park in Lots B or C on non-game days only."
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-st-denis"
+operator = "MARC"
+kind = "station"
+name = "St. Denis MARC station"
+stop = "marc:ST DENIS MARC"
+address = "1734 Arlington Ave."
+spaces = 55
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-dorsey"
+operator = "MARC"
+kind = "station"
+name = "Dorsey MARC station"
+stop = "marc:DORSEY MARC"
+address = "7000 Route 100 between U.S. 1 and MD 295"
+spaces = 750
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-jessup"
+operator = "MARC"
+kind = "station"
+name = "Jessup MARC station"
+stop = "marc:JESSUP MARC"
+address = "8010 Old Jessup Rd."
+spaces = 57
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-savage"
+operator = "MARC"
+kind = "station"
+name = "Savage MARC station"
+stop = "marc:SAVAGE MARC"
+address = "9009 Dorsey Run Rd."
+spaces = 978
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-laurel-racetrack"
+operator = "MARC"
+kind = "station"
+name = "Laurel Racetrack MARC station"
+stop = "marc:LAUREL RACETRACK MARC"
+address = "Laurel Racetrack Rd. between U.S. 1 and MD 198"
+spaces = 700
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-laurel"
+operator = "MARC"
+kind = "station"
+name = "Laurel MARC station"
+stop = "marc:LAUREL MARC"
+address = "22 Main St."
+spaces = 504
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-muirkirk"
+operator = "MARC"
+kind = "station"
+name = "Muirkirk MARC station"
+stop = "marc:MUIRKIRK MARC"
+address = "7012-B Muirkirk Rd."
+spaces = 650
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-greenbelt"
+operator = "MARC"
+same_as = "wmata:E10"
+name = "Greenbelt (Metro lot)"
+spaces = 3999
+notes = """Residential streets on the west side of the station are for residents with \
+permits only; other cars are ticketed and towed."""
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-college-park"
+operator = "MARC"
+same_as = "wmata:E09"
+name = "College Park (Metro garage)"
+spaces = 530
+notes = """Residential streets on the west side of the station are for residents with \
+permits only. The post office lot has a strictly enforced 30-minute limit."""
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-riverdale"
+operator = "MARC"
+kind = "station"
+name = "Riverdale Park Town Center MARC station"
+stop = "marc:RIVERDALE MARC"
+address = "6200 Rhode Island Ave."
+spaces = 50
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+# --- MARC: Brunswick Line -----------------------------------------------------------------
+
+[[lot]]
+id = "marc-martinsburg"
+operator = "MARC"
+kind = "station"
+name = "Martinsburg, W.Va. MARC station"
+stop = "marc:MARTINSBURG W VA MARC"
+address = "229 E. Martin St."
+spaces = 81
+cost = "$20 monthly permit, or metered"
+notes = "Permit forms inside the train station; 304-264-2131 ext. 253."
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-duffields"
+operator = "MARC"
+kind = "station"
+name = "Duffields, W.Va. MARC station"
+stop = "marc:DUFFIELDS W VA MARC"
+address = "5057 Flowing Springs Road"
+spaces = 295
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-harpers-ferry"
+operator = "MARC"
+kind = "station"
+name = "Harpers Ferry, W.Va. MARC station"
+stop = "marc:HARPERS FERRY W VA MARC"
+address = "120 Potomac St."
+spaces = 88
+cost = "National Park Service admission: $20 for three days or $35 a year"
+notes = """The lot is part of the National Park: display the park pass in your \
+windshield or you'll be ticketed and towed."""
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-brunswick"
+operator = "MARC"
+kind = "station"
+name = "Brunswick MARC station"
+stop = "marc:BRUNSWICK MD MARC"
+address = "100 S. Maple Ave."
+spaces = 675
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-frederick"
+operator = "MARC"
+kind = "station"
+name = "Frederick MARC station"
+stop = "marc:FREDERICK MARC"
+address = "100 S. East St."
+spaces = 100
+cost = "Paid (call 301-600-1429 for rates)"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-monocacy"
+operator = "MARC"
+kind = "station"
+name = "Monocacy MARC station"
+stop = "marc:MONOCACY MARC"
+address = "7800 Genstar Drive"
+spaces = 916
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-point-of-rocks"
+operator = "MARC"
+kind = "station"
+name = "Point of Rocks MARC station"
+stop = "marc:POINT OF ROCKS MARC"
+address = "4000 Clay St."
+spaces = 503
+cost = "Free"
+notes = "One of the first MARC lots to fill in the morning."
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-dickerson"
+operator = "MARC"
+kind = "station"
+name = "Dickerson MARC station"
+stop = "marc:DICKERSON MARC"
+address = "22211 Mt. Ephraim Rd."
+spaces = 15
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-barnesville"
+operator = "MARC"
+kind = "station"
+name = "Barnesville MARC station"
+stop = "marc:BARNESVILLE MARC"
+address = "8 Beallsville Rd."
+spaces = 77
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-boyds"
+operator = "MARC"
+kind = "station"
+name = "Boyds MARC station"
+stop = "marc:BOYDS MARC"
+address = "15031 Clopper Rd."
+spaces = 15
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-germantown"
+operator = "MARC"
+kind = "station"
+name = "Germantown MARC station"
+stop = "marc:GERMANTOWN MARC"
+address = "19311 Mateny Hill Rd."
+spaces = 657
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-metropolitan-grove"
+operator = "MARC"
+kind = "station"
+name = "Metropolitan Grove MARC station"
+stop = "marc:METROPOLITAN GROVE MARC"
+address = "30 Metropolitan Ct."
+spaces = 355
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-gaithersburg"
+operator = "MARC"
+kind = "station"
+name = "Gaithersburg MARC station"
+stop = "marc:GAITHERSBURG MARC"
+address = "5 S. Summit Ave. at E. Diamond Ave."
+spaces = 680
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-washington-grove"
+operator = "MARC"
+kind = "station"
+name = "Washington Grove MARC station"
+stop = "marc:WASHINGTON GROVE MARC"
+address = "100 Railroad St."
+spaces = 18
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-rockville"
+operator = "MARC"
+same_as = "wmata:A14"
+name = "Rockville (Metro lot)"
+spaces = 532
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-garrett-park"
+operator = "MARC"
+kind = "station"
+name = "Garrett Park MARC station"
+stop = "marc:GARRETT PARK MARC"
+address = "11015 Rokeby Ave."
+spaces = 17
+cost = "Free"
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-kensington"
+operator = "MARC"
+kind = "station"
+name = "Kensington MARC station"
+stop = "marc:KENSINGTON MARC"
+address = "10417 Howard Ave.; 50 more spaces at City Hall (3710 Mitchell Street)"
+spaces = 64
+cost = "Free"
+notes = """Very limited parking at the station, typically full early in the morning. \
+MARC suggests Ride On buses 4, 5 and 33, or walking or biking to the station."""
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+[[lot]]
+id = "marc-silver-spring"
+operator = "MARC"
+kind = "station"
+name = "Silver Spring MARC station"
+stop = "marc:SILVER SPRING MARC"
+address = "1170 Bonifant Street"
+spaces = 716
+cost = "Paid (Montgomery County garages)"
+notes = "All-day spaces are in the adjacent Montgomery County DOT garages (240-777-8740)."
+source = "https://www.mta.maryland.gov/marc-parking-details"
+checked = "2026-11-16"
+
+# --- Union Station (MARC, VRE, Amtrak, Metro, intercity buses) ------------------------------
+
+[[lot]]
+id = "union-station-garage"
+operator = "Union Station Parking Garage"
+kind = "garage"
+name = "Union Station Parking Garage"
+stop = "marc:UNION STATION MARC"
+address = "30 Massachusetts Ave NE (MARC lists 50 Massachusetts Ave NE)"
+spaces = 2194
+cost = "$13 up to 1 hour, $18 for 1 to 2 hours, $23 for 2 to 10 hours, $25 for 10 to 24 hours (daily maximum $26); $52 for 26 to 48 hours, $78 for 48 to 72 hours, then $26 for each further day"
+notes = """Open 24 hours. First 10 minutes free; a lost ticket pays the daily maximum. \
+Validation (machines on the upper level at the garage entrance): $8 up to 1 hour, $10 \
+for 1 to 2 hours. Enter from Massachusetts Ave NE (ramp on the east side of the \
+station) or from H Street NE behind the station. One EV charger on Level 1 opposite \
+the escalator (credit card). The intercity bus terminal is on the garage's main level. \
+Garage: 202-898-1950; on-duty supervisor 202-834-0272."""
+source = "https://www.unionstationdc.com/parking/"
+checked = "2026-11-16"
+
+# --- VRE ---------------------------------------------------------------------------------------
+
+[[lot]]
+id = "vre-alexandria"
+operator = "VRE"
+kind = "station"
+name = "Alexandria VRE station"
+stop = "vre:Alexandria"
+available = false
+cost = "No parking"
+source = "https://www.vre.org/"
+checked = "2026-11-16"
+
+[[lot]]
+id = "vre-crystal-city"
+operator = "VRE"
+kind = "station"
+name = "Crystal City VRE station"
+stop = "vre:Crystal City"
+available = false
+cost = "No parking"
+source = "https://www.vre.org/"
+checked = "2026-11-16"
+
+[[lot]]
+id = "vre-lenfant"
+operator = "VRE"
+kind = "station"
+name = "L'Enfant VRE station"
+stop = "vre:L Enfant"
+available = false
+cost = "No parking"
+source = "https://www.vre.org/"
+checked = "2026-11-16"
+
+[[lot]]
+id = "vre-franconia-springfield"
+operator = "VRE"
+same_as = "wmata:J03"
+name = "Franconia-Springfield (Metro facility)"
+notes = "VRE riders use Metro's parking facility; a SmarTrip card is required (WMATA: 202-637-7000)."
+source = "https://www.vre.org/"
+checked = "2026-11-16"
+
+[[lot]]
+id = "vre-quantico"
+operator = "VRE"
+kind = "station"
+name = "Quantico VRE station"
+stop = "vre:Quantico"
+cost = "Free at most VRE stations; check with VRE"
+notes = "Parking may require security checks."
+source = "https://www.vre.org/"
+checked = "2026-11-16"
+
+[[lot]]
+id = "vre-manassas"
+operator = "VRE"
+kind = "station"
+name = "Manassas VRE station"
+stop = "vre:Manassas"
+cost = "Permit required"
+notes = "See VRE's Manassas parking page: https://www.vre.org/service/manassas-parking/"
+source = "https://www.vre.org/service/manassas-parking/"
+checked = "2026-11-16"
+
+[[lot]]
+id = "vre-fredericksburg"
+operator = "VRE"
+kind = "station"
+name = "Fredericksburg VRE station"
+stop = "vre:Fredericksburg"
+spaces = 644
+cost = "Free"
+notes = """In several lots within a few blocks of the station; some are limited by \
+residency. See https://www.vre.org/service/fredericksburg-parking/"""
+source = "https://www.vre.org/service/fredericksburg-parking/"
+checked = "2026-11-16"
+
+# --- Airports ----------------------------------------------------------------------------------
+
+[[lot]]
+id = "dca-parking"
+operator = "Reagan National Airport"
+kind = "airport"
+name = "Reagan National Airport (DCA) parking"
+airport = "DCA"
+cost = "$7 an hour; $35 a day in Parking 1 and 2, $25 a day in Economy (drive-up)"
+notes = """Reserving at least 12 hours ahead gives the lowest rates and is the only way \
+to guarantee a space (reserve.flyreagan.com). The first 60 minutes are free in the \
+terminal garages. Economy lot capacity is reduced by about 40 percent during \
+construction of a new parking structure; the airport suggests Metrorail if you don't \
+have a reservation. Pay by credit card (swipe in and out), or take a ticket and pay \
+at the exit (cash at attended lanes). Free shuttles run 24/7 between the terminals and \
+all parking. 24-hour help: 703-417-4300."""
+options = [
+  {name = "Parking 1", spaces = 1080, cost = "$7 an hour, $35 a day", notes = "Air Canada, Frontier, Southwest. Underground walkway to Terminal 1 (Gates A1-A9); public parking on levels 4 and 5; 7 ft clearance."},
+  {name = "Parking 2", spaces = 4889, cost = "$7 an hour, $35 a day", notes = "American, Alaska, Delta, JetBlue, United. Covered walkways to Terminal 2 (Gates B10-E59) from Level 2; EV charging on the ground level; 8 ft 2 in clearance."},
+  {name = "Economy Lot", spaces = 2409, cost = "$7 an hour, $25 a day", notes = "All airlines. Free shuttle to the terminals about every 10 minutes. Capacity reduced during construction."},
+]
+source = "https://www.flyreagan.com/parking-transportation/parking-information"
+checked = "2026-11-16"
+
+[[lot]]
+id = "iad-parking"
+operator = "Dulles International Airport"
+kind = "airport"
+name = "Dulles International Airport (IAD) parking"
+airport = "IAD"
+cost = "$40 a day in Terminal Parking, $25 in Garages 1 and 2, $20 in Economy (drive-up); valet $39 to $45 a day"
+notes = """Reserving ahead gives the lowest rates and is the only way to guarantee a \
+space (reserve.flydulles.com). Take a ticket at entry and pay by card or cash at the \
+exit (cash at attended lanes). Vehicles left over 45 days must be registered with the \
+parking office. Free shuttles run 24/7 between the terminal and all parking. Metrorail's \
+Silver Line serves the airport. 24-hour help: 703-572-4500."""
+options = [
+  {name = "Terminal Parking", spaces = 1852, cost = "$7 an hour, $40 a day", notes = "Directly across from the terminal, the closest self-parking; underground walkway to the terminal."},
+  {name = "Garage 1", spaces = 4508, cost = "$7 an hour, $25 a day", notes = "Underground walkway with moving sidewalks to the terminal."},
+  {name = "Garage 2", spaces = 3727, cost = "$7 an hour, $25 a day", notes = "Covered pedestrian bridge to the terminal; the airport calls it the most convenient for most international flights."},
+  {name = "Economy Lot", spaces = 11431, cost = "$20 a day", notes = "Free ECONOMY shuttle 24/7 from Curb 2F."},
+  {name = "Valet", cost = "Curbside $45 the first day, Service Center $39; then $10 an hour up to that daily amount", notes = "Curbside drop-off at Departures Zone 3, 4 am to 10 pm; the Valet Service Center in the Terminal Lot is open 24 hours. Valet: 703-572-4544."},
+]
+source = "https://www.flydulles.com/parking-transportation/parking-information"
+checked = "2026-11-16"
+
+[[lot]]
+id = "bwi-parking"
+operator = "BWI Marshall Airport"
+kind = "airport"
+name = "BWI Marshall Airport parking"
+airport = "BWI"
+cost = "$6 an hour or $30 a day in the Hourly Garage; $11 to $16 a day in the other lots"
+notes = """Shuttles run every 10 to 15 minutes from the Daily Garage, Express and Long \
+Term lots; allow extra time, as shuttles can be delayed. Lots can fill and close, and \
+drivers are sent to other lots at the posted rates. No oversized vehicles. Help with \
+your car (dead battery, flat tire): SP+ 410-859-9230. The BWI Rail Station garage \
+(MARC and Amtrak) is separate."""
+options = [
+  {name = "Hourly Garage", spaces = 4959, cost = "$6 an hour, $30 a day", notes = "Closest to the terminal, covered. Clearance 6 ft 8 in on levels 1 to 3, 8 ft on levels 4 to 6."},
+  {name = "Daily Garage", spaces = 8434, cost = "$16 a day", notes = "Covered, with frequent shuttles. Clearance 8 ft 2 in (11 ft on Level 2)."},
+  {name = "Express Parking", spaces = 1397, cost = "$14 a day", notes = "Free shuttle from 8 covered stops."},
+  {name = "Long Term A", spaces = 5434, cost = "$11 a day", notes = "The most economical option, with covered shuttle stops."},
+  {name = "Long Term B", spaces = 4601, cost = "$11 a day", notes = "The most economical option, with covered shuttle stops."},
+]
+source = "https://bwiairport.com/to-from-bwi/parking/"
+checked = "2026-11-16"

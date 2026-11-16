@@ -253,6 +253,27 @@ def normalize_stations(
     return out
 
 
+def parking_details(data: dict) -> list[dict]:
+    """Each station's parking from ``jStationParking``: all-day spaces and rates,
+    short-term spaces and WMATA's notes (stations with neither are left out)."""
+    out = []
+    for item in data.get("StationsParking", []) or []:
+        code = item.get("Code")
+        all_day = item.get("AllDayParking") or {}
+        short = item.get("ShortTermParking") or {}
+        if not code or not ((all_day.get("TotalCount") or 0) or (short.get("TotalCount") or 0)):
+            continue
+        out.append({"code": code, "all_day_spaces": all_day.get("TotalCount") or 0,
+                    "rider_cost": all_day.get("RiderCost"),
+                    "nonrider_cost": all_day.get("NonRiderCost"),
+                    "saturday_rider_cost": all_day.get("SaturdayRiderCost"),
+                    "saturday_nonrider_cost": all_day.get("SaturdayNonRiderCost"),
+                    "short_term_spaces": short.get("TotalCount") or 0,
+                    "short_term_notes": (short.get("Notes") or "").strip() or None,
+                    "notes": (item.get("Notes") or "").strip() or None})
+    return out
+
+
 def parking_station_codes(data: dict) -> set[str]:
     """Codes of stations that actually have parking capacity.
 

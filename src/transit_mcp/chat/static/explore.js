@@ -11,8 +11,8 @@ const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const isPhone = () => matchMedia("(max-width: 720px)").matches;
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-const LAYERS = ["explore-hubs", "explore-bus", "explore-rail", "explore-route-hi", "explore-stops", "explore-rail-stops", "explore-labels"];
-const state = { on: false, data: null, loading: null, hidden: new Set(), show: { routes: true, stops: true, hubs: false } };
+const state = { on: false, data: null, loading: null, hidden: new Set(), show: { routes: true, stops: true, hubs: false, parking: true } };
+const PARKING_COLOR = "#1565c0";
 let popup = null;
 
 // Google's encoded polyline -> [[lon, lat], ...]
@@ -62,9 +62,12 @@ async function load() {
     geometry: { type: "Point", coordinates: [lon, lat] } })) };
   const hubs = { type: "FeatureCollection", features: raw.hubs.map(([lat, lon, n, feeds]) => ({
     type: "Feature", properties: { n, feeds }, geometry: { type: "Point", coordinates: [lon, lat] } })) };
+  const parking = { type: "FeatureCollection", features: (raw.parking || []).map((lot, i) => ({
+    type: "Feature", properties: { i, name: lot.name, airport: lot.kind === "airport" },
+    geometry: { type: "Point", coordinates: [lot.lon, lot.lat] } })) };
   const counts = {};
   raw.routes.forEach(([a]) => { counts[agencies[a].id] = (counts[agencies[a].id] || 0) + 1; });
-  state.data = { agencies, routes, stops, hubs, counts };
+  state.data = { agencies, routes, stops, hubs, parking, lots: raw.parking || [], counts };
   return state.data;
 }
 
@@ -75,6 +78,7 @@ function addLayers(map) {
   map.addSource("explore-routes", { type: "geojson", data: d.routes });
   map.addSource("explore-stops", { type: "geojson", data: d.stops });
   map.addSource("explore-hubs", { type: "geojson", data: d.hubs });
+  map.addSource("explore-parking", { type: "geojson", data: d.parking });
   // Under the trip layers, so a planned trip stays on top.
   const before = map.getLayer("others-line") ? "others-line" : undefined;
   map.addLayer({ id: "explore-hubs", type: "circle", source: "explore-hubs", minzoom: 11,
@@ -100,6 +104,15 @@ function addLayers(map) {
     paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 8, 2.5, 12, 4.5, 16, 8],
              "circle-color": "#ffffff", "circle-stroke-color": ["get", "c"],
              "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 8, 1.5, 14, 3] } }, before);
+  // Parking: a blue "P", bigger at the airports.
+  map.addLayer({ id: "explore-parking", type: "circle", source: "explore-parking",
+    paint: { "circle-color": PARKING_COLOR, "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.5,
+             "circle-radius": ["interpolate", ["linear"], ["zoom"], 8, ["case", ["get", "airport"], 7, 5],
+                               14, ["case", ["get", "airport"], 13, 10]] } }, before);
+  map.addLayer({ id: "explore-parking-p", type: "symbol", source: "explore-parking", minzoom: 9,
+    layout: { "text-field": "P", "text-font": ["Noto Sans Medium"], "text-allow-overlap": true,
+              "text-size": ["interpolate", ["linear"], ["zoom"], 9, 9, 14, 14] },
+    paint: { "text-color": "#ffffff" } }, before);
   map.addLayer({ id: "explore-labels", type: "symbol", source: "explore-stops",
     filter: ["any", ["all", ["get", "rail"], [">=", ["zoom"], 11]], [">=", ["zoom"], 16]],
     layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Medium"], "text-size": 12,
@@ -122,6 +135,7 @@ function applyFilters(map) {
   for (const id of ["explore-bus", "explore-rail", "explore-route-hi"]) map.setLayoutProperty(id, "visibility", vis(state.show.routes));
   for (const id of ["explore-stops", "explore-rail-stops", "explore-labels"]) map.setLayoutProperty(id, "visibility", vis(state.show.stops));
   map.setLayoutProperty("explore-hubs", "visibility", vis(state.show.hubs));
+  for (const id of ["explore-parking", "explore-parking-p"]) map.setLayoutProperty(id, "visibility", vis(state.show.parking));
 }
 
 // ------------------------------------------------------------------ taps and popups
@@ -176,6 +190,34 @@ async function showStop(map, f) {
   }
 }
 
+function showParking(map, f) {
+  const lot = state.data.lots[f.properties.i];
+  track("explore_parking", { detail: { kind: lot.kind } });
+  const facts = [];
+  if (lot.spaces) facts.push(`${Number(lot.spaces).toLocaleString()} spaces`);
+  if (lot.short_term_spaces) facts.push(`${Number(lot.short_term_spaces).toLocaleString()} short-term`);
+  const options = (lot.options || []).map((o) => `<li><strong>${esc(o.name)}</strong>${o.cost ? `: ${esc(o.cost)}` : ""}${o.spaces ? ` <small>(${Number(o.spaces).toLocaleString()} spaces)</small>` : ""}</li>`).join("");
+  const also = (lot.also_serves || []).length ? ` Also used by ${esc(lot.also_serves.join(", "))} riders.` : "";
+  const source = (() => { try { return new URL(lot.source).hostname.replace(/^www\./, ""); } catch (_) { return "the operator"; } })();
+  const box = openPopup(map, f.geometry.coordinates, `<strong>${esc(lot.name)}</strong>
+    <small><span class="xp-swatch" style="background:${PARKING_COLOR}"></span>${esc(lot.operator)}${facts.length ? `, ${esc(facts.join(", "))}` : ""}</small>
+    ${lot.cost ? `<p class="xp-cost">${esc(lot.cost)}</p>` : ""}
+    ${options ? `<ul class="xp-options">${options}</ul>` : ""}
+    ${lot.notes || also ? `<details class="xp-more"><summary>More about parking here</summary><p class="xp-note">${esc(lot.notes || "")}${also}</p></details>` : ""}
+    <p class="xp-note">From <a href="${esc(lot.source)}" target="_blank" rel="noopener">${esc(source)}</a>${lot.checked ? `, checked ${esc(lot.checked)}` : ""}. Confirm before you park.</p>
+    <div class="popup-actions"><button class="btn small primary" type="button" data-act="to">Go here</button>
+      <button class="btn small quiet" type="button" data-act="from">Start here</button></div>`);
+  const [lon, lat] = f.geometry.coordinates;
+  const point = { lat, lon, label: lot.name, source: "explore" };
+  box.addEventListener("click", (e) => {
+    const act = e.target.closest("button")?.dataset.act;
+    if (!act) return;
+    popup?.remove();
+    track("explore_go", { detail: { act, parking: true } });
+    if (act === "to") window.dmvTrip?.goTo(point); else window.dmvTrip?.startFrom(point);
+  });
+}
+
 function showRoute(map, f, lngLat) {
   const p = f.properties;
   const agency = state.data.agencies.find((a) => a.id === p.a);
@@ -204,12 +246,14 @@ function wireMap(map) {
     const pad = isPhone() ? 12 : 6;
     const box = [[e.point.x - pad, e.point.y - pad], [e.point.x + pad, e.point.y + pad]];
     const live = (ids) => ids.filter((id) => map.getLayoutProperty(id, "visibility") !== "none");
+    const lot = map.queryRenderedFeatures(box, { layers: live(["explore-parking"]) })[0];
+    if (lot) return showParking(map, lot);
     const stop = map.queryRenderedFeatures(box, { layers: live(stopLayers) })[0];
     if (stop) return showStop(map, stop);
     const route = map.queryRenderedFeatures(box, { layers: live(routeLayers) })[0];
     if (route) showRoute(map, route, e.lngLat);
   });
-  for (const id of [...stopLayers, ...routeLayers]) {
+  for (const id of ["explore-parking", ...stopLayers, ...routeLayers]) {
     map.on("mouseenter", id, () => { if (state.on) map.getCanvas().style.cursor = "pointer"; });
     map.on("mouseleave", id, () => { map.getCanvas().style.cursor = ""; });
   }

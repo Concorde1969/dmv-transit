@@ -139,11 +139,20 @@ def build_network(db: Database, agency_names: dict[str, str]) -> dict:
                                   "WHERE n_feeds >= 2")
             if _inside(h["lat"], h["lon"])]
 
+    # Parking and park & ride (planning/parking.py); lots with no parking stay off the map.
+    from transit_mcp.planning import parking
+
+    lots = [{k: lot.get(k) for k in ("id", "operator", "kind", "name", "spaces",
+                                     "short_term_spaces", "cost", "address", "notes",
+                                     "options", "also_serves", "source", "checked")}
+            | {"lat": round(lot["lat"], 5), "lon": round(lot["lon"], 5)}
+            for lot in parking.all_lots(db) if lot["available"]]
+
     agencies = [{"id": f, "name": agency_names.get(f) or f, "mode": modes.get(f) or "",
                  "rail": (modes.get(f) or "") in RAIL_MODES,
                  "color": PALETTE[i % len(PALETTE)]} for i, f in enumerate(feeds)]
     return {"agencies": agencies, "routes": routes, "stops": stops, "hubs": hubs,
-            "region": REGION}
+            "parking": lots, "region": REGION}
 
 
 def stop_detail(db: Database, feed: str, stop_id: str, agency_names: dict[str, str]) -> dict | None:
@@ -206,7 +215,11 @@ class ExploreCache:
             hubs = db.conn.execute("SELECT MAX(computed_at) FROM stop_clusters").fetchone()[0]
         except Exception:  # noqa: BLE001 - an older database without clusters
             hubs = None
-        return (feeds[0], feeds[1], hubs)
+        try:
+            lots = db.conn.execute("SELECT MAX(retrieved_at) FROM wmata_parking").fetchone()[0]
+        except Exception:  # noqa: BLE001 - an older database without parking
+            lots = None
+        return (feeds[0], feeds[1], hubs, lots)
 
     def get(self, settings, agency_names: dict[str, str]) -> tuple[bytes, str]:
         with self._lock, Database(settings.db_path) as db:

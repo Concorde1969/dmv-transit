@@ -81,6 +81,8 @@ Which tools to use:
 - Metrobus and the other bus/rail agencies: `get_route` (e.g. agency "metrobus"), \
 `plan_trip`, `plan_connection`, `find_stops_near`, `transfers_at`, `how_to_pay`, \
 `estimate_trip_cost`, `list_agencies`.
+- Parking, park & ride, and airport parking: `find_parking` (spaces, rates and the \
+operator's rules). Never state a lot, price or space count it didn't return.
 - `search_transit_info` for "how do I pay / ride / bring a bike..." questions — \
 never for routes or times.
 

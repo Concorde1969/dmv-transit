@@ -354,6 +354,15 @@ class Database:
         return cur.rowcount
 
     # -- stations / lines -----------------------------------------------
+    def replace_wmata_parking(self, rows: list[dict]) -> None:
+        """Metrorail station parking, replaced as a whole (wmata_api.parking_details)."""
+        cols = ("code", "all_day_spaces", "rider_cost", "nonrider_cost", "saturday_rider_cost",
+                "saturday_nonrider_cost", "short_term_spaces", "short_term_notes", "notes")
+        self.conn.execute("DELETE FROM wmata_parking")
+        self.conn.executemany(
+            f"INSERT INTO wmata_parking ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+            [tuple(r[c] for c in cols) for r in rows])
+
     def upsert_station(self, *, source_id: int | None, station: Station) -> None:
         self.conn.execute(
             """
