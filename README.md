@@ -163,6 +163,19 @@ BWI airport lots curated from the operators' own pages in
 `planning/parking.toml` (each with its source and the date it was checked). The
 `find_parking` MCP tool answers parking questions from the same data.
 
+### Walking directions
+
+The planner picks stops with a quick straight-line estimate. When a rider opens a trip
+option, its walks are routed over real streets by openrouteservice (HeiGIT, OpenStreetMap
+data; `walking.py`, `POST /api/trip/walks`): the path on the map, the distance, the time
+at a gentle 70 m a minute, and turn-by-turn steps. Walks to and from Metro end at the
+station entrance nearest the other end (GTFS entrances), naming the elevator entrance too.
+`plan_trip` (MCP and the assistant) gives the first option's walks in words. Set
+`ORS_API_KEY` (free key from https://account.heigit.org); the free plan's daily allowance
+is split between the site (`ORS_DAILY_LIMIT`) and the MCP server (`ORS_MCP_DAILY_LIMIT`),
+and routes are cached for a month in `walks.db` beside the database. Without a key, or
+over the allowance, walks stay straight lines (entrance names still show).
+
 ### Holiday markets and events
 
 Seasonal markets and events live in `planning/events.toml`, curated by hand from each

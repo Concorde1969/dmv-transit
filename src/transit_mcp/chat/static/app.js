@@ -216,7 +216,9 @@ function optionFeatures(opt) {
     } else if (leg.mode === "walk") {
       const target = leg.to ? pt(leg.to) : pt(d);
       const from = leg.from ? pt(leg.from) : prev;
-      feats.push(line([from, target], { kind: "walk" }));
+      // Over real streets once the walk is routed (loadWalks); a straight line until then.
+      const path = leg.walk?.path?.length > 1 ? leg.walk.path : [from, target];
+      feats.push(line(path, { kind: "walk" }));
       prev = target;
     } else {
       const coords = leg.geometry?.length > 1 ? leg.geometry : [pt(leg.board), pt(leg.alight)];
@@ -229,7 +231,7 @@ function optionFeatures(opt) {
   return { feats, stops };
 }
 
-function drawPlan() {
+function drawPlan(fit = true) {
   if (!map || !map.getSource("trip") || !state.plan) return;
   const opts = state.plan.options;
   const others = [];
@@ -260,7 +262,81 @@ function drawPlan() {
   const b = new maplibregl.LngLatBounds(pt(o), pt(o));
   b.extend(pt(d));
   for (const f of feats) for (const c of f.geometry.coordinates) b.extend(c);
-  map.fitBounds(b, { duration: reduceMotion ? 0 : 900, maxZoom: 16 });
+  if (fit) map.fitBounds(b, { duration: reduceMotion ? 0 : 900, maxZoom: 16 });
+}
+
+// ------------------------------------------------------------------ walking directions
+// The walks of the option a rider looks at, over real streets (/api/trip/walks,
+// openrouteservice): the path for the map, the time at a gentle pace, turn-by-turn steps,
+// and which station entrance to use. The planner's straight-line guess stays until then,
+// and for good if routing isn't available.
+const walkRequests = new WeakMap();
+function loadWalks(opt) {
+  if (!opt || walkRequests.has(opt)) return;
+  const plan = state.plan, legs = opt.legs, asks = [], at = [];
+  const stopRef = (ride, stop) => (ride && stop?.stop_id ? { agency: ride.agency, stop_id: stop.stop_id } : null);
+  legs.forEach((leg, i) => {
+    if (leg.mode !== "walk" || leg.airport) return;    // airports have their own directions
+    const before = legs[i - 1], after = legs[i + 1];
+    const from = leg.from || (before?.mode === "ride" ? before.alight : plan.origin);
+    const to = leg.to || plan.destination;
+    if (!from || !to) return;
+    asks.push({ from: { lat: from.lat, lon: from.lon }, to: { lat: to.lat, lon: to.lon },
+      from_stop: before?.mode === "ride" ? stopRef(before, from) : null,
+      to_stop: after?.mode === "ride" ? stopRef(after, to) : null });
+    at.push(i);
+  });
+  if (!asks.length) return;
+  const req = fetch("/api/trip/walks", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ walks: asks }) }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  walkRequests.set(opt, req);
+  req.then((data) => {
+    if (!data?.walks) return;
+    data.walks.forEach((w, k) => { if (w) applyWalk(opt, at[k], w, data.attribution); });
+    if (state.plan !== plan) return;               // the rider has searched again
+    if (plan.options[state.selected] === opt) drawPlan(false);
+    render();
+  });
+}
+
+function applyWalk(opt, i, w, attribution) {
+  const leg = opt.legs[i];
+  leg.walk = { ...w, attribution };
+  if (!w.routed) return;                           // entrance names only
+  const delta = w.duration_s - leg.duration_s;
+  leg.duration_s = w.duration_s;
+  opt.walk_s += delta;
+  if (i === 0) { opt.leave_at -= delta; opt.wait_s -= delta; }
+  else if (leg.transfer) leg.wait_s -= delta;
+  else opt.arrive_at += delta;
+  opt.duration_s = opt.arrive_at - Math.max(opt.leave_at, nowS());
+}
+
+// 0.4 mi, or feet when it's short.
+function distance(m) {
+  const ft = m * 3.281;
+  if (ft < 528) return `${Math.max(50, Math.round(ft / 50) * 50)} ft`;
+  return `${(m / 1609.34).toFixed(1).replace(/\.0$/, "")} mi`;
+}
+
+// The extra lines under a walk step: entrance, elevator, and the turn-by-turn steps.
+function walkDetails(leg) {
+  const w = leg.walk;
+  if (!w) return "";
+  const notes = [];
+  if (w.exit) notes.push(`Leave the station by ${esc(w.exit)}.`);
+  if (w.exit_elevator) notes.push(`Elevator: ${esc(w.exit_elevator)}.`);
+  if (w.entrance) notes.push(`Go in at ${esc(w.entrance)}.`);
+  if (w.elevator) notes.push(`Elevator: ${esc(w.elevator)}.`);
+  const turns = (w.steps || []).map((s) => `<li>${esc(s.text)}${s.distance_m >= 15 ? ` <span class="walk-dist">${distance(s.distance_m)}</span>` : ""}</li>`).join("");
+  return (notes.length ? `<br><span class="walk-entrance">${notes.join(" ")}</span>` : "")
+    + (turns ? `<details class="walk-turns"><summary>Walking directions</summary><ol>${turns}</ol>
+        <p class="walk-credit">${esc(w.attribution || "")}</p></details>` : "");
+}
+
+function walkTitle(leg, where) {
+  const far = leg.walk?.routed ? ` (${distance(leg.walk.distance_m)})` : "";
+  return `Walk ${mins(leg.duration_s)} min${far} to ${where}`;
 }
 
 // ------------------------------------------------------------------ search
@@ -613,6 +689,7 @@ async function planTrip() {
   render();
   drawPlan();
   startLive();
+  loadWalks(data.options?.[0]);
 }
 
 function render() {
@@ -638,7 +715,7 @@ function render() {
       state.view = "detail"; render();
       track("details_opened", { search_id: state.searchId, option_index: i });
     } else {
-      state.selected = i; render(); drawPlan(); restartLive();
+      state.selected = i; render(); drawPlan(); restartLive(); loadWalks(state.plan.options[i]);
       track("option_selected", { search_id: state.searchId, option_index: i });
     }
   }));
@@ -716,13 +793,14 @@ function renderDetail(opt) {
       if (leg.airport) {
         steps.push(airportStep(leg, next));
       } else if (idx === 0) {
-        steps.push({ cls: "walk", title: `Walk ${mins(leg.duration_s)} min to ${leg.to.name}`,
-          sub: next ? `Your ${isRail(next) ? "train" : "bus"} leaves at ${clock(next.board.expected)}` : "" });
+        steps.push({ cls: "walk", title: walkTitle(leg, leg.to.name), html: true,
+          sub: (next ? `Your ${isRail(next) ? "train" : "bus"} leaves at <span class="time">${clock(next.board.expected)}</span>` : "") + walkDetails(leg) });
       } else if (leg.transfer) {
-        steps.push({ cls: "walk", title: leg.duration_s > 30 ? `Walk ${mins(leg.duration_s)} min to ${leg.to.name}` : `Change at ${leg.to.name}`,
-          sub: `About ${mins(leg.wait_s)} min to make the connection` });
+        const tight = leg.wait_s < 60;
+        steps.push({ cls: "walk", title: leg.duration_s > 30 ? walkTitle(leg, leg.to.name) : `Change at ${leg.to.name}`, html: true,
+          sub: (tight ? "A tight connection: walk straight there" : `About ${mins(leg.wait_s)} min to make the connection`) + walkDetails(leg) });
       } else {
-        steps.push({ cls: "walk", title: `Walk ${mins(leg.duration_s)} min to ${plan.destination.label || "your destination"}`, sub: "" });
+        steps.push({ cls: "walk", title: walkTitle(leg, plan.destination.label || "your destination"), html: true, sub: walkDetails(leg).replace(/^<br>/, "") });
       }
     } else {
       const delay = leg.live && leg.delay_s ? (leg.delay_s >= 60 ? `, ${mins(leg.delay_s)} min late` : leg.delay_s <= -60 ? `, ${mins(-leg.delay_s)} min early` : ", on time") : "";

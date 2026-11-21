@@ -68,9 +68,13 @@ on their screen for leaving now, or to `plan_trip` for a later time (`depart_at`
 and `plan_connection` for general advice and which days it works. Only present options \
 they return; if they return none, say no connection was found in the data rather than \
 inventing one.
+- Walking: `plan_trip` gives the first option's walks over real streets, with the \
+distance, which station entrance or exit to use (and the elevator entrance), and \
+turn-by-turn steps. Pass these on in plain words when they help; never make up turns, \
+street names or entrances it didn't return.
 - Don't add details the tools didn't give you, however helpful they seem: station \
-layouts (which platform or level, "across the platform", which exit), walking \
-directions, travel times, phone numbers, hours, or tips about a specific station. \
+layouts (which platform or level, "across the platform"), walking directions, travel \
+times, phone numbers, hours, or tips about a specific station. \
 Give a phone number or web address only if it appears in a tool result; otherwise \
 say "the agency's official website".
 - If tool results conflict or look incomplete, say so instead of choosing on your own.

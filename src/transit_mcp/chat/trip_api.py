@@ -45,6 +45,7 @@ from transit_mcp.planning.realtime import (
     DirectTripUpdates,
     TransitlandRealtime,
 )
+from transit_mcp.walking import ATTRIBUTION, WalkRouter, walk_ends
 
 log = logging.getLogger("transit_mcp.trip")
 router = APIRouter()
@@ -75,6 +76,27 @@ class LiveRide(BaseModel):
 
 class LiveBody(BaseModel):
     rides: list[LiveRide] = Field(max_length=4)
+
+
+class StopRef(BaseModel):
+    agency: str = Field(max_length=64)
+    stop_id: str = Field(max_length=128)
+
+
+class Spot(BaseModel):
+    lat: float
+    lon: float
+
+
+class WalkLeg(BaseModel):
+    from_: Spot = Field(alias="from")
+    to: Spot
+    from_stop: StopRef | None = None     # leaving a station: use its best exit
+    to_stop: StopRef | None = None       # going to a station: use its best entrance
+
+
+class WalksBody(BaseModel):
+    walks: list[WalkLeg] = Field(max_length=4)
 
 
 def agency_info(settings) -> dict[str, dict]:
@@ -149,6 +171,8 @@ class TripService:
         self.geo_limiter = RateLimiter(40, 1000)
         self.event_limiter = RateLimiter(60, 3000)
         self.realtime = build_realtime(settings, self.agencies, self.http)
+        self.walks = WalkRouter.from_settings(settings, http=self.http)
+        self.walk_limiter = RateLimiter(30, 600)
 
     def close(self) -> None:
         self.http.close()
@@ -328,6 +352,29 @@ def page_event(request: Request, body: EventBody) -> JSONResponse:
     _event(request, body.event, search_id=body.search_id, option_index=body.option_index,
            detail=detail)
     return JSONResponse({"ok": True}, status_code=202)
+
+
+def _walk_ends(db: Database, leg: WalkLeg) -> tuple[tuple, tuple, dict]:
+    """Where a walk really starts and ends: a station's best exit or entrance."""
+    ref = lambda s: (s.agency, s.stop_id) if s else None    # noqa: E731
+    return walk_ends(db, (leg.from_.lat, leg.from_.lon), (leg.to.lat, leg.to.lon),
+                     ref(leg.from_stop), ref(leg.to_stop))
+
+
+@router.post("/api/trip/walks")
+def trip_walks(request: Request, body: WalksBody) -> JSONResponse:
+    """Walking directions for the walks of the trip option a rider is looking at: the path
+    over real streets, distance, time at a gentle pace, turn-by-turn steps, and which
+    station entrance to use. A walk comes back null when only the straight line is known."""
+    svc = _service(request)
+    if svc.walk_limiter.check(_ip(request)):
+        return JSONResponse({"walks": [None] * len(body.walks)}, status_code=429)
+    with Database(svc.settings.db_path) as db:
+        ends = [_walk_ends(db, leg) for leg in body.walks]
+    found = svc.walks.routes([(a, b) for a, b, _ in ends])     # same_station: a == b, None
+    out = [({**f, **extra} if f else extra or None) for f, (_, _, extra) in zip(found, ends)]
+    return JSONResponse({"walks": out, "available": svc.walks.available,
+                         "attribution": ATTRIBUTION})
 
 
 @router.post("/api/trip/live")

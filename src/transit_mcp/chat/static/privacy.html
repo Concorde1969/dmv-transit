@@ -98,6 +98,12 @@ your trip, and we keep it only as part of a trip search, rounded as described ab
     before others see them. It receives the question or report text and, when a trip is on
     your screen, its start and end names and the option you picked (the stops, lines and
     times), so the assistant knows which trip you mean. Not your exact location.</li>
+  <li><strong>openrouteservice</strong> (run by HeiGIT in Germany) works out walking directions
+    over real streets for the trip you're looking at. Our server sends it the start and end
+    points of each walk (your start or destination and the stop), not anything else about you,
+    under <a href="https://heigit.org/" target="_blank" rel="noopener">HeiGIT's
+    privacy policy</a>. We keep the walking routes for a month so the same walk isn't looked up
+    twice; they aren't linked to you.</li>
   <li><strong>FlightAware</strong> provides flight status for IAD, DCA and BWI when you ask the
     assistant about a flight. It receives the flight number, not anything about you.</li>
   <li><strong>Transitland</strong> provides some live departure times. It receives stop codes, not
@@ -111,7 +117,8 @@ your trip, and we keep it only as part of a trip search, rounded as described ab
 <a href="/mcp-server">our MCP server</a> at https://dmvtransit.com/mcp, without an account. It keeps
 no record of the questions or places it's asked about. Your network address is used only in the
 server's memory to apply request limits, and isn't logged or stored. Addresses and landmarks it's
-asked to find are sent to Google Maps or geocode.maps.co. What the assistant itself keeps is up to
+asked to find are sent to Google Maps or geocode.maps.co, and the walks of a planned trip to
+openrouteservice. What the assistant itself keeps is up to
 the company that runs it. People given an API key are known to us by the name the key was issued
 to, with a count of requests and when it was last used.</p>
 

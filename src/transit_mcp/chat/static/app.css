@@ -290,6 +290,14 @@ button, input, textarea { font: inherit; color: inherit; }
 .step .title { font-weight: 650; font-size: 18px; }
 .step .sub { color: var(--ink-2); font-size: 16px; }
 .step .time { font-variant-numeric: tabular-nums; font-weight: 650; }
+.walk-entrance { display: inline-block; margin-top: 4px; color: var(--ink); }
+.walk-turns { margin-top: 6px; }
+.walk-turns summary { cursor: pointer; color: var(--action); font-weight: 600; min-height: 32px;
+  display: flex; align-items: center; }
+.walk-turns ol { margin: 6px 0 0; padding-left: 22px; font-size: 16px; line-height: 1.45; color: var(--ink); }
+.walk-turns li { margin: 0 0 6px; }
+.walk-dist { color: var(--ink-2); white-space: nowrap; }
+.walk-credit { margin: 4px 0 0; font-size: 12.5px; color: var(--ink-3); }
 .detail-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 6px 4px 4px; }
 
 .btn {

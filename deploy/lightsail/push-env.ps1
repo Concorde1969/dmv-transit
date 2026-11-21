@@ -6,7 +6,8 @@
 .DESCRIPTION
   Builds the server's .env from deploy/.env.production.example, filling in:
     ANTHROPIC_API_KEY, WMATA_API_KEY (required), TRANSITLAND_API_KEY,
-    GOOGLE_GEOCODING_API_KEY, GEOCODE_API_KEY, FLIGHTAWARE_API_KEY, SMTP_USERNAME,
+    GOOGLE_GEOCODING_API_KEY, GEOCODE_API_KEY, FLIGHTAWARE_API_KEY, ORS_API_KEY,
+    SMTP_USERNAME,
     SMTP_PASSWORD and
     ACCOUNTS_ENABLED
       - copied from the .env in the project folder on this PC;
@@ -49,7 +50,7 @@ $fill = @{ SITE_DOMAIN = $SiteDomain.Trim(); ACME_EMAIL = $AcmeEmail.Trim() }
 foreach ($name in 'ANTHROPIC_API_KEY', 'WMATA_API_KEY', 'TRANSITLAND_API_KEY',
                  'GOOGLE_GEOCODING_API_KEY', 'GOOGLE_GEOCODING_MONTHLY_BUDGET',
                  'GOOGLE_PLACES_MONTHLY_BUDGET', 'GEOCODE_API_KEY',
-                 'FLIGHTAWARE_API_KEY', 'FLIGHTAWARE_MONTHLY_DOLLARS',
+                 'FLIGHTAWARE_API_KEY', 'FLIGHTAWARE_MONTHLY_DOLLARS', 'ORS_API_KEY',
                  'SMTP_HOST', 'SMTP_USERNAME', 'SMTP_PASSWORD', 'MAIL_FROM',
                  'ACCOUNTS_ENABLED') {
     if ($local[$name]) { $fill[$name] = $local[$name] }

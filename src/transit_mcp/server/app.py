@@ -229,6 +229,18 @@ def _geocoder():
     return Geocoder.from_settings(get_settings(), **GEOCODE_BUDGET)
 
 
+_walk_router: list = []
+
+
+def _walker():
+    """openrouteservice walking routes, with the MCP server's share of the allowance."""
+    if not _walk_router:
+        from transit_mcp.walking import WalkRouter
+
+        _walk_router.append(WalkRouter.from_settings(get_settings(), share="mcp"))
+    return _walk_router[0]
+
+
 def _trip_helpers():
     """Live-departures client and agency details, created once (they hold caches)."""
     if not _trip_tools:
@@ -370,6 +382,13 @@ def plan_trip(origin: str, destination: str, depart_at: str | None = None) -> di
         result = LivePlanner(db, cfg=LiveSettings.from_settings(settings),
                              realtime=None if later else h["realtime"], agencies=h["agencies"],
                              tz=settings.timezone, now=start).plan(o, d)
+        # Walking directions over real streets for the first option's walks to and from
+        # transit (the rest keep the planner's estimate; the allowance is small).
+        if result["options"]:
+            from transit_mcp.walking import route_option
+
+            route_option(db, _walker(), result["options"][0], result["origin"],
+                         result["destination"], start.timestamp(), only_ends=True)
 
     return {
         "from": o.label, "to": d.label,

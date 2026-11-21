@@ -46,6 +46,14 @@ class Settings(BaseSettings):
         default=1000, alias="GOOGLE_PLACES_SEARCH_MONTHLY_BUDGET")
     geocode_api_key: str | None = Field(default=None, alias="GEOCODE_API_KEY")
 
+    # --- Walking directions (openrouteservice by HeiGIT; walking.py) ---
+    ors_api_key: str | None = Field(default=None, alias="ORS_API_KEY")
+    # The free plan allows about 2,000 routes a day and 40 a minute; the site and the
+    # public MCP server each get a share. Routes are cached for a month.
+    ors_daily_limit: int = Field(default=1500, alias="ORS_DAILY_LIMIT")
+    ors_mcp_daily_limit: int = Field(default=400, alias="ORS_MCP_DAILY_LIMIT")
+    ors_per_minute: int = Field(default=30, alias="ORS_PER_MINUTE")
+
     # --- Flights at IAD, DCA and BWI (FlightAware AeroAPI; flights.py) ---
     flightaware_api_key: str | None = Field(default=None, alias="FLIGHTAWARE_API_KEY")
     # Monthly spending cap; each flight look-up costs $0.005 (cached 10 minutes).
