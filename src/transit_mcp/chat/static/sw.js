@@ -2,7 +2,7 @@
 // shows a clear "You're offline" page when there's no connection, instead of the
 // browser's error. Everything else goes to the network as usual: live trips, the map and
 // the assistant all need it, so nothing else is cached here.
-const CACHE = "dmvt-v1";
+const CACHE = "dmvt-v2";
 const OFFLINE = "/static/offline.html";
 const PRECACHE = [OFFLINE, "/static/brand/logo.png", "/static/brand/icon-192.png"];
 const PRECACHED = new Set(PRECACHE);

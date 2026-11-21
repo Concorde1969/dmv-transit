@@ -27,6 +27,9 @@ const state = {
   accounts: false,       // whether accounts are available on this site
 };
 let map, youMarker, destMarker, liveTimer, savedMarkers = [], savedPopup;
+// Following a trip on the map, step by step (see "follow on the map" below).
+const journey = { on: false, opt: null, i: 0, steps: [], feats: [], watch: null, me: null };
+let stepPins = [];
 
 // ------------------------------------------------------------------ helpers
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -53,6 +56,7 @@ const ICONS = {
   walk: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13" cy="4" r="2"/><path d="M10 22l2-7-3-3 1-5 4 3 3 1M9 12l-3 3"/></svg>',
   chev: '<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
   back: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>',
+  flag: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>',
   route: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H15a3.5 3.5 0 0 0 0-7H9a3.5 3.5 0 0 1 0-7h6.5"/></svg>',
 };
 
@@ -126,14 +130,29 @@ async function initMap() {
   addEventListener("resize", applyPadding);
 }
 
+// What covers the map: the step card while following a trip, the bar when the panel is
+// minimized, otherwise the panel.
+function cover() {
+  if (!$("journey").hidden) return $("journey");
+  return $("panel").classList.contains("min") ? $("peek") : $("panel");
+}
+
+let lastPadding = "";
 function applyPadding() {
   if (!map) return;
-  const box = $("panel").getBoundingClientRect();
-  map.setPadding(isPhone()
-    // Below the floating logo, which sits under the phone's status bar.
-    ? { top: Math.round(document.querySelector(".brand").getBoundingClientRect().bottom) + 16,
-        bottom: Math.round(innerHeight - box.top) + 20, left: 20, right: 20 }
-    : { top: 80, bottom: 40, left: Math.round(box.right) + 40, right: 80 });
+  const el = cover(), box = el.getBoundingClientRect();
+  const pad = isPhone()
+    // Below the floating logo (with room for a pin), which sits under the status bar.
+    ? { top: Math.round(document.querySelector(".brand").getBoundingClientRect().bottom) + 44,
+        bottom: Math.round(innerHeight - box.top) + 20, left: 24, right: 64 }   // the zoom buttons
+    : el.id === "peek"
+      ? { top: 80, bottom: Math.round(innerHeight - box.top) + 30, left: 40, right: 80 }
+      : { top: 80, bottom: 40, left: Math.round(box.right) + 40, right: 80 };
+  // Setting the padding stops a camera move in progress, so only when it changes.
+  const key = JSON.stringify(pad);
+  if (key === lastPadding) return;
+  lastPadding = key;
+  map.setPadding(pad);
 }
 
 // ------------------------------------------------------------------ phone sheet
@@ -147,12 +166,47 @@ function setTall(tall) {
   sheetToggle.setAttribute("aria-label", tall ? "Show more of the map" : "Make the panel taller");
 }
 sheetToggle.addEventListener("click", () => setTall(!panel.classList.contains("tall")));
-new ResizeObserver(() => {
-  // The map's corner controls (and its attribution) sit just above the sheet.
-  document.documentElement.style.setProperty("--sheet", isPhone() ? `${Math.round(innerHeight - panel.getBoundingClientRect().top)}px` : "0px");
+function sizeSheet() {
+  // The map's corner controls (and its attribution) sit just above whatever covers it.
+  document.documentElement.style.setProperty("--sheet", isPhone() ? `${Math.round(innerHeight - cover().getBoundingClientRect().top)}px` : "0px");
   applyPadding();
-}).observe(panel);
-window.dmvPanel = { expand: () => isPhone() && setTall(true), lower: () => isPhone() && setTall(false) };
+}
+
+// Minimize: the panel folds down to one bar (#peek) so the map has the screen. The bar
+// says what's on the map (the trip, or "Where to?") and brings the panel back.
+const peek = $("peek"), panelMin = $("panelMin");
+function setMin(min, { focus = true } = {}) {
+  if (panel.classList.contains("min") !== min) track(min ? "panel_minimized" : "panel_restored");
+  panel.classList.toggle("min", min);
+  document.body.classList.toggle("minimized", min);
+  peek.hidden = !min || journey.on;
+  panelMin.setAttribute("aria-expanded", String(!min));
+  updatePeek();
+  sizeSheet();
+  if (focus) (min ? peek : panelMin).focus({ preventScroll: true });
+}
+panelMin.addEventListener("click", () => setMin(true));
+peek.addEventListener("click", () => setMin(false));
+
+function updatePeek() {
+  const opt = state.plan?.options?.[state.selected];
+  if (opt && state.to) {
+    $("peekTitle").textContent = `Leave by ${clock(opt.leave_at)}, arrive ${clock(opt.arrive_at)}`;
+    $("peekSub").textContent = `${rides(opt).map(routeLabel).join(", then ")} to ${state.to.label}`;
+  } else {
+    $("peekTitle").textContent = "Where to?";
+    $("peekSub").textContent = "Plan a trip or ask a question";
+  }
+}
+
+for (const el of [panel, peek, $("journey")]) new ResizeObserver(sizeSheet).observe(el);
+window.dmvPanel = {
+  // An answer to read: the panel comes back, tall on a phone.
+  expand: () => { setMin(false, { focus: false }); if (isPhone()) setTall(true); },
+  // More map (Explore, a new trip): a minimized panel stays minimized.
+  lower: () => isPhone() && setTall(false),
+  show: () => setMin(false, { focus: false }),
+};
 
 function addTripLayers() {
   const empty = { type: "FeatureCollection", features: [] };
@@ -191,14 +245,15 @@ function addTripLayers() {
 }
 
 const SHUTTLE_COLOR = "#0F7368";
-const line = (coords, props) => ({ type: "Feature", properties: props, geometry: { type: "LineString", coordinates: coords } });
+const lineOf = (coords, props) => ({ type: "Feature", properties: props, geometry: { type: "LineString", coordinates: coords } });
 const pt = (p) => [p.lon, p.lat];
 
 function optionFeatures(opt) {
   const feats = [], stops = [];
   const o = state.plan.origin, d = state.plan.destination;
   let prev = pt(o);
-  for (const leg of opt.legs) {
+  for (const [step, leg] of opt.legs.entries()) {
+    const line = (coords, props) => lineOf(coords, { ...props, step });
     if (leg.mode === "walk" && leg.airport?.mode === "shuttle") {
       // The airport shuttle between the terminal and the rail station, then any walk.
       const a = leg.airport, terminal = [a.terminal[1], a.terminal[0]];
@@ -238,7 +293,7 @@ function drawPlan(fit = true) {
   opts.forEach((opt, i) => {
     if (i === state.selected) return;
     for (const leg of rides(opt)) {
-      if (leg.geometry?.length > 1) others.push(line(leg.geometry, { color: leg.color }));
+      if (leg.geometry?.length > 1) others.push(lineOf(leg.geometry, { color: leg.color }));
     }
   });
   map.getSource("others").setData({ type: "FeatureCollection", features: others });
@@ -246,6 +301,7 @@ function drawPlan(fit = true) {
   const { feats, stops } = sel ? optionFeatures(sel) : { feats: [], stops: [] };
   map.getSource("trip").setData({ type: "FeatureCollection", features: feats });
   map.getSource("stops").setData({ type: "FeatureCollection", features: stops });
+  drawStepPins(sel, feats);
 
   const o = state.plan.origin, d = state.plan.destination;
   if (!youMarker) {
@@ -296,6 +352,7 @@ function loadWalks(opt) {
     if (state.plan !== plan) return;               // the rider has searched again
     if (plan.options[state.selected] === opt) drawPlan(false);
     render();
+    if (journey.on && journey.opt === opt) refreshJourney();
   });
 }
 
@@ -593,6 +650,8 @@ function newBlock() {
     <div class="trip-body"></div>`;
   results = block.querySelector(".trip-body");
   append(block, { top: true });
+  if (journey.on) endJourney({ restore: false });
+  window.dmvPanel?.show();
   window.dmvPanel?.lower();
 }
 
@@ -699,6 +758,7 @@ function render() {
     showNotice(plan.notice || "No trips found.");
     return;
   }
+  updatePeek();
   if (state.view === "detail" && state.selected != null) return renderDetail(plan.options[state.selected]);
   const n = plan.options.length;
   const liveNote = plan.live_available === false ? " Live times are paused; showing the timetable." : "";
@@ -783,7 +843,9 @@ function optionCard(opt, i) {
   </button>`;
 }
 
-function renderDetail(opt) {
+// A trip's steps in order: one per leg (walk, ride, airport shuttle), then "Arrive". The
+// trip card's list, the numbered pins on the map and "Follow on the map" all use these.
+function tripSteps(opt) {
   const plan = state.plan;
   const steps = [];
   const legs = opt.legs;
@@ -809,15 +871,21 @@ function renderDetail(opt) {
         sub: `${esc(leg.agency_name)}. Leaves <span class="time">${clock(leg.board.expected)}</span> from ${esc(leg.board.name)}${delay} ${leg.live ? '<span class="live-tag">Live</span>' : '<span class="sched-tag">Scheduled</span>'}<br>Ride ${plural(leg.stops, "stop", "stops")}, get off at ${esc(leg.alight.name)} around <span class="time">${clock(leg.alight.expected)}</span>`,
         html: true });
     }
+    steps[steps.length - 1].leg = idx;
   });
-  steps.push({ cls: "end", title: `Arrive around ${clock(opt.arrive_at)}`, sub: "" });
+  steps.push({ cls: "end", title: `Arrive around ${clock(opt.arrive_at)}`, sub: "", leg: null });
+  return steps;
+}
 
+function renderDetail(opt) {
+  const steps = tripSteps(opt);
   results.innerHTML = `<div class="detail">
     <button class="back" id="backBtn" type="button">${ICONS.back}All options</button>
     <div class="detail-head"><span class="big">${clock(opt.leave_at)}</span><span>leave, arrive ${clock(opt.arrive_at)} (${mins(opt.duration_s)} min)</span></div>
+    <button class="btn primary follow-btn" id="followTrip" type="button">${ICONS.route}Follow step by step on the map</button>
     <ol class="steps">${steps.map((s, i) => `
       <li class="step ${s.cls}" style="${s.color ? `--c:${esc(s.color)}` : ""}">
-        <div class="rail-col"><span class="node"></span>${i < steps.length - 1 ? '<span class="stem"></span>' : ""}</div>
+        <div class="rail-col"><button class="node" type="button" data-step="${i}" aria-label="Show step ${i + 1} on the map">${s.cls === "end" ? "" : i + 1}</button>${i < steps.length - 1 ? '<span class="stem"></span>' : ""}</div>
         <div class="body"><div class="title">${esc(s.title)}</div>${s.sub ? `<div class="sub">${s.html ? s.sub : esc(s.sub)}</div>` : ""}</div>
       </li>`).join("")}</ol>
     ${opt.reports?.length ? `<section class="trip-reports" aria-label="Rider reports">
@@ -831,6 +899,8 @@ function renderDetail(opt) {
     </div>
   </div>`;
   $("backBtn").addEventListener("click", () => { state.view = "list"; render(); });
+  $("followTrip").addEventListener("click", () => startJourney(0));
+  results.querySelectorAll(".step .node").forEach((b) => b.addEventListener("click", () => startJourney(+b.dataset.step)));
   $("reportTrip").addEventListener("click", () => {
     track("report_from_trip", { search_id: state.searchId, option_index: state.selected });
     window.dmvReports?.open();
@@ -951,3 +1021,209 @@ addEventListener("appinstalled", () => { $("installWrap").hidden = true; track("
 
 initMap();
 if (state.to) planTrip(); else toInput.focus();
+
+// ------------------------------------------------------------------ follow on the map
+// A trip one step at a time: the step card at the bottom (Back / Next), the map zoomed to
+// that part of the journey with the rest faded, numbered pins matching the trip card, and
+// the rider's own position when they've already shared it.
+const TRIP_LINES = ["trip-casing", "trip-ride", "trip-walk", "trip-shuttle-casing", "trip-shuttle"];
+
+function stepColor(s) {
+  if (s.cls === "ride") return s.color || "#2b6f77";
+  return s.cls === "end" ? "#DE6A3A" : "#4A5651";
+}
+
+function drawStepPins(opt, feats) {
+  stepPins.forEach((m) => m.remove()); stepPins = [];
+  if (!opt) return;
+  tripSteps(opt).forEach((s, i) => {
+    if (s.leg == null) return;                        // "Arrive": the destination pin
+    const f = feats.find((x) => x.properties.step === s.leg);
+    if (!f) return;
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = "step-pin";
+    el.style.setProperty("--c", stepColor(s));
+    el.style.color = textOn(stepColor(s));
+    el.textContent = String(i + 1);
+    el.dataset.step = String(i);
+    el.setAttribute("aria-label", `Step ${i + 1}: ${s.title}`);
+    el.addEventListener("click", (e) => { e.stopPropagation(); startJourney(i); });
+    // A ride starts at its stop; a walk where its path starts.
+    const leg = opt.legs[s.leg];
+    const at = leg.mode === "ride" ? pt(leg.board) : f.geometry.coordinates[0];
+    stepPins.push(new maplibregl.Marker({ element: el, anchor: "bottom-left", offset: [2, -2] })
+      .setLngLat(at).addTo(map));
+  });
+  // Which station door: a tag where the walk meets the station ("Entrance B"), shown
+  // while following that step.
+  opt.legs.forEach((leg, legIdx) => {
+    const w = leg.walk, path = w?.routed ? w.path : null;
+    if (!path?.length) return;
+    for (const [name, at] of [[w.entrance, path[path.length - 1]], [w.exit, path[0]]]) {
+      if (!name) continue;
+      const tag = document.createElement("div");
+      tag.className = "door-tag";
+      tag.dataset.leg = String(legIdx);
+      tag.textContent = doorName(name);
+      tag.title = name;
+      stepPins.push(new maplibregl.Marker({ element: tag, anchor: "top", offset: [0, 6] }).setLngLat(at).addTo(map));
+    }
+  });
+  markCurrentPin();
+}
+
+// "Entrance B - 9st & G St, Gallery Place" -> "Entrance B"; "Dupont Circle - Connecticut
+// Ave. & Q St. NW" -> "Connecticut Ave. & Q St. NW".
+function doorName(name) {
+  const m = name.match(/^(Entrance [A-Z0-9]+)\b/i);
+  if (m) return m[1];
+  const parts = name.split(" - ");
+  return (parts.length > 1 ? parts.slice(1).join(" - ") : name).replace(/\s*\(Elevator\)/i, "").slice(0, 40);
+}
+
+function markCurrentPin() {
+  const leg = journey.on ? journey.steps[journey.i]?.leg : undefined;
+  for (const m of stepPins) {
+    const el = m.getElement();
+    if (el.dataset.step) el.classList.toggle("current", journey.on && +el.dataset.step === journey.i);
+    if (el.dataset.leg) el.classList.toggle("show", leg != null && +el.dataset.leg === leg);
+  }
+}
+
+function emphasize(leg) {
+  if (!map?.getLayer("trip-ride")) return;
+  const opacity = leg === undefined ? 1 : ["case", ["==", ["get", "step"], leg], 1, 0.28];
+  for (const id of TRIP_LINES) map.setPaintProperty(id, "line-opacity", id === "trip-shuttle-casing" || id === "trip-casing" ? (leg === undefined ? 1 : ["case", ["==", ["get", "step"], leg], 1, 0]) : opacity);
+}
+
+function startJourney(i = 0) {
+  const opt = state.plan?.options?.[state.selected];
+  if (!opt || !map) return;
+  journey.on = true; journey.opt = opt;
+  journey.steps = tripSteps(opt); journey.feats = optionFeatures(opt).feats;
+  $("journey").hidden = false;
+  document.body.classList.add("following");
+  setMin(true, { focus: false });                    // the step card takes the panel's place
+  watchMe();
+  track("journey_started", { search_id: state.searchId, option_index: state.selected, detail: { step: i } });
+  showStep(i);
+  $("journeyNext").focus({ preventScroll: true });
+}
+
+function refreshJourney() {
+  journey.steps = tripSteps(journey.opt); journey.feats = optionFeatures(journey.opt).feats;
+  showStep(journey.i, { fit: false });
+}
+
+function showStep(i, { fit = true } = {}) {
+  const steps = journey.steps;
+  i = Math.max(0, Math.min(i, steps.length - 1));
+  journey.i = i;
+  const s = steps[i], last = i === steps.length - 1;
+  $("journeyCount").textContent = `Step ${i + 1} of ${steps.length}`;
+  const sub = s.sub ? (s.html ? s.sub : esc(s.sub)).replace(/^<br>/, "").replace('<details class="walk-turns">', '<details class="walk-turns" open>') : "";
+  $("journeyBody").innerHTML = `<div class="jn-row">
+      <span class="jn-num" style="--c:${esc(stepColor(s))};color:${textOn(stepColor(s))}">${last ? ICONS.flag : i + 1}</span>
+      <div><h2 class="jn-title" id="journeyTitle">${esc(s.title)}</h2>${sub ? `<div class="jn-sub">${sub}</div>` : ""}</div>
+    </div>`;
+  $("journeyPrev").disabled = i === 0;
+  $("journeyNext").firstChild.textContent = last ? "Done " : "Next ";
+  emphasize(s.leg ?? journey.opt.legs.length - 1);   // arriving: the last walk
+  markCurrentPin();
+  if (!fit) return;
+  sizeSheet();                                        // the card's new height, before zooming
+  const coords = journey.feats.filter((f) => f.properties.step === s.leg).flatMap((f) => f.geometry.coordinates);
+  if (s.leg == null) {                                // arriving: the end of the last walk
+    const d = state.plan.destination;
+    map.easeTo({ center: [d.lon, d.lat], zoom: Math.max(map.getZoom(), 16), duration: reduceMotion ? 0 : 700 });
+  } else if (coords.length) {
+    const b = new maplibregl.LngLatBounds(coords[0], coords[0]);
+    coords.forEach((c) => b.extend(c));
+    map.fitBounds(b, { duration: reduceMotion ? 0 : 700, maxZoom: 17 });
+  }
+  if (i) track("journey_step", { search_id: state.searchId, detail: { step: i } });
+}
+
+function endJourney({ restore = true } = {}) {
+  if (!journey.on) return;
+  journey.on = false;
+  $("journey").hidden = true;
+  document.body.classList.remove("following");
+  emphasize(undefined);
+  markCurrentPin();
+  stopWatch();
+  track("journey_done", { search_id: state.searchId, detail: { step: journey.i } });
+  if (restore) {
+    state.view = "detail";
+    setMin(false);
+    render();
+  } else {
+    sizeSheet();
+  }
+}
+
+$("journeyPrev").addEventListener("click", () => showStep(journey.i - 1));
+$("journeyNext").addEventListener("click", () => (journey.i >= journey.steps.length - 1 ? endJourney() : showStep(journey.i + 1)));
+$("journeyClose").addEventListener("click", () => endJourney());
+document.addEventListener("keydown", (e) => {
+  if (!journey.on || e.target.closest("input, textarea")) return;
+  if (e.key === "Escape") endJourney();
+  else if (e.key === "ArrowRight") showStep(journey.i + 1);
+  else if (e.key === "ArrowLeft") showStep(journey.i - 1);
+});
+
+// The rider's own dot while following, only if they've already let the site use their
+// location (never asks again here).
+async function watchMe() {
+  if (!navigator.geolocation || journey.watch != null) return;
+  try {
+    const p = await navigator.permissions?.query({ name: "geolocation" });
+    if (p?.state !== "granted" || !journey.on) return;
+  } catch (_) { return; }
+  journey.watch = navigator.geolocation.watchPosition((pos) => {
+    if (!journey.me) {
+      const el = document.createElement("div"); el.className = "you-dot";
+      el.setAttribute("aria-label", "You are here");
+      journey.me = new maplibregl.Marker({ element: el });
+    }
+    journey.me.setLngLat([pos.coords.longitude, pos.coords.latitude]).addTo(map);
+  }, () => {}, { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 });
+}
+function stopWatch() {
+  if (journey.watch != null) navigator.geolocation.clearWatch(journey.watch);
+  journey.watch = null;
+  journey.me?.remove(); journey.me = null;
+}
+
+// ------------------------------------------------------------------ phone menu
+// On phones one labeled Menu holds what the top bar's icons do on larger screens.
+const menuBtn = $("menuBtn"), menuList = $("menuList");
+function setMenu(open) {
+  menuList.hidden = !open;
+  menuBtn.setAttribute("aria-expanded", String(open));
+  if (!open) return;
+  track("menu_opened");
+  for (const b of menuList.querySelectorAll("button[data-for]")) {
+    const target = $(b.dataset.for);
+    b.hidden = !target || Boolean(target.closest("[hidden]"));
+  }
+  const account = menuList.querySelector('[data-for="accountBtn"] span');
+  if (account) account.textContent = $("accountBtnText")?.textContent || "Sign in";
+  const explore = menuList.querySelector('[data-for="exploreBtn"] span');
+  if (explore) explore.textContent = $("exploreBtn").getAttribute("aria-pressed") === "true" ? "Close Explore" : "Explore every stop and route";
+  menuList.querySelector("button:not([hidden])")?.focus();
+}
+menuBtn.addEventListener("click", (e) => { e.stopPropagation(); setMenu(menuList.hidden); });
+menuList.addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-for]");
+  if (!b) return;
+  setMenu(false);
+  $(b.dataset.for)?.click();
+});
+document.addEventListener("click", (e) => {
+  if (!menuList.hidden && !menuList.contains(e.target) && !menuBtn.contains(e.target)) setMenu(false);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !menuList.hidden) { setMenu(false); menuBtn.focus(); }
+});

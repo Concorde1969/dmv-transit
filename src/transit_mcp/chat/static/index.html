@@ -33,6 +33,10 @@
 <div id="map" role="region" aria-label="Map"></div>
 
 <div class="topbar">
+  <button class="ask-btn menu-btn" id="menuBtn" type="button" aria-controls="menuList" aria-expanded="false">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    <span>Menu</span>
+  </button>
   <button class="ask-btn account-btn" id="accountBtn" type="button" aria-controls="accountDrawer" aria-expanded="false" hidden>
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
     <span class="account-btn-text" id="accountBtnText">Sign in</span>
@@ -46,6 +50,13 @@
     <span class="report-btn-text">Report an issue</span>
   </button>
 </div>
+<nav class="menu-list" id="menuList" aria-label="Menu" hidden>
+  <button type="button" data-for="exploreBtn"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg><span>Explore every stop and route</span></button>
+  <button type="button" data-for="accountBtn"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg><span>Sign in</span></button>
+  <button type="button" data-for="reportBtn"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg><span>Report an issue</span></button>
+  <button type="button" data-for="installLink"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg><span>Install the app</span></button>
+  <button type="button" data-for="aboutLink"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg><span>About this site</span></button>
+</nav>
 
 <!-- Explore: every stop and route (explore.js). -->
 <section class="explore-card" id="exploreCard" aria-labelledby="exploreTitle" hidden>
@@ -77,8 +88,12 @@
 <!-- One panel: where to, the conversation (trips and answers together), and the composer. -->
 <section class="panel" id="panel" aria-label="Trip planner and assistant">
   <button class="sheet-handle" id="sheetToggle" type="button" aria-controls="panel" aria-expanded="false" aria-label="Make the panel taller"><span aria-hidden="true"></span></button>
+  <button class="panel-min" id="panelMin" type="button" aria-controls="panel" title="Minimize to see the map">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+    <span>Minimize</span>
+  </button>
   <div class="brand">
-    <img class="brand-logo" src="/static/brand/logo.png" width="132" height="94" alt="DMV Transit" />
+    <img class="brand-logo" src="/static/brand/logo.png" width="112" height="80" alt="DMV Transit" />
     <div class="brand-side">
       <p class="credit">Created by Kaleb Neal <span aria-hidden="true">&mdash;</span>
         <a href="https://www.linkedin.com/in/kaleb-neal" target="_blank" rel="noopener noreferrer"
@@ -147,6 +162,33 @@
     <a href="#" id="aboutLink">About this site</a> &middot; <a href="/privacy">Privacy</a>
     <span id="installWrap" hidden>&middot; <a href="#" id="installLink">Install the app</a></span>
     <span class="fine-credit">&middot; Created by Kaleb Neal (<a href="https://www.linkedin.com/in/kaleb-neal" target="_blank" rel="noopener noreferrer">LinkedIn</a>)</span>
+  </div>
+</section>
+
+<!-- The panel, minimized: one bar that brings it back (app.js). -->
+<button class="peek" id="peek" type="button" aria-controls="panel" hidden>
+  <img class="peek-logo" src="/static/brand/logo.png" width="56" height="40" alt="" />
+  <span class="peek-text"><strong id="peekTitle">Where to?</strong><small id="peekSub">Plan a trip or ask a question</small></span>
+  <span class="peek-open"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>Open</span>
+</button>
+
+<!-- Follow a trip on the map, one step at a time (app.js). -->
+<section class="journey" id="journey" aria-labelledby="journeyTitle" hidden>
+  <div class="jn-head">
+    <span class="jn-count" id="journeyCount">Step 1 of 4</span>
+    <button class="jn-close" id="journeyClose" type="button">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      <span>Done</span>
+    </button>
+  </div>
+  <div class="jn-body" id="journeyBody" aria-live="polite">
+    <h2 class="jn-title" id="journeyTitle"></h2>
+  </div>
+  <div class="jn-nav">
+    <button class="btn quiet" id="journeyPrev" type="button">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Back</button>
+    <button class="btn primary" id="journeyNext" type="button">Next
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
   </div>
 </section>
 
