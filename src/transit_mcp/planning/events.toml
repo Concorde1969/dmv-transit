@@ -1,0 +1,141 @@
+# Holiday markets and seasonal events, curated by hand from each organizer's own page.
+#
+# One [[event]] each. Dates are local (America/New_York). `hours` lists the days of the
+# week it's open and when; with `start`, `end` and `closed` that gives every open day.
+# `getting_there` is only what the organizer's page itself says about transit; the trip
+# itself always comes from the planner. Keep `source` and `checked` with every entry,
+# and drop past events whenever convenient (they stop showing the day after `end`).
+
+[[event]]
+id = "downtown-dc-holiday-market"
+name = "DowntownDC Holiday Market"
+kind = "market"
+venue = "F Street NW, between 7th and 9th Streets"
+address = "F St NW between 7th and 9th Streets NW, Washington, DC"
+at = [38.89711, -77.02329]
+start = 2026-11-13
+end = 2026-12-23
+closed = [2026-11-26]
+hours = [
+  { days = ["mon", "tue", "wed", "thu"], open = "12:00", close = "20:00" },
+  { days = ["fri", "sat"], open = "11:00", close = "21:00" },
+  { days = ["sun"], open = "11:00", close = "20:00" },
+]
+cost = "Free to browse"
+summary = "Outdoor market on F Street with more than 120 local vendors: handmade gifts, art and seasonal treats. Its 22nd year."
+getting_there = "The organizer points riders to Gallery Place-Chinatown Metro station (Red, Yellow and Green lines)."
+notes = "Closed on Thanksgiving Day."
+source = "https://www.downtowndc.org/holiday-market/"
+checked = "2026-11-21"
+
+[[event]]
+id = "dc-holiday-market-dupont"
+name = "DC Holiday Market at Dupont Circle"
+kind = "market"
+venue = "New Hampshire Avenue NW, between Q Street and Dupont Circle"
+address = "1500 block of New Hampshire Ave NW, Washington, DC"
+at = [38.91120, -77.04290]
+start = 2026-11-12
+end = 2026-12-23
+closed = [2026-11-26, 2026-11-30]
+hours = [
+  { days = ["mon", "tue", "wed", "thu", "fri"], open = "12:00", close = "20:00" },
+  { days = ["sat", "sun"], open = "11:00", close = "20:00" },
+]
+cost = "Free to browse"
+summary = "More than 35 local artists, crafters and small businesses on a closed block of New Hampshire Avenue, just north of the Circle."
+getting_there = "The organizer says it's one block from the Dupont Circle Metro station."
+notes = "Closed Thanksgiving Day (Nov 26) and Monday, Nov 30."
+source = "https://dcholidaymarket.net/"
+checked = "2026-11-21"
+
+[[event]]
+id = "maryland-christmas-show"
+name = "Maryland Christmas Show"
+kind = "market"
+venue = "Frederick County Fairgrounds"
+address = "797 East Patrick St, Frederick, MD 21701"
+at = [39.41257, -77.39488]
+start = 2026-11-20
+end = 2026-11-29
+hours = [
+  { days = ["fri", "sat"], open = "10:00", close = "17:00" },
+  { days = ["sun"], open = "10:00", close = "16:00" },
+]
+cost = "Adults $10, children 10 and under $4; parking $2"
+summary = "Arts and crafts show in seven heated buildings, over two weekends: crafts, art, pottery, jewelry, specialty food and more. Its 43rd season."
+notes = "Not every exhibitor is there both weekends. Tickets online or at the gate. Service animals only."
+tickets = "https://www.eventbrite.com/e/maryland-christmas-show-2026-tickets-2003076881875"
+source = "https://www.marylandchristmasshow.com/"
+checked = "2026-11-21"
+
+[[event]]
+id = "norway-house-christmas-festival"
+name = "Norwegian Christmas Festival at Norway House"
+kind = "festival"
+venue = "Norway House"
+address = "3846 Meredith Drive, Fairfax, VA 22030"
+at = [38.85594, -77.31691]
+start = 2026-12-04
+end = 2026-12-06
+hours = [
+  { days = ["fri"], open = "11:00", close = "17:00" },
+  { days = ["sat"], open = "10:00", close = "17:00" },
+  { days = ["sun"], open = "09:00", close = "15:00" },
+]
+cost = "Free; indoor shopping by reservation"
+summary = "Sons of Norway Washington Lodge's festival: Norwegian gifts, linens, sweaters and foods inside, and an outdoor cafe with waffles, lefse and hot dogs."
+notes = "Indoor shopping needs a reservation (walk-ins as space allows); the outdoor cafe needs none. Friday 9-11 AM and Saturday 9-10 AM are for Sons of Norway members only. Wheelchairs and strollers can't be accommodated inside; there is a chair lift."
+tickets = "https://www.signupgenius.com/go/20F0F4EAEA62EA46-65051569-norwegian"
+source = "https://www.norwaydc.org/christmas-2026/links-to-the-2026-fest-sugnups"
+checked = "2026-11-21"
+
+[[event]]
+id = "del-ray-artisans-holiday-market"
+name = "Del Ray Artisans Fine Art & Fine Craft Holiday Market"
+kind = "market"
+venue = "Del Ray Artisans gallery, Nicholas A. Colasanto Center"
+address = "2704 Mount Vernon Avenue, Alexandria, VA 22301"
+at = [38.82967, -77.05960]
+start = 2026-12-04
+end = 2026-12-20
+hours = [
+  { days = ["fri"], open = "18:00", close = "21:00" },
+  { days = ["sat"], open = "09:00", close = "17:00" },
+  { days = ["sun"], open = "11:00", close = "17:00" },
+]
+cost = "Free"
+summary = "Handmade fine art and craft by local artists, the first three weekends of December, with different artists each weekend. Its 31st year."
+notes = "The gallery is free, open to the public and accessible."
+source = "https://delrayartisans.org/event/holiday-market-2026/"
+checked = "2026-11-21"
+
+[[event]]
+id = "silver-spring-christmas-market"
+name = "Silver Spring Christmas Market and Holiday Craft Show"
+kind = "market"
+venue = "Veterans Plaza"
+address = "1 Veterans Pl, Silver Spring, MD 20910"
+at = [38.99711, -77.02492]
+start = 2026-12-06
+end = 2026-12-06
+hours = [{ days = ["sun"], open = "12:00", close = "16:00" }]
+cost = "Free (reserve a spot on Eventbrite)"
+summary = "Handmade gifts, holiday ornaments and seasonal decor from local artisans."
+tickets = "https://www.eventbrite.com/e/silver-spring-christmas-market-and-holiday-craft-show-veterans-plaza-tickets-1985344270156"
+source = "https://www.eventbrite.com/e/silver-spring-christmas-market-and-holiday-craft-show-veterans-plaza-tickets-1985344270156"
+checked = "2026-11-21"
+
+[[event]]
+id = "old-town-alexandria-christmas-market"
+name = "Old Town Alexandria Christmas Market & Holiday Craft Show"
+kind = "market"
+venue = "John Carlyle Square"
+address = "300 John Carlyle Street, Alexandria, VA 22314"
+at = [38.80374, -77.06158]
+start = 2026-12-12
+end = 2026-12-12
+hours = [{ days = ["sat"], open = "11:00", close = "17:00" }]
+summary = "A one-day Christmas market and craft show in Carlyle."
+source = "https://visitalexandria.com/events/christmas-market-holiday-craft-show/"
+checked = "2026-11-21"

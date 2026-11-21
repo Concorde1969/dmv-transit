@@ -163,6 +163,17 @@ BWI airport lots curated from the operators' own pages in
 `planning/parking.toml` (each with its source and the date it was checked). The
 `find_parking` MCP tool answers parking questions from the same data.
 
+### Holiday markets and events
+
+Seasonal markets and events live in `planning/events.toml`, curated by hand from each
+organizer's own page: dates, weekly hours, closed days, cost, address and map point,
+with the source and the date it was checked. `planning/events.py` works out the days
+each one is open; the `find_events` MCP tool answers "what's open this weekend / near
+me", `/api/events` feeds the Explore map's "Holiday markets" layer, and while any event
+opens within a week the welcome offers a "Which holiday markets are open..." suggestion.
+Past events drop off on their own the day after they end. To add one, copy an entry,
+fill in every field from the organizer's page, and run `pytest tests/test_events.py`.
+
 ### Flights at IAD, DCA and BWI
 
 Ask the assistant about a flight ("I'm on UA 123 out of DCA at 6, leaving from the Capital

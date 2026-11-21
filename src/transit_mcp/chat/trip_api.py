@@ -308,7 +308,7 @@ EVENTS = {"page_view", "option_selected", "details_opened", "ask_about_trip",
           "saved_place_used", "saved_place_pin", "planner_opened", "assistant_trip",
           "starter_used", "conversation_reset", "about_opened", "aerolink_clicked",
           "explore_opened", "explore_stop", "explore_route", "explore_go", "explore_parking",
-          "app_install_clicked", "app_installed"}
+          "explore_event", "app_install_clicked", "app_installed"}
 
 
 class EventBody(BaseModel):

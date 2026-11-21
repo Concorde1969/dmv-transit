@@ -11,6 +11,7 @@ const ICON = {
   plan: svg('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h3"/>'),
   ask: svg('<path d="M21 12a8 8 0 0 1-11.5 7.2L4 20l1-4.6A8 8 0 1 1 21 12z"/>'),
   map: svg('<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/>'),
+  gift: svg('<rect x="3" y="8" width="18" height="13" rx="1.5"/><path d="M3 12h18M12 8v13M12 8S10.5 3 8 3.6C5.8 4.2 6.8 8 12 8zM12 8s1.5-5 4-4.4c2.2.6 1.2 4.4-4 4.4z"/>'),
   flight: svg('<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>'),
 };
 
@@ -242,6 +243,20 @@ for (const s of STARTERS) {
     else send(s.text);
   }, ICON[s.icon]));
 }
+
+// In season, a second suggestion: the holiday markets open in the next few days
+// (/api/events, from planning/events.toml). Weekends ask about the weekend.
+fetch("/api/events").then((r) => (r.ok ? r.json() : null)).then((d) => {
+  const soon = (d?.events || []).filter((e) => {
+    const days = (Date.parse(e.next_open.date) - Date.parse(d.today)) / 864e5;
+    return days >= 0 && days <= 7;
+  });
+  if (!soon.length) return;
+  const weekend = [0, 5, 6].includes(new Date(`${d.today}T12:00`).getDay());
+  const text = weekend ? "Which holiday markets are open this weekend?" : "Which holiday markets are open this week?";
+  const chip = chipButton(text, () => { track("starter_used", { detail: { kind: "events" } }); send(text); }, ICON.gift);
+  chips.insertBefore(chip, chips.children[1] || null);
+}).catch(() => {});
 
 // "Plan my visit": signed-in riders get the planner's starters; others sign in first.
 function planner() {

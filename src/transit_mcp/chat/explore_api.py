@@ -2,6 +2,7 @@
 
     GET /api/explore                    -> agencies, routes, stops and transfer hubs
     GET /api/explore/stop?feed=&id=     -> one stop: its agency and the routes serving it
+    GET /api/events                     -> holiday markets and events that haven't ended
 
 The network comes from the agencies' GTFS feeds already in the database: for each route,
 its busiest shape in each direction (drawn from ``gtfs_shapes``), clipped to the region
@@ -262,6 +263,23 @@ async def network(request: Request) -> Response:
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers=headers)
     return Response(body, media_type="application/json", headers=headers)
+
+
+@router.get("/api/events")
+async def holiday_events(request: Request) -> JSONResponse:
+    """Holiday markets and events that haven't ended (planning/events.toml), each with its
+    next open day, for the map and the welcome's seasonal suggestion."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from transit_mcp.planning import events
+
+    now = datetime.now(ZoneInfo(request.app.state.settings.timezone))
+    found = events.upcoming(now.date())
+    for e in found:
+        e["open_now"] = events.is_open_now(e["next_open"], now)
+    return JSONResponse({"today": now.date().isoformat(), "events": found},
+                        headers={"Cache-Control": "public, max-age=300"})
 
 
 @router.get("/api/explore/stop")

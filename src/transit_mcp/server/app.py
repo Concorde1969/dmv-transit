@@ -100,6 +100,7 @@ TITLES = {
     "plan_connection": "Connections between agencies",
     "estimate_trip_cost": "Trip cost estimate",
     "find_parking": "Parking and park & ride",
+    "find_events": "Holiday markets and events",
 }
 
 
@@ -467,6 +468,52 @@ def find_parking(place: str, radius_m: int = 3000) -> dict:
     }
     if not lots:
         out["message"] = "No parking we know of within that distance. Try a larger radius."
+    return out
+
+
+@tool
+def find_events(when: str | None = None, near: str | None = None, radius_m: int = 15000,
+                query: str | None = None) -> dict:
+    """Holiday markets and seasonal events around the region (DC, Maryland and Northern
+    Virginia), curated from each organizer's own page: the days and hours each one is open,
+    where it is (address and a `point` for plan_trip), cost or tickets, the nearest Metro
+    stations, and the source page. Use it for every question about holiday markets,
+    Christmas markets, craft shows or seasonal events, then plan the trip with plan_trip
+    (pass the event's `point`). Only the events listed here are known; never add others.
+
+    Args:
+        when: "today", "tomorrow", "this weekend", "next weekend", "this week", a date
+            ("2026-12-12"), a range ("2026-12-04..2026-12-06"), or "season" for every
+            upcoming day. Default: the next two weeks.
+        near: Optional place to sort by distance: an address, landmark, station or
+            "lat,lon". Leave it out to list them all, soonest first.
+        radius_m: With `near`, how far to look in meters (default 15000).
+        query: Optional words to match, e.g. "Alexandria" or "Norwegian".
+    """
+    from transit_mcp.planning import events
+
+    now = datetime.now(ZoneInfo(get_settings().timezone))
+    with _db() as db:
+        point, label = None, None
+        if near:
+            p = _place(db, near)
+            if p is None:
+                return {"near": near, "error": "place_not_found",
+                        "message": "Couldn't find that place. Ask for a station, address or town."}
+            point, label = (p.lat, p.lon), p.label
+        out = events.find(db, now, when, near=point,
+                          radius_m=max(500, min(int(radius_m), 100000)), words=query)
+    if label:
+        out["near"] = label
+    out["today"] = now.strftime("%A, %B ") + str(now.day)
+    out["note"] = ("Dates, hours and prices come from each organizer's page on the date "
+                   "checked and can change; confirm with the organizer (the `source` link) "
+                   "before you go. Plan the trip with plan_trip using the event's `point`.")
+    if not out["events"]:
+        out["message"] = ("No holiday markets or events we know of are open "
+                          f"{out['range']['label']}"
+                          + (" near there." if near else ".")
+                          + " Try when=\"season\" to see every upcoming one.")
     return out
 
 

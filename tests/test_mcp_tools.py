@@ -235,7 +235,7 @@ def test_clients_on_the_2026_protocol_connect_too(web):
     assert found.status_code == 200, found.text
     assert "2026-07-28" in found.json()["result"]["supportedVersions"]
     tools = ask(2, "tools/list").json()["result"]["tools"]
-    assert len(tools) == 19 and all(t["annotations"]["readOnlyHint"] for t in tools)
+    assert len(tools) == 20 and all(t["annotations"]["readOnlyHint"] for t in tools)
 
 
 def test_a_wrong_key_is_still_refused(web):
@@ -331,7 +331,7 @@ def test_each_key_has_its_own_limit(web):
 
 def test_every_tool_carries_the_grounding_rule():
     tools = asyncio.run(server.mcp.list_tools())
-    assert len(tools) == 19
+    assert len(tools) == 20
     for t in tools:
         assert t.description.endswith(server.GROUNDING), t.name
         assert len(t.description) > len(server.GROUNDING) + 40, t.name   # docstring kept

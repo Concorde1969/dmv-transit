@@ -83,6 +83,10 @@ Which tools to use:
 `estimate_trip_cost`, `list_agencies`.
 - Parking, park & ride, and airport parking: `find_parking` (spaces, rates and the \
 operator's rules). Never state a lot, price or space count it didn't return.
+- Holiday markets, Christmas markets, craft shows and seasonal events: `find_events` \
+(which days and hours each is open, cost, address, nearest Metro, source page), then \
+`show_trip` or `plan_trip` with the event's `point` for getting there. Only mention \
+events it returns, and remind the rider to confirm with the organizer's page.
 - `search_transit_info` for "how do I pay / ride / bring a bike..." questions — \
 never for routes or times.
 

@@ -11,8 +11,8 @@ const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const isPhone = () => matchMedia("(max-width: 720px)").matches;
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-const state = { on: false, data: null, loading: null, hidden: new Set(), show: { routes: true, stops: true, hubs: false, parking: true } };
-const PARKING_COLOR = "#1565c0";
+const state = { on: false, data: null, loading: null, hidden: new Set(), show: { routes: true, stops: true, hubs: false, parking: true, events: true } };
+const PARKING_COLOR = "#1565c0", EVENT_COLOR = "#C25B32";
 let popup = null;
 
 // Google's encoded polyline -> [[lon, lat], ...]
@@ -48,7 +48,7 @@ async function load() {
     if (!r.ok) throw new Error("explore");
     return r.json();
   });
-  const raw = await state.loading;
+  const [raw, events] = await Promise.all([state.loading, holidayEvents()]);
   const agencies = raw.agencies;
   const routes = { type: "FeatureCollection", features: [] };
   raw.routes.forEach(([a, id, short, long, color, kind, lines]) => {
@@ -67,8 +67,20 @@ async function load() {
     geometry: { type: "Point", coordinates: [lot.lon, lot.lat] } })) };
   const counts = {};
   raw.routes.forEach(([a]) => { counts[agencies[a].id] = (counts[agencies[a].id] || 0) + 1; });
-  state.data = { agencies, routes, stops, hubs, parking, lots: raw.parking || [], counts };
+  const happenings = { type: "FeatureCollection", features: events.map((ev, i) => ({
+    type: "Feature", properties: { i, name: ev.name, now: Boolean(ev.open_now) },
+    geometry: { type: "Point", coordinates: [ev.lon, ev.lat] } })) };
+  state.data = { agencies, routes, stops, hubs, parking, lots: raw.parking || [], counts, happenings, events };
+  $("exploreEventsToggle").hidden = !events.length;
   return state.data;
+}
+
+// Holiday markets and events (/api/events): shared with the welcome's seasonal suggestion.
+let eventsLoading = null;
+function holidayEvents() {
+  eventsLoading ||= fetch("/api/events").then((r) => (r.ok ? r.json() : { events: [] }))
+    .then((d) => d.events || []).catch(() => []);
+  return eventsLoading;
 }
 
 // ------------------------------------------------------------------ map layers
@@ -79,6 +91,7 @@ function addLayers(map) {
   map.addSource("explore-stops", { type: "geojson", data: d.stops });
   map.addSource("explore-hubs", { type: "geojson", data: d.hubs });
   map.addSource("explore-parking", { type: "geojson", data: d.parking });
+  map.addSource("explore-events", { type: "geojson", data: d.happenings });
   // Under the trip layers, so a planned trip stays on top.
   const before = map.getLayer("others-line") ? "others-line" : undefined;
   map.addLayer({ id: "explore-hubs", type: "circle", source: "explore-hubs", minzoom: 11,
@@ -113,6 +126,16 @@ function addLayers(map) {
     layout: { "text-field": "P", "text-font": ["Noto Sans Medium"], "text-allow-overlap": true,
               "text-size": ["interpolate", ["linear"], ["zoom"], 9, 9, 14, 14] },
     paint: { "text-color": "#ffffff" } }, before);
+  // Holiday markets: a terracotta dot with a white ring (a dark ring while it's open now),
+  // named from zoom 11.
+  map.addLayer({ id: "explore-events", type: "circle", source: "explore-events",
+    paint: { "circle-color": EVENT_COLOR, "circle-stroke-color": ["case", ["get", "now"], "#7A2E12", "#ffffff"],
+             "circle-stroke-width": ["case", ["get", "now"], 3, 2],
+             "circle-radius": ["interpolate", ["linear"], ["zoom"], 8, 6, 14, 11] } }, before);
+  map.addLayer({ id: "explore-events-label", type: "symbol", source: "explore-events", minzoom: 11,
+    layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Medium"], "text-size": 12.5,
+              "text-offset": [0, 1.3], "text-anchor": "top", "text-max-width": 12, "text-optional": true },
+    paint: { "text-color": "#7A2E12", "text-halo-color": "#ffffff", "text-halo-width": 1.8 } }, before);
   map.addLayer({ id: "explore-labels", type: "symbol", source: "explore-stops",
     filter: ["any", ["all", ["get", "rail"], [">=", ["zoom"], 11]], [">=", ["zoom"], 16]],
     layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Medium"], "text-size": 12,
@@ -136,6 +159,7 @@ function applyFilters(map) {
   for (const id of ["explore-stops", "explore-rail-stops", "explore-labels"]) map.setLayoutProperty(id, "visibility", vis(state.show.stops));
   map.setLayoutProperty("explore-hubs", "visibility", vis(state.show.hubs));
   for (const id of ["explore-parking", "explore-parking-p"]) map.setLayoutProperty(id, "visibility", vis(state.show.parking));
+  for (const id of ["explore-events", "explore-events-label"]) map.setLayoutProperty(id, "visibility", vis(state.show.events));
 }
 
 // ------------------------------------------------------------------ taps and popups
@@ -218,6 +242,34 @@ function showParking(map, f) {
   });
 }
 
+function showEvent(map, f) {
+  const ev = state.data.events[f.properties.i];
+  track("explore_event");
+  const next = ev.next_open;
+  const when = ev.open_now ? `Open now, until ${esc(next.hours.split(" to ")[1])}`
+    : `Next open ${esc(next.day)}, ${esc(next.hours)}`;
+  const source = (() => { try { return new URL(ev.source).hostname.replace(/^www\./, ""); } catch (_) { return "the organizer"; } })();
+  const more = [ev.summary, ev.getting_there, ev.notes].filter(Boolean).map((t) => `<p class="xp-note">${esc(t)}</p>`).join("");
+  const box = openPopup(map, f.geometry.coordinates, `<strong>${esc(ev.name)}</strong>
+    <small><span class="xp-swatch" style="background:${EVENT_COLOR}"></span>${esc(ev.venue || ev.address || "")}</small>
+    <p class="xp-cost">${when}</p>
+    <ul class="xp-options"><li>${esc(ev.dates)}</li>${(ev.usual_hours || []).map((h) => `<li>${esc(h)}</li>`).join("")}${ev.cost ? `<li>${esc(ev.cost)}</li>` : ""}</ul>
+    ${more ? `<details class="xp-more"><summary>More about this event</summary>${more}</details>` : ""}
+    <p class="xp-note">From <a href="${esc(ev.source)}" target="_blank" rel="noopener">${esc(source)}</a>${ev.checked ? `, checked ${esc(ev.checked)}` : ""}. Confirm before you go.</p>
+    <div class="popup-actions"><button class="btn small primary" type="button" data-act="to">Go here</button>
+      <button class="btn small quiet" type="button" data-act="ask">Ask about it</button></div>`);
+  const [lon, lat] = f.geometry.coordinates;
+  const point = { lat, lon, label: ev.name, source: "explore" };
+  box.addEventListener("click", (e) => {
+    const act = e.target.closest("button")?.dataset.act;
+    if (!act) return;
+    popup?.remove();
+    track("explore_go", { detail: { act, event: true } });
+    if (act === "to") window.dmvTrip?.goTo(point);
+    else window.dmvChat?.ask(`Tell me about the ${ev.name}: when it's open, what it costs, and the easiest way to get there by transit.`);
+  });
+}
+
 function showRoute(map, f, lngLat) {
   const p = f.properties;
   const agency = state.data.agencies.find((a) => a.id === p.a);
@@ -246,6 +298,8 @@ function wireMap(map) {
     const pad = isPhone() ? 12 : 6;
     const box = [[e.point.x - pad, e.point.y - pad], [e.point.x + pad, e.point.y + pad]];
     const live = (ids) => ids.filter((id) => map.getLayoutProperty(id, "visibility") !== "none");
+    const ev = map.queryRenderedFeatures(box, { layers: live(["explore-events"]) })[0];
+    if (ev) return showEvent(map, ev);
     const lot = map.queryRenderedFeatures(box, { layers: live(["explore-parking"]) })[0];
     if (lot) return showParking(map, lot);
     const stop = map.queryRenderedFeatures(box, { layers: live(stopLayers) })[0];
@@ -253,7 +307,7 @@ function wireMap(map) {
     const route = map.queryRenderedFeatures(box, { layers: live(routeLayers) })[0];
     if (route) showRoute(map, route, e.lngLat);
   });
-  for (const id of ["explore-parking", ...stopLayers, ...routeLayers]) {
+  for (const id of ["explore-events", "explore-parking", ...stopLayers, ...routeLayers]) {
     map.on("mouseenter", id, () => { if (state.on) map.getCanvas().style.cursor = "pointer"; });
     map.on("mouseleave", id, () => { map.getCanvas().style.cursor = ""; });
   }
@@ -321,7 +375,7 @@ $("exploreNone").addEventListener("click", () => {
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && state.on && !popup?.isOpen()) setOn(false); });
 
-window.dmvExplore = { open, close: () => setOn(false) };
+window.dmvExplore = { open, close: () => setOn(false), events: holidayEvents };
 
 // The installed app's "Explore the map" shortcut opens /?explore=1.
 if (new URLSearchParams(location.search).get("explore") === "1") {
