@@ -772,10 +772,13 @@ body.following .step-pin:not(.current) { opacity: 0.75; }
 
 /* ---------- phones: the official logo, Minimize, the bar, the step card, the menu ---------- */
 @media (max-width: 720px) {
-  /* The logo on its own, as it's drawn (no pinstripe). */
-  .brand { padding: 0; border-bottom: 0; border-radius: 12px; overflow: hidden;
-    box-shadow: var(--shadow-panel); }
-  .brand-logo { width: 92px; }
+  /* The official rounded logo exactly as supplied: no box, background, border, rounding,
+     shadow or padding around it, and nothing beside it. */
+  .brand { padding: 0; gap: 0; border: 0; border-radius: 0; background: none; box-shadow: none;
+    overflow: visible; }
+  .brand-side { display: none; }
+  .brand picture { display: block; line-height: 0; }
+  .brand-logo { display: block; width: 96px; height: auto; }
   .panel.min .brand { visibility: visible; }
   .sheet-handle { height: 44px; }
   .panel-min { top: 2px; right: 10px; min-height: 40px; padding: 0 12px 0 8px;
@@ -796,4 +799,13 @@ body.following .step-pin:not(.current) { opacity: 0.75; }
   /* A shorter welcome. */
   .hello-sub { display: none; }
   .explore-card { top: calc(86px + env(safe-area-inset-top, 0px)); }
+}
+
+/* ---------- phones: searching takes the whole screen ---------- */
+@media (max-width: 720px) {
+  body.searching .panel, body.searching .panel.tall {
+    top: 0; height: 100dvh; border-radius: 0; padding-top: env(safe-area-inset-top, 0px); }
+  body.searching .brand, body.searching .topbar, body.searching .menu-list,
+  body.searching .explore-card { display: none; }
+  body.searching .suggest { max-height: 60dvh; }
 }

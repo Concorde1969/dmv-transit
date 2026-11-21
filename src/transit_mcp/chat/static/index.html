@@ -93,7 +93,11 @@
     <span>Minimize</span>
   </button>
   <div class="brand">
-    <img class="brand-logo" src="/static/brand/logo.png" width="112" height="80" alt="DMV Transit" />
+    <picture>
+      <!-- Phones: the official rounded logo, exactly as supplied. -->
+      <source media="(max-width: 720px)" srcset="/static/brand/logo-rounded.png" width="1791" height="1288" />
+      <img class="brand-logo" src="/static/brand/logo.png" width="112" height="80" alt="DMV Transit" />
+    </picture>
     <div class="brand-side">
       <p class="credit">Created by Kaleb Neal <span aria-hidden="true">&mdash;</span>
         <a href="https://www.linkedin.com/in/kaleb-neal" target="_blank" rel="noopener noreferrer"

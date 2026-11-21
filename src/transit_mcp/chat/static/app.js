@@ -160,6 +160,7 @@ function applyPadding() {
 // (for reading answers). Questions make it tall; a new trip brings the map back.
 const panel = $("panel"), sheetToggle = $("sheetToggle");
 function setTall(tall) {
+  if (!tall) document.body.classList.remove("searching");
   panel.classList.toggle("tall", tall);
   document.body.classList.toggle("sheet-tall", tall);
   sheetToggle.setAttribute("aria-expanded", String(tall));
@@ -177,6 +178,7 @@ function sizeSheet() {
 const peek = $("peek"), panelMin = $("panelMin");
 function setMin(min, { focus = true } = {}) {
   if (panel.classList.contains("min") !== min) track(min ? "panel_minimized" : "panel_restored");
+  if (min) document.body.classList.remove("searching");
   panel.classList.toggle("min", min);
   document.body.classList.toggle("minimized", min);
   peek.hidden = !min || journey.on;
@@ -186,7 +188,11 @@ function setMin(min, { focus = true } = {}) {
   if (focus) (min ? peek : panelMin).focus({ preventScroll: true });
 }
 panelMin.addEventListener("click", () => setMin(true));
-peek.addEventListener("click", () => setMin(false));
+peek.addEventListener("click", () => {
+  const trip = state.plan?.options?.[state.selected];
+  setMin(false, { focus: !trip });
+  if (!trip) toInput.focus();            // "Where to?": straight to the search
+});
 
 function updatePeek() {
   const opt = state.plan?.options?.[state.selected];
@@ -502,15 +508,35 @@ function onKey(e) {
   } else if (e.key === "Escape") { hideSuggestions(); }
 }
 
+let pressing = null;
 for (const f of [fromInput, toInput]) {
   f.addEventListener("input", () => onType(f));
+  // Tapped: go full-screen once the tap is over (its click), so the layout doesn't move
+  // under the finger. Tabbed to, or focused by the page: right away.
+  f.addEventListener("pointerdown", () => { pressing = f; });
+  f.addEventListener("pointercancel", () => { pressing = null; });
+  f.addEventListener("click", () => { pressing = null; setSearching(true); });
   f.addEventListener("focus", () => {
+    if (pressing !== f) setSearching(true);
     if (f === fromInput && f.value === "My location") f.select();
     const chosen = f === fromInput ? state.from : state.to;
     if (!chosen || chosen.label !== f.value) onType(f);   // don't re-search a chosen place
   });
   f.addEventListener("keydown", onKey);
-  f.addEventListener("blur", () => setTimeout(hideSuggestions, 120));
+  f.addEventListener("blur", () => setTimeout(() => {
+    hideSuggestions();
+    // Left the search without picking a place: back to the usual tall panel.
+    if (!$("whereForm").contains(document.activeElement)) document.body.classList.remove("searching");
+  }, 120));
+}
+
+// Searching on a phone: the panel takes the whole screen (the fields at the top, the
+// suggestions under them, room for the keyboard). Picking a place starts the trip and
+// brings the map back (newBlock lowers the panel).
+function setSearching(on) {
+  if (!isPhone()) return;
+  if (on) { setMin(false, { focus: false }); setTall(true); }
+  document.body.classList.toggle("searching", on);
 }
 $("whereForm").addEventListener("submit", (e) => e.preventDefault());
 
