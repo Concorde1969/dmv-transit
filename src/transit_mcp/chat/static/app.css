@@ -801,11 +801,11 @@ body.following .step-pin:not(.current) { opacity: 0.75; }
   .explore-card { top: calc(86px + env(safe-area-inset-top, 0px)); }
 }
 
-/* ---------- phones: searching takes the whole screen ---------- */
+/* ---------- phones: searching or chatting takes the whole screen ---------- */
 @media (max-width: 720px) {
-  body.searching .panel, body.searching .panel.tall {
+  body.fullscreen .panel, body.fullscreen .panel.tall {
     top: 0; height: 100dvh; border-radius: 0; padding-top: env(safe-area-inset-top, 0px); }
-  body.searching .brand, body.searching .topbar, body.searching .menu-list,
-  body.searching .explore-card { display: none; }
-  body.searching .suggest { max-height: 60dvh; }
+  body.fullscreen .brand, body.fullscreen .topbar, body.fullscreen .menu-list,
+  body.fullscreen .explore-card { display: none; }
+  body.fullscreen .suggest { max-height: 60dvh; }
 }

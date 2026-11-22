@@ -160,7 +160,7 @@ function applyPadding() {
 // (for reading answers). Questions make it tall; a new trip brings the map back.
 const panel = $("panel"), sheetToggle = $("sheetToggle");
 function setTall(tall) {
-  if (!tall) document.body.classList.remove("searching");
+  if (!tall) document.body.classList.remove("fullscreen");
   panel.classList.toggle("tall", tall);
   document.body.classList.toggle("sheet-tall", tall);
   sheetToggle.setAttribute("aria-expanded", String(tall));
@@ -178,7 +178,7 @@ function sizeSheet() {
 const peek = $("peek"), panelMin = $("panelMin");
 function setMin(min, { focus = true } = {}) {
   if (panel.classList.contains("min") !== min) track(min ? "panel_minimized" : "panel_restored");
-  if (min) document.body.classList.remove("searching");
+  if (min) document.body.classList.remove("fullscreen");
   panel.classList.toggle("min", min);
   document.body.classList.toggle("minimized", min);
   peek.hidden = !min || journey.on;
@@ -212,6 +212,8 @@ window.dmvPanel = {
   // More map (Explore, a new trip): a minimized panel stays minimized.
   lower: () => isPhone() && setTall(false),
   show: () => setMin(false, { focus: false }),
+  // Typing to the assistant (chat.js): the whole screen on a phone, until focus leaves.
+  fullscreen: (on) => setFullscreen(on),
 };
 
 function addTripLayers() {
@@ -515,9 +517,9 @@ for (const f of [fromInput, toInput]) {
   // under the finger. Tabbed to, or focused by the page: right away.
   f.addEventListener("pointerdown", () => { pressing = f; });
   f.addEventListener("pointercancel", () => { pressing = null; });
-  f.addEventListener("click", () => { pressing = null; setSearching(true); });
+  f.addEventListener("click", () => { pressing = null; setFullscreen(true); });
   f.addEventListener("focus", () => {
-    if (pressing !== f) setSearching(true);
+    if (pressing !== f) setFullscreen(true);
     if (f === fromInput && f.value === "My location") f.select();
     const chosen = f === fromInput ? state.from : state.to;
     if (!chosen || chosen.label !== f.value) onType(f);   // don't re-search a chosen place
@@ -526,17 +528,17 @@ for (const f of [fromInput, toInput]) {
   f.addEventListener("blur", () => setTimeout(() => {
     hideSuggestions();
     // Left the search without picking a place: back to the usual tall panel.
-    if (!$("whereForm").contains(document.activeElement)) document.body.classList.remove("searching");
+    if (!$("whereForm").contains(document.activeElement)) document.body.classList.remove("fullscreen");
   }, 120));
 }
 
-// Searching on a phone: the panel takes the whole screen (the fields at the top, the
-// suggestions under them, room for the keyboard). Picking a place starts the trip and
-// brings the map back (newBlock lowers the panel).
-function setSearching(on) {
+// Searching or chatting on a phone: the panel takes the whole screen (the fields or the
+// conversation, with room for the keyboard). Picking a place starts the trip and brings
+// the map back (newBlock lowers the panel); the sheet's handle does too.
+function setFullscreen(on) {
   if (!isPhone()) return;
   if (on) { setMin(false, { focus: false }); setTall(true); }
-  document.body.classList.toggle("searching", on);
+  document.body.classList.toggle("fullscreen", on);
 }
 $("whereForm").addEventListener("submit", (e) => e.preventDefault());
 

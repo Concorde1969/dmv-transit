@@ -2,7 +2,7 @@
 // data (/api/chat). It can also put trips on the map (the "show_trip" event).
 import { flightCard } from "/static/flightcard.js";
 import { track } from "/static/track.js";
-import { announce, append, follow, isEmpty, showIntro, thread } from "/static/thread.js";
+import { announce, append, follow, isEmpty, showIntro, showLatest, thread } from "/static/thread.js";
 
 const $ = (id) => document.getElementById(id);
 const svg = (body) => `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
@@ -81,7 +81,7 @@ function addMessage(role, { more = false } = {}) {
   const el = document.createElement("div");
   el.className = `msg ${role}${more ? " more" : ""}`;
   el.innerHTML = `${more ? "" : `<div class="who">${role === "user" ? "You" : "Assistant"}</div>`}<div class="bubble"></div>`;
-  append(el, { force: role === "user" });
+  append(el, { top: role === "user" });
   return el.querySelector(".bubble");
 }
 
@@ -178,7 +178,10 @@ async function send(text) {
   renderTrace(turn);
   announce("The assistant answered.");
   streaming = false; sendBtn.disabled = false;
-  input.focus({ preventScroll: true });
+  if (document.activeElement !== input) {
+    quietFocus = true; input.focus({ preventScroll: true });
+    setTimeout(() => { quietFocus = false; }, 0);
+  }
 }
 
 function autosize() {
@@ -187,11 +190,13 @@ function autosize() {
 }
 
 // A note from the site itself (not the assistant's model): the planner's welcome, About.
+// The panel opens (tall on a phone) and the note is brought into view.
 function localNote(html) {
   const el = document.createElement("div");
   el.className = "msg assistant note";
   el.innerHTML = `<div class="who">Assistant</div><div class="bubble">${html}</div>`;
-  return append(el);
+  window.dmvPanel?.expand();
+  return append(el, { top: true });
 }
 
 function chipButton(text, onClick, icon = "") {
@@ -206,6 +211,24 @@ function focusComposer() {
   window.dmvPanel?.expand();
   setTimeout(() => input.focus(), 50);
 }
+
+// Typing to the assistant on a phone: the panel takes the whole screen (as the search
+// fields do) and shows the newest exchange once. A tap goes full-screen when it's over,
+// so the layout doesn't move under the finger.
+let pressing = false, quietFocus = false;
+function chatFocus() {
+  if (quietFocus) { quietFocus = false; return; }   // send() handing focus back
+  window.dmvPanel?.fullscreen(true);
+  if (!isEmpty()) showLatest();
+}
+input.addEventListener("pointerdown", () => { pressing = true; });
+input.addEventListener("pointercancel", () => { pressing = false; });
+input.addEventListener("click", () => { if (pressing) { pressing = false; chatFocus(); } });
+input.addEventListener("focus", () => { if (!pressing) chatFocus(); });
+input.addEventListener("blur", () => setTimeout(() => {
+  // Still in the composer (e.g. on Send): stay. Elsewhere: the usual tall panel again.
+  if (!document.activeElement?.closest(".composer") && !streaming) window.dmvPanel?.fullscreen(false);
+}, 150));
 
 input.addEventListener("input", autosize);
 input.addEventListener("keydown", (e) => {
