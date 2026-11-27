@@ -326,9 +326,8 @@ class _Planner:
         plan = TripPlan(
             engine=HeuristicPlanner.name, origin=req.origin.label,
             destination=req.destination.label, day=req.day,
-            caveat="Guidance only — these connections come from stop locations, "
-            "scheduled trips and service calendars, not live times. Confirm departure "
-            "times and fares with each agency before travelling.",
+            caveat="These connections come from stop locations, scheduled trips and "
+            "service calendars (the timetable, not live times).",
             data_stale=is_stale(
                 db.conn.execute("SELECT MAX(computed_at) m FROM stop_links").fetchone()["m"]
             ),

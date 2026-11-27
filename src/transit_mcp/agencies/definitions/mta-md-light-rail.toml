@@ -21,8 +21,7 @@ notes = """\
   One way $2.00 full fare, $1.00 senior or disability, $1.50 student, $2.20 Mobility. \
   1-Day Pass $4.60 ($2.30 senior or disability). 7-Day Pass $22.00. 31-Day Pass \
   $77.00 ($23.00 senior or disability). A Light Rail single trip bought on CharmPass \
-  during a fare inspection costs $7.00 ($3.50 senior or disability, $4.00 student). \
-  Fares change; confirm the current amount at the fare page before you travel."""
+  during a fare inspection costs $7.00 ($3.50 senior or disability, $4.00 student)."""
 
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]

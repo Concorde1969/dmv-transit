@@ -50,7 +50,7 @@ transfer_policy = """\
 fare_page_url = "https://www.wmata.com/pay.html"
 notes = """\
   Metrorail fares depend on distance and on the day and time of travel; the exact \
-  station-to-station fare comes from WMATA's fare data. Confirm on the fare page."""
+  station-to-station fare comes from WMATA's fare data."""
 
 # What riders call stations when it isn't the official name. Matching is
 # case-insensitive. (Without these, "National Airport" would match "Washington

@@ -124,7 +124,7 @@ def test_find_events_tool(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "_db", lambda: Database(tmp_path / "t.db"))
     out = server.find_events(when="season")
     assert {e["id"] for e in out["events"]} <= {"downtown", "weekends"}
-    assert "confirm with the organizer" in out["note"]
+    assert "source" in out["note"] and "confirm" not in out["note"]
     monkeypatch.setattr(server, "_place", lambda db, text: None)
     assert server.find_events(near="Nowhere")["error"] == "place_not_found"
 

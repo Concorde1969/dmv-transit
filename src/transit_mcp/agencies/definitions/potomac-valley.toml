@@ -15,8 +15,7 @@ notes = """\
   READY RIDE fares are $2.00 a boarding. For Regular Route fares, call 304-257-1414 \
   or 1-800-565-7240. Regular Route: 50% off for seniors 62+ and people with \
   disabilities. Children 6 to 12: 50% off all fares; under 6 free. Discount pass: \
-  $5.50 of Regular Route service for $5.00. Fares change; confirm the current amount \
-  at the fare page before you travel."""
+  $5.50 of Regular Route service for $5.00."""
 
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]

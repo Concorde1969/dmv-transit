@@ -290,3 +290,52 @@ def test_instructions_and_conversation_are_cached_without_changing_the_transcrip
         assert messages[0]["content"] == "fare?"
         assert "cache_control" not in messages[2]["content"][-1]
     asyncio.run(go())
+
+
+def test_cant_answer_reply_is_not_sent_back():
+    async def go():
+        say = ("I don't have a timetable lookup for the next train yet. Try entering an "
+               "origin and destination above.")
+        final = SimpleNamespace(content=[_text_block(say)], stop_reason="end_turn")
+        client = _FakeClient([_FakeStream([say], final)])
+        messages = [{"role": "user", "content": "next westbound train from Stadium-Armory?"}]
+        events = [e async for e in run_chat(client=client, bridge=_FakeBridge(), model="m",
+                                            messages=messages, max_tokens=256, max_iterations=6)]
+        assert "".join(e["text"] for e in events if e["type"] == "text") == say
+        assert len(client.messages.calls) == 1
+    asyncio.run(go())
+
+
+def test_earlier_lookup_results_are_dropped_but_the_current_ones_kept():
+    from transit_mcp.chat.guard import OLD_RESULT, compact_history
+
+    def result(tid, text):
+        return {"role": "user", "content": [{"type": "tool_result", "tool_use_id": tid,
+                                             "content": text, "is_error": False}]}
+    use = lambda tid: {"role": "assistant", "content": [  # noqa: E731
+        {"type": "tool_use", "id": tid, "name": "get_fare", "input": {}}]}
+    msgs = [
+        {"role": "user", "content": "first"}, use("a"), result("a", "big json " * 500),
+        {"role": "assistant", "content": [{"type": "text", "text": "It's $2.25."}]},
+        {"role": "user", "content": "second"}, use("b"), result("b", "fresh"),
+    ]
+    out = compact_history(msgs)
+    assert out[2]["content"][0]["content"] == OLD_RESULT
+    assert out[2]["content"][0]["tool_use_id"] == "a"
+    assert out[3]["content"][0]["text"] == "It's $2.25."
+    assert out[6]["content"][0]["content"] == "fresh"
+    assert msgs[2]["content"][0]["content"].startswith("big json")   # not changed in place
+
+
+def test_the_assistant_never_sees_staleness_bookkeeping():
+    from transit_mcp.chat.agent import extract_sources, for_model
+
+    raw = json.dumps({"fare": 2.25, "stale": True, "retrieved_at": "2026-10-24 09:00:00",
+                      "context": [{"url": "https://www.wmata.com/pay.html", "stale": True,
+                                   "fetched_at": "2026-10-24", "text": "Fares"}]}, indent=2)
+    seen = json.loads(for_model(raw))
+    assert seen == {"fare": 2.25, "context": [{"url": "https://www.wmata.com/pay.html",
+                                               "text": "Fares"}]}
+    assert "\n" not in for_model(raw)                      # compact
+    assert for_model("not json") == "not json"
+    assert extract_sources(raw)[0]["url"] == "https://www.wmata.com/pay.html"   # page list intact

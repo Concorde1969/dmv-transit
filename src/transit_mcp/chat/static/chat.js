@@ -35,11 +35,10 @@ const PLAN_SUGGESTIONS = [
 ];
 
 const input = $("chatInput"), sendBtn = $("chatSend"), resetBtn = $("resetChat");
-let sessionId = sessionStorage.getItem("tmcp_sid");
-if (!sessionId) {
-  sessionId = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
-  sessionStorage.setItem("tmcp_sid", sessionId);
-}
+// A new conversation each time the page opens (or reloads): the assistant remembers only
+// what's on the screen, never an earlier visit's questions.
+const sessionId = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
+try { sessionStorage.removeItem("tmcp_sid"); } catch (_) { /* nothing to tidy */ }
 let streaming = false;
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -96,9 +95,8 @@ function renderTrace(turn) {
     const row = document.createElement("div");
     row.className = "src";
     const friendly = sourceLabel(src.url);
-    row.innerHTML = (friendly ? esc(friendly)
-      : `<a href="${esc(src.url)}" target="_blank" rel="noopener">${esc(src.url.replace(/^https?:\/\//, ""))}</a>`)
-      + (src.stale ? '<span class="badge">may be out of date</span>' : "");
+    row.innerHTML = friendly ? esc(friendly)
+      : `<a href="${esc(src.url)}" target="_blank" rel="noopener">${esc(src.url.replace(/^https?:\/\//, ""))}</a>`;
     body.appendChild(row);
   }
   d.appendChild(body);

@@ -27,8 +27,7 @@ notes = """\
   Children 5 and under ride free (up to 3 with a paying adult). Annapolis K-12 \
   students free on school days, 6 am to 7 pm. Day Pass $4, 7-Day $20, 30-Day $80, \
   90-Day $200, Annual $500; half price with a reduced-fare photo ID. ADA service $4 \
-  one way. Fares change; confirm the current amount at the fare page before you \
-  travel."""
+  one way."""
 
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]

@@ -47,8 +47,7 @@ transfer_policy = """\
 fare_page_url = "https://www.omniride.com/services/general-rider-information/fares-and-transfers/"
 notes = """\
   Express commuter routes to DC/Pentagon are roughly $6.55–$8.30 one way; OmniRide \
-  Local is about $1.55 ($0.75 reduced). Fares change; confirm the current amount at \
-  the fare page before you travel."""
+  Local is about $1.55 ($0.75 reduced)."""
 
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]

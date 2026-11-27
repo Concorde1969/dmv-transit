@@ -94,6 +94,33 @@ def trim_history(messages: list[dict], keep_turns: int) -> list[dict]:
     return messages[starts[-keep_turns]:]
 
 
+# What an earlier question's lookup result becomes in the history sent with later ones.
+OLD_RESULT = "(An earlier lookup. Its result isn't kept; look it up again if you need it.)"
+
+
+def compact_history(messages: list[dict]) -> list[dict]:
+    """Drop the lookup results of earlier questions, keeping the current question's.
+
+    The answers written from them stay in the conversation, so follow-ups still make
+    sense; anything more is looked up again. Each tool_use keeps a tool_result.
+    """
+    starts = [i for i, m in enumerate(messages) if _is_user_turn_start(m)]
+    if not starts:
+        return messages
+    out = []
+    for i, m in enumerate(messages):
+        content = m.get("content")
+        if i < starts[-1] and m.get("role") == "user" and isinstance(content, list):
+            content = [
+                {**b, "content": OLD_RESULT}
+                if isinstance(b, dict) and b.get("type") == "tool_result" else b
+                for b in content
+            ]
+            m = {**m, "content": content}
+        out.append(m)
+    return out
+
+
 class SessionStore:
     """Conversations keyed by the browser's session id, with idle expiry and a
     maximum count (least-recently-used are dropped first)."""

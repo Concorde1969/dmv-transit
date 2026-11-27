@@ -34,8 +34,7 @@ notes = """\
   for seniors 65+ and riders with disabilities, and for students through Student \
   Saver. Two children under 6 ride free with a full-fare rider. Tickets bought on \
   board cost $5.00 more if a machine or ticket office was available (not for senior \
-  or disability fares); conductors take cash only, nothing over $20. Fares change; \
-  confirm the current amount at the fare page before you travel."""
+  or disability fares); conductors take cash only, nothing over $20."""
 
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]

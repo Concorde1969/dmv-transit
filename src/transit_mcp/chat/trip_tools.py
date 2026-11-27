@@ -650,8 +650,8 @@ class TripTools:
                 legs.append({"stop_id": stop["id"], **leg})
                 origin, prev_leave = dest, stop["leave_at"]
         out = {"day": d.isoformat(), "legs": legs,
-               "note": "Times are from the agencies' timetables (not live). Riders should "
-                       "confirm on the day; plan_trip gives live times when leaving now."}
+               "note": "Times are from the agencies' timetables (not live); plan_trip "
+                       "gives live times when leaving now."}
         if len(stops) > MAX_HOPS:
             out["more"] = f"Only the first {MAX_HOPS} stops are covered; ask about the rest."
         return out

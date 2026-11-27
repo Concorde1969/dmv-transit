@@ -45,8 +45,7 @@ transfer_policy = """\
   discount, when paying with SmarTrip or contactless — see the fare page."""
 fare_page_url = "https://www.wmata.com/pay.html"
 notes = """\
-  One flat fare on regular and limited-stop routes; a few express routes cost more. \
-  Confirm the current amounts on the fare page."""
+  One flat fare on regular and limited-stop routes; a few express routes cost more."""
 
 # Routes, stops and schedules: WMATA's bus GTFS via Transitland. (Fare and alert
 # pages are scraped once, under the "wmata" agency.)

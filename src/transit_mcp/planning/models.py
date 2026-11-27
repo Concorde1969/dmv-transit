@@ -136,9 +136,6 @@ class TripPlan(BaseModel):
     destination: str
     day: str | None = None
     options: list[TripOption] = Field(default_factory=list)
-    caveat: str = (
-        "Guidance only — confirm departure times and fares with each agency before "
-        "travelling."
-    )
+    caveat: str = "Times are from the agencies' timetables, not live departures."
     warnings: list[str] = Field(default_factory=list)
     data_stale: bool | None = None

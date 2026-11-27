@@ -150,7 +150,7 @@ def test_find_parking_tool(tmp_path, monkeypatch):
                         if text == "Greenbelt" else None)
     out = server.find_parking("Greenbelt", radius_m=500)
     assert out["lots"][0]["id"] == "wmata-E10" and set(out["rules"]) == {"wmata"}
-    assert "confirm with the operator" in out["note"]
+    assert "fill early" in out["note"] and "confirm" not in out["note"]
     assert server.find_parking("Nowhere")["error"] == "place_not_found"
 
 

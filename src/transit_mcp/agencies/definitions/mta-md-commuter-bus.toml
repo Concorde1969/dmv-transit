@@ -20,8 +20,7 @@ notes = """\
   Fares go by zone, shown on each route's PDF schedule. One way: Zone 1 $4.00, 2 \
   $5.00, 3 $6.00, 4 $7.00, 5 $8.00 (senior or disability $3.00 to $7.00). 10 Trip: \
   $40.00 to $80.00 ($30.00 to $70.00). Monthly: $136.00 to $272.00 ($102.00 to \
-  $238.00). A Transit Link Card adds $34 a month. Fares change; confirm the current \
-  amount at the fare page before you travel."""
+  $238.00). A Transit Link Card adds $34 a month."""
 
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]

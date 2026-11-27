@@ -49,8 +49,7 @@ notes = """\
   Regular Routes $2.25, $1.10 seniors and people with disabilities. Routes 393, 394, \
   395, 396, 599, 697, 698, 699 and 835: $4.80 ($2.40). Routes 350 (TAGS), 423 and \
   427: $0.55. 480 Wolf Trap Express: $5.00 round trip ($2.75 after Metrorail with \
-  SmarTrip). Children 12 and under ride free with a paying adult. Fares change; \
-  confirm the current amount at the fare page before you travel."""
+  SmarTrip). Children 12 and under ride free with a paying adult."""
 
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]

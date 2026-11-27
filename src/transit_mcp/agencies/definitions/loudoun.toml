@@ -41,8 +41,7 @@ transfer_policy = """\
 fare_page_url = "https://www.loudoun.gov/2472/Fares"
 notes = """\
   Commuter routes to DC/Pentagon run roughly $8–$12.50 one way; Metro Connection and \
-  Local routes are much cheaper ($1–$2). SmarTrip is required on the commuter buses. \
-  Fares change; confirm the current amount at the fare page before you travel."""
+  Local routes are much cheaper ($1–$2). SmarTrip is required on the commuter buses."""
 
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]

@@ -46,8 +46,7 @@ notes = """\
   free with iRide SmarTrip, $1.10 cash with school ID. Cash: $1, $2, $5, $10 bills \
   and coins; no change given. STAR paratransit: Zone 1 $4.50, Zone 2 $6.20, Zone 3 \
   $10.70. MICRO: $3.00 a ride, $2.00 seniors, disabled riders and K-12 students, \
-  $2.00 each additional passenger, children under 5 free. Fares change; confirm the \
-  current amount at the fare page before you travel."""
+  $2.00 each additional passenger, children under 5 free."""
 
 # Routes, stops and schedules: GTFS found through Transitland (url = fallback).
 [[sources]]

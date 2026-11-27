@@ -360,7 +360,7 @@ def _nearest_node(db: Database, pt: dict) -> tuple[str, str, str] | None:
 
 def _feasible_on(svc: dict | None, day: str | None, time: str | None) -> tuple[bool, str]:
     if svc is None:
-        return True, "service days unknown at this stop — verify the schedule"
+        return True, "service days not listed for this stop"
     key = _day_filter(day)
     days_on = {d[5:] for d in _DAY_COLS if svc[d]}
     if key == "weekend":
@@ -450,8 +450,7 @@ def transfers_at(
         "day": day, "time": time,
         "connections": by_agency,
         "note": "Walking transfers based on stop proximity; service days and times "
-        "from each agency's GTFS schedule. Confirm exact departure times before "
-        "travelling.",
+        "from each agency's GTFS schedule.",
     }
 
 

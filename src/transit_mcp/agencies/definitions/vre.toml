@@ -54,8 +54,7 @@ notes = """\
   Pass is twice a single ride. Zones: 1 Union Station, L'Enfant; 2 Crystal City, \
   Alexandria; 3 Franconia-Springfield, Backlick Road; 4 Lorton, Burke Centre, Rolling \
   Road; 5 Woodbridge, Rippon; 6 Quantico, Broad Run, Manassas, Manassas Park; 8 \
-  Brooke, Leeland Road; 9 Fredericksburg, Spotsylvania. Buy before boarding. Fares \
-  change; confirm the current amount at the fare page before you travel."""
+  Brooke, Leeland Road; 9 Fredericksburg, Spotsylvania. Buy before boarding."""
 
 # Routes, stops and schedules: GTFS found through Transitland. (vre.org's web
 # pages sit behind a Cloudflare challenge, so fares come from the [fares] section.)

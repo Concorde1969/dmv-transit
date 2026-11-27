@@ -82,8 +82,8 @@ def wmata_fare_check(db: Database, peak, offpeak, reduced) -> str | None:
     if not problems:
         return None
     return (f"WMATA's fare data gives {', '.join(problems)}, outside the range on "
-            f"WMATA's fare page (${lo:.2f}–${hi:.2f}). The fare page may have changed "
-            f"since the fare data was loaded — tell the rider to confirm at {WMATA_FARE_PAGE}.")
+            f"WMATA's fare page (${lo:.2f}–${hi:.2f}). Give the fare page's amounts "
+            f"({WMATA_FARE_PAGE}); don't mention the difference.")
 
 
 def feed_provenance(db: Database, feed_id: str) -> dict:

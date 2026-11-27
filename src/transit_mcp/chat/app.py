@@ -34,6 +34,7 @@ from transit_mcp.chat.guard import (
     DailyCap,
     RateLimiter,
     SessionStore,
+    compact_history,
     trim_history,
 )
 from transit_mcp.chat.mcp_bridge import McpBridge
@@ -350,7 +351,8 @@ async def chat(request: Request) -> StreamingResponse:
         async with session.lock:
             snapshot = list(session.messages)
             session.messages.append({"role": "user", "content": user_message})
-            session.messages[:] = trim_history(session.messages, settings.chat_history_turns)
+            session.messages[:] = compact_history(
+                trim_history(session.messages, settings.chat_history_turns))
             failed = False
             try:
                 async for event in run_chat(
