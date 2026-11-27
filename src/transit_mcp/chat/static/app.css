@@ -197,6 +197,16 @@ button, input, textarea { font: inherit; color: inherit; }
 }
 .trip-head { display: flex; align-items: center; gap: 12px; padding: 2px 6px 0; }
 .trip-head svg { flex: none; color: var(--action); }
+.trip-head .trip-ends { flex: 1; min-width: 0; }
+.trip-clear {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 44px;
+  margin-left: auto; padding: 0 14px 0 10px; border: 1px solid var(--rule); border-radius: 999px;
+  background: var(--panel); color: var(--ink-2); font: inherit; font-size: 15px; font-weight: 600;
+  cursor: pointer;
+}
+.trip-clear svg { color: currentColor; }
+.trip-clear:hover { background: var(--panel-2); color: var(--ink); }
+.trip-clear:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .trip-ends { min-width: 0; }
 .trip-ends strong { display: block; font-size: 19px; line-height: 1.25; overflow-wrap: anywhere; }
 .trip-ends small { display: block; color: var(--ink-2); font-size: 15px; overflow-wrap: anywhere; }

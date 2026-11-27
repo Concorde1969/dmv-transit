@@ -687,7 +687,31 @@ function startFrom(point) {
   hideSuggestions();
   if (state.to) planTrip(); else toInput.focus();
 }
-window.dmvTrip = { goTo, startFrom, show, screen };
+// "Clear": the trip leaves the screen (its card, the route and pins on the map, the live
+// times, the link in the address bar) and the search fields are empty again, ready for a
+// new trip. Earlier trips and the conversation stay; "Start over" clears those as well.
+function clearTrip({ focus = true } = {}) {
+  if (journey.on) endJourney({ restore: false });
+  const had = Boolean(state.plan || block);
+  stopLive();
+  block?.remove();
+  block = null; results = null;
+  state.plan = null; state.selected = null; state.view = "list"; state.searchId = null;
+  state.to = null; state.from = null;
+  toInput.value = ""; fromInput.value = "My location";
+  if (map?.getSource("trip")) {
+    const none = { type: "FeatureCollection", features: [] };
+    for (const id of ["others", "trip", "stops"]) map.getSource(id)?.setData(none);
+  }
+  drawStepPins(null, []);
+  destMarker?.remove(); youMarker?.remove();
+  syncUrl();
+  updatePeek();
+  window.dispatchEvent(new CustomEvent("dmv:thread"));
+  if (had) { track("trip_cleared"); announce("Trip cleared. Where to next?"); }
+  if (focus && !isPhone()) toInput.focus();
+}
+window.dmvTrip = { goTo, startFrom, show, screen, clear: clearTrip };
 
 function renderQuick() {
   const box = $("quickPlaces");
@@ -762,8 +786,11 @@ function newBlock() {
   const from = state.from?.label || "My location";
   block.setAttribute("aria-label", `Trips to ${state.to.label}`);
   block.innerHTML = `<div class="trip-head">${ICONS.route}<div class="trip-ends">
-      <strong>${esc(state.to.label)}</strong><small>From ${esc(from)}</small></div></div>
+      <strong>${esc(state.to.label)}</strong><small>From ${esc(from)}</small></div>
+      <button class="trip-clear" type="button" aria-label="Clear this trip from the map">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>Clear</button></div>
     <div class="trip-body"></div>`;
+  block.querySelector(".trip-clear").addEventListener("click", () => clearTrip());
   results = block.querySelector(".trip-body");
   append(block, { top: true });
   if (journey.on) endJourney({ restore: false });
@@ -773,6 +800,7 @@ function newBlock() {
 
 function freeze(el) {
   el.classList.add("past");
+  el.querySelector(".trip-clear")?.remove();
   const n = el.plan?.options?.length || 0;
   const when = el.at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const body = el.querySelector(".trip-body");

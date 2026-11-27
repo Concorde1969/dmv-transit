@@ -252,13 +252,14 @@ input.addEventListener("keydown", (e) => {
 });
 sendBtn.addEventListener("click", () => send(input.value));
 
-// "Start over": a new conversation; the trip on the map stays.
+// "Start over": a new conversation, and the trip leaves the map too.
 resetBtn.addEventListener("click", async () => {
   try {
     await fetch("/api/reset", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ session_id: sessionId }) });
   } catch (_) {}
-  thread.querySelectorAll(".msg, details.trace, .thinking, .trip-block.past").forEach((n) => n.remove());
+  window.dmvTrip?.clear({ focus: false });
+  thread.querySelectorAll(".msg, details.trace, .thinking, .trip-block").forEach((n) => n.remove());
   if (isEmpty()) showIntro();
   track("conversation_reset");
   input.focus();
