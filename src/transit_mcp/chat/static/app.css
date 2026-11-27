@@ -801,14 +801,17 @@ body.following .step-pin:not(.current) { opacity: 0.75; }
   .explore-card { top: calc(86px + env(safe-area-inset-top, 0px)); }
 }
 
-/* ---------- phones: searching or chatting takes the whole screen ---------- */
+/* ---------- phones: searching or chatting opens the panel all the way up ---------- */
+/* As high as dragging it goes: its top edge just under the logo, a sliver of map above.
+   It fits the space above the keyboard (--vvh/--vvt), and the logo and Menu move with
+   the visible screen so they stay in that sliver while typing. */
 @media (max-width: 720px) {
   body.fullscreen .panel, body.fullscreen .panel.tall {
-    top: var(--vvt, 0px); height: var(--vvh, 100dvh); border-radius: 0;
-    padding-top: env(safe-area-inset-top, 0px); }
-  body.fullscreen .brand, body.fullscreen .topbar, body.fullscreen .menu-list,
-  body.fullscreen .explore-card { display: none; }
-  body.fullscreen .suggest { max-height: 60dvh; }
+    top: calc(var(--vvt, 0px) + 76px + env(safe-area-inset-top, 0px)); bottom: auto;
+    height: calc(var(--vvh, 100dvh) - 76px - env(safe-area-inset-top, 0px)); }
+  body.fullscreen .brand, body.fullscreen .topbar { transform: translateY(var(--vvt, 0px)); }
+  body.fullscreen .menu-list, body.fullscreen .explore-card { display: none; }
+  body.fullscreen .suggest { max-height: max(160px, calc(var(--vvh, 100dvh) - 300px)); }
 }
 
 /* ---------- phones: drag the sheet; Explore stays out of the map's way ---------- */
