@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import re
 import time
 from collections.abc import AsyncIterator
 from typing import Any
@@ -95,6 +97,23 @@ events it returns, and remind the rider to confirm with the organizer's page.
 never for routes or times.
 
 {planning}
+## Keep it short
+Answer the question that was asked, first, in a sentence or two. Riders read this on a \
+phone, often while travelling.
+- Simple questions get short answers: the next train or bus, a fare, when a station or \
+line opens or closes, whether something runs on a given day, which exit or which line. \
+Give the answer, then only what changes it (an alert or outage that affects it), in a \
+few short lines. No headings, no sections, no background they didn't ask for, and don't \
+repeat the route back to them.
+- Offer more instead of giving it ("Want step-by-step directions from there?").
+- Longer, step-by-step answers are for when the rider asks how to do something, is new \
+to transit and says so, or is planning a trip with several parts.
+
+## Look things up together
+When you need several lookups that don't depend on each other (a route and its alerts, \
+two stations, fares for two legs), ask for all of them in the same reply rather than one \
+at a time: each extra round makes the rider wait.
+
 ## How to write
 Your audience is often older adults (55+) who have never used public transit:
 - Warm, patient, and encouraging. Never condescending. Assume no prior knowledge.
@@ -106,10 +125,11 @@ change trains"). Lead with the simplest option.
 to know when to get off, what to do if they make a mistake.
 
 ## Every trip answer
-- Say which days and times it works (many suburban routes have no evening or weekend \
-service) and how to pay each leg — from the tool results.
-- End with a "Where this comes from:" line citing the `url` or `fare_page` fields \
-from the tool results, and remind the rider to confirm times with the agency.
+- When you describe a trip yourself (not after show_trip), say which days and times it \
+works if that matters (many suburban routes have no evening or weekend service) and how \
+to pay each leg — from the tool results. For a simple question, only what applies.
+- End with one short "Where this comes from:" line citing the `url` or `fare_page` \
+fields from the tool results (or the schedule data), and to confirm times with the agency.
 - If a tool result has `"stale": true`, gently note the information may be out of date.
 - You are not emergency services; for an emergency tell them to call 911 or use a \
 station intercom.
@@ -130,6 +150,58 @@ GROUNDING_NUDGE = (
 
 # Event types the chat app consumes for its log; never sent to the browser.
 INTERNAL_EVENTS = frozenset({"usage", "nudged"})
+
+# A message that is only a pleasantry ("Thanks!", "Hi", "Good morning").
+_PLEASANTRY = re.compile(
+    r"(?:(?:hi|hello|hey|thanks|thank you|thank you so much|thanks so much|thanks a lot|"
+    r"thx|great|perfect|wonderful|cool|awesome|got it|bye|goodbye|"
+    r"good (?:morning|afternoon|evening|night))[\s!.,]*)+", re.IGNORECASE)
+
+
+def _needs_tools(question: str, reply: str) -> bool:
+    """Whether a reply written without any lookup should be sent back for one.
+
+    Not when the rider only said hello or thanks, or when the reply is a short
+    clarifying question with no facts in it (no numbers): sending those back makes the
+    rider wait for a second answer that says the same thing.
+    """
+    if _PLEASANTRY.fullmatch(question.strip()):
+        return False
+    r = reply.strip()
+    if r.endswith("?") and len(r) < 400 and not re.search(r"\d", r):
+        return False
+    return True
+
+
+def _question(messages: list[dict]) -> str:
+    """The rider's message that started this turn (plain text)."""
+    for m in reversed(messages):
+        if m.get("role") == "user" and isinstance(m.get("content"), str):
+            return m["content"]
+    return ""
+
+
+CACHE = {"type": "ephemeral"}
+
+
+def _cached(messages: list[dict]) -> list[dict]:
+    """The conversation to send, with a cache mark on its last block, so the next round
+    (after the tool results) reuses everything before it instead of reading it again.
+    The stored conversation is left as it is."""
+    if not messages:
+        return messages
+    last = dict(messages[-1])
+    content = last.get("content")
+    if isinstance(content, str):
+        last["content"] = [{"type": "text", "text": content, "cache_control": CACHE}]
+    elif isinstance(content, list) and content:
+        blocks = list(content)
+        tail = blocks[-1]
+        tail = dict(tail) if isinstance(tail, dict) else tail.model_dump(exclude_none=True)
+        tail["cache_control"] = CACHE
+        blocks[-1] = tail
+        last["content"] = blocks
+    return [*messages[:-1], last]
 
 
 def _usage_event(final: Any) -> dict:
@@ -192,7 +264,9 @@ async def run_chat(
     turn (today's date, who is signed in).
     """
     tools = bridge.anthropic_tools + (list(local.definitions) if local else [])
-    system = [{"type": "text", "text": SYSTEM_PROMPT}]
+    # The tools and these instructions are the same for every rider and every round:
+    # cached, so each round starts answering sooner. This turn's note comes after.
+    system = [{"type": "text", "text": SYSTEM_PROMPT, "cache_control": CACHE}]
     if context:
         system.append({"type": "text", "text": context})
     # Until a tool has been called this turn, hold text back: an answer written
@@ -200,6 +274,7 @@ async def run_chat(
     # the tools. After the first tool call, stream normally.
     grounded = False
     nudged = False
+    question = _question(messages)
 
     for _iteration in range(max_iterations):
         buffered: list[str] = []
@@ -208,7 +283,7 @@ async def run_chat(
                 model=model,
                 max_tokens=max_tokens,
                 system=system,
-                messages=messages,
+                messages=_cached(messages),
                 tools=tools,
             ) as stream:
                 async for event in stream:
@@ -229,7 +304,8 @@ async def run_chat(
         yield _usage_event(final)
 
         tool_uses = [b for b in final.content if b.type == "tool_use"]
-        if not tool_uses and not grounded and not nudged:
+        if (not tool_uses and not grounded and not nudged
+                and _needs_tools(question, "".join(buffered))):
             nudged = True
             yield {"type": "nudged"}
             messages.append(
@@ -251,16 +327,32 @@ async def run_chat(
                 "name": tu.name,
                 "input": tu.input,
             }
+
+        # The lookups (the transit server's tools, which only read) all start now and
+        # run at the same time; the rider's own tools (saving places, showing a trip)
+        # run one after another in the order asked, below.
+        async def timed(name: str, args: dict) -> tuple[str, bool, int]:
             started = time.monotonic()
+            text, is_error = await bridge.call_tool(name, args)
+            return text, is_error, int((time.monotonic() - started) * 1000)
+
+        lookups = {
+            tu.id: asyncio.ensure_future(timed(tu.name, tu.input or {}))
+            for tu in tool_uses
+            if local is None or tu.name not in local.names
+        }
+
+        for tu in tool_uses:
             changed = False
-            if local is not None and tu.name in local.names:
+            if tu.id in lookups:
+                text, is_error, duration_ms = await lookups[tu.id]
+            else:
+                started = time.monotonic()
                 text, is_error, changed = await local.call(tu.name, tu.input or {})
+                duration_ms = int((time.monotonic() - started) * 1000)
                 # What the page should do now (show a trip), in the order asked.
                 while getattr(local, "events", None):
                     yield local.events.pop(0)
-            else:
-                text, is_error = await bridge.call_tool(tu.name, tu.input or {})
-            duration_ms = int((time.monotonic() - started) * 1000)
             tool_result_blocks.append(
                 {
                     "type": "tool_result",

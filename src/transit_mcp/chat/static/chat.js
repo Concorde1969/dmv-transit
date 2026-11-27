@@ -105,6 +105,24 @@ function renderTrace(turn) {
   append(d);
 }
 
+// What the assistant is doing while the rider waits, by lookup.
+const LOOKING = {
+  get_metro_route: "Checking the Metro schedule…",
+  plan_trip: "Finding trips…", show_trip: "Finding trips…",
+  plan_connection: "Checking connections…", transfers_at: "Checking connections…",
+  get_route: "Looking up the route…", find_stops_near: "Finding nearby stops…",
+  get_service_alerts: "Checking service alerts…", get_rider_reports: "Checking rider reports…",
+  get_elevator_escalator_status: "Checking elevators and escalators…",
+  get_station_info: "Looking up the station…",
+  get_fare: "Looking up fares…", how_to_pay: "Looking up fares…",
+  estimate_trip_cost: "Adding up the cost…",
+  geocode_address: "Finding the place…", find_places: "Finding places…",
+  find_parking: "Checking parking…", find_events: "Checking events…",
+  search_transit_info: "Reading the agency's pages…", get_guide: "Reading the guide…",
+  get_to_flight: "Checking the flight…", track_flight: "Checking the flight…",
+  directions_for_day: "Working out the day's directions…",
+};
+
 async function send(text) {
   text = (text || "").trim();
   if (streaming || !text) return;
@@ -145,6 +163,10 @@ async function send(text) {
           answer += evt.text;
           if (answer.trim()) clearThinking();
           bubble.innerHTML = md(answer); follow();
+        } else if (evt.type === "tool_call") {
+          // While the rider waits: what's being looked up, under the answer so far.
+          thinking.textContent = LOOKING[evt.name] || "Looking that up…";
+          if (!thinking.isConnected) { append(thinking); follow(); }
         } else if (evt.type === "tool_result") {
           for (const s of evt.sources || []) if (s.url) turn.sources.set(s.url, s);
         } else if (evt.type === "show_trip") {

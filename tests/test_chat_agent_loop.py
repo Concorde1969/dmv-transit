@@ -190,7 +190,7 @@ async def _run_chat_plain_answer_after_one_nudge():
         _FakeStream(["Hello there!"], draft),
         _FakeStream(["Hello! ", "Ask me about any trip."], final),
     ])
-    messages = [{"role": "user", "content": "hi"}]
+    messages = [{"role": "user", "content": "is the metro running late tonight"}]
 
     events = [
         e
@@ -205,3 +205,88 @@ async def _run_chat_plain_answer_after_one_nudge():
     assert text == "Hello! Ask me about any trip."
     assert len(client.messages.calls) == 2  # nudged once, never twice
     assert len(messages) == 4
+
+
+class _SlowBridge(_FakeBridge):
+    """Each lookup takes a while; records how many run at once."""
+
+    def __init__(self):
+        super().__init__()
+        self.running = 0
+        self.most = 0
+
+    async def call_tool(self, name, arguments):
+        self.running += 1
+        self.most = max(self.most, self.running)
+        await asyncio.sleep(0.05)
+        self.running -= 1
+        return await super().call_tool(name, arguments)
+
+
+def test_pleasantry_is_not_sent_back_for_a_lookup():
+    async def go():
+        final = SimpleNamespace(content=[_text_block("You're welcome!")], stop_reason="end_turn")
+        client = _FakeClient([_FakeStream(["You're welcome!"], final)])
+        messages = [{"role": "user", "content": "Thanks so much!"}]
+        events = [e async for e in run_chat(client=client, bridge=_FakeBridge(), model="m",
+                                            messages=messages, max_tokens=256, max_iterations=6)]
+        assert "".join(e["text"] for e in events if e["type"] == "text") == "You're welcome!"
+        assert len(client.messages.calls) == 1
+        assert not any(e["type"] == "nudged" for e in events)
+    asyncio.run(go())
+
+
+def test_clarifying_question_is_not_sent_back():
+    async def go():
+        ask = "Which station are you leaving from?"
+        final = SimpleNamespace(content=[_text_block(ask)], stop_reason="end_turn")
+        client = _FakeClient([_FakeStream([ask], final)])
+        messages = [{"role": "user", "content": "when is the next train"}]
+        events = [e async for e in run_chat(client=client, bridge=_FakeBridge(), model="m",
+                                            messages=messages, max_tokens=256, max_iterations=6)]
+        assert "".join(e["text"] for e in events if e["type"] == "text") == ask
+        assert len(client.messages.calls) == 1
+    asyncio.run(go())
+
+
+def test_lookups_in_one_round_run_together_and_keep_their_order():
+    async def go():
+        first = SimpleNamespace(content=[_tool_use_block("a", "get_fare", {"n": 1}),
+                                         _tool_use_block("b", "get_fare", {"n": 2})],
+                                stop_reason="tool_use")
+        final = SimpleNamespace(content=[_text_block("$6.75")], stop_reason="end_turn")
+        client = _FakeClient([_FakeStream([], first), _FakeStream(["$6.75"], final)])
+        bridge = _SlowBridge()
+        messages = [{"role": "user", "content": "fares?"}]
+        events = [e async for e in run_chat(client=client, bridge=bridge, model="m",
+                                            messages=messages, max_tokens=256, max_iterations=6)]
+        assert bridge.most == 2
+        results = messages[2]["content"]
+        assert [r["tool_use_id"] for r in results] == ["a", "b"]
+        assert [e["type"] for e in events].count("tool_result") == 2
+    asyncio.run(go())
+
+
+def test_instructions_and_conversation_are_cached_without_changing_the_transcript():
+    async def go():
+        first = SimpleNamespace(content=[_tool_use_block("a", "get_fare", {})],
+                                stop_reason="tool_use")
+        final = SimpleNamespace(content=[_text_block("ok")], stop_reason="end_turn")
+        client = _FakeClient([_FakeStream([], first), _FakeStream(["ok"], final)])
+        messages = [{"role": "user", "content": "fare?"}]
+        [e async for e in run_chat(client=client, bridge=_FakeBridge(), model="m",
+                                   messages=messages, max_tokens=256, max_iterations=6,
+                                   context="Today is Friday.")]
+        call1, call2 = client.messages.calls
+        assert call1["system"][0]["cache_control"] == {"type": "ephemeral"}
+        assert "cache_control" not in call1["system"][1]
+        assert call1["messages"][-1]["content"][-1]["cache_control"] == {"type": "ephemeral"}
+        assert call2["messages"][-1]["content"][-1]["type"] == "tool_result"
+        assert call2["messages"][-1]["content"][-1]["cache_control"] == {"type": "ephemeral"}
+        # one mark on the conversation per request; the stored transcript has none
+        marks = sum(1 for m in call2["messages"] if isinstance(m["content"], list)
+                    for b in m["content"] if isinstance(b, dict) and "cache_control" in b)
+        assert marks == 1
+        assert messages[0]["content"] == "fare?"
+        assert "cache_control" not in messages[2]["content"][-1]
+    asyncio.run(go())
