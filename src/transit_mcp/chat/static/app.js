@@ -235,7 +235,9 @@ function openFromPeek(tall = false) {
   if (tall) setTall(true);
   if (!trip) toInput.focus();            // "Where to?": straight to the search
 }
-// Swiping the bar up opens the panel (a long swipe, tall); a tap does too.
+// Pressing and dragging the bar up opens the panel (a long drag, tall). On a phone that's
+// the only way with a finger, so a tap doesn't open it by accident; elsewhere a click
+// does, and the keyboard (Enter or Space) always does.
 let peekFrom = null, peekSwiped = false;
 peek.addEventListener("pointerdown", (e) => { peekFrom = e.clientY; });
 peek.addEventListener("pointerup", (e) => {
@@ -243,7 +245,11 @@ peek.addEventListener("pointerup", (e) => {
   peekFrom = null;
   if (up > 24) { peekSwiped = true; setTimeout(() => { peekSwiped = false; }, 400); openFromPeek(up > 200); }
 });
-peek.addEventListener("click", () => { if (!peekSwiped) openFromPeek(); });
+peek.addEventListener("click", (e) => {
+  if (peekSwiped) return;
+  if (isPhone() && e.detail > 0) return;  // a tap on a phone: drag it up instead
+  openFromPeek();
+});
 
 function updatePeek() {
   const opt = state.plan?.options?.[state.selected];
