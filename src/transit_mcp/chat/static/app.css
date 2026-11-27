@@ -804,8 +804,36 @@ body.following .step-pin:not(.current) { opacity: 0.75; }
 /* ---------- phones: searching or chatting takes the whole screen ---------- */
 @media (max-width: 720px) {
   body.fullscreen .panel, body.fullscreen .panel.tall {
-    top: 0; height: 100dvh; border-radius: 0; padding-top: env(safe-area-inset-top, 0px); }
+    top: var(--vvt, 0px); height: var(--vvh, 100dvh); border-radius: 0;
+    padding-top: env(safe-area-inset-top, 0px); }
   body.fullscreen .brand, body.fullscreen .topbar, body.fullscreen .menu-list,
   body.fullscreen .explore-card { display: none; }
   body.fullscreen .suggest { max-height: 60dvh; }
+}
+
+/* ---------- phones: drag the sheet; Explore stays out of the map's way ---------- */
+.xp-layers { display: none; }
+@media (max-width: 720px) {
+  /* No Minimize button: drag the handle down instead (or up for more). */
+  .panel-min { display: none; }
+  .sheet-handle { touch-action: none; cursor: grab; }
+  .panel.dragging { transition: none; }
+  .peek { touch-action: none; }
+  /* Explore: one small bar under the Menu; Layers opens the choices. */
+  .explore-card { top: calc(66px + env(safe-area-inset-top, 0px)); left: auto; right: 10px;
+    width: auto; max-width: calc(100vw - 20px); padding: 4px 6px 4px 14px; }
+  .explore-card.open { top: calc(86px + env(safe-area-inset-top, 0px)); left: 10px; padding: 6px 12px; }
+  .explore-card:not(.open) > :not(.xp-head) { display: none; }
+  .explore-card.busy:not(.open) > .xp-status { display: block; margin: 0 0 4px; }
+  .xp-head h2 { font-size: 15px; white-space: nowrap; }
+  /* Folded, it's just "Layers" and close (the map says what's on it), clear of the logo. */
+  .explore-card:not(.open) .xp-head h2 { position: absolute; width: 1px; height: 1px;
+    overflow: hidden; clip: rect(0 0 0 0); }
+  .explore-card:not(.open) { padding: 4px; }
+  .explore-card.busy:not(.open) > .xp-status { padding: 0 8px; }
+  .xp-layers { display: inline-flex; align-items: center; gap: 6px; min-height: 40px;
+    margin-left: auto; padding: 0 12px; border: 0; border-radius: 999px; cursor: pointer;
+    background: var(--panel-2); color: var(--ink); font-weight: 650; font-size: 15px; }
+  .xp-layers[aria-expanded="true"] { background: var(--action); color: #fff; }
+  .xp-head .icon-btn { margin-left: 0; }
 }

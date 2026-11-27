@@ -166,7 +166,48 @@ function setTall(tall) {
   sheetToggle.setAttribute("aria-expanded", String(tall));
   sheetToggle.setAttribute("aria-label", tall ? "Show more of the map" : "Make the panel taller");
 }
-sheetToggle.addEventListener("click", () => setTall(!panel.classList.contains("tall")));
+// Drag the sheet by its handle (phones): up for more panel, down for more map. Let go and
+// it settles at the nearest stop: the bar at the bottom, the usual height, or tall (a
+// flick carries on in its direction). A tap on the handle still toggles tall.
+let drag = null, dragged = false;
+sheetToggle.addEventListener("click", () => {
+  if (dragged) { dragged = false; return; }
+  setTall(!panel.classList.contains("tall"));
+});
+sheetToggle.addEventListener("pointerdown", (e) => {
+  if (!isPhone()) return;
+  drag = { y: e.clientY, t: performance.now(), h: panel.getBoundingClientRect().height, moved: false };
+  try { sheetToggle.setPointerCapture(e.pointerId); } catch (_) { /* keep going without it */ }
+});
+sheetToggle.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  const dy = e.clientY - drag.y;
+  if (!drag.moved && Math.abs(dy) < 6) return;
+  drag.moved = true;
+  panel.classList.add("dragging");
+  panel.style.height = `${Math.max(56, Math.min(innerHeight, drag.h - dy))}px`;
+});
+function endDrag(e) {
+  if (!drag) return;
+  const d = drag; drag = null;
+  if (!d.moved) return;                   // a tap: the click toggles tall
+  dragged = true;
+  setTimeout(() => { dragged = false; }, 400);
+  const h = panel.getBoundingClientRect().height;
+  const speed = (e.clientY - d.y) / Math.max(1, performance.now() - d.t);   // px/ms, + is down
+  const aim = h - speed * 220;            // where a flick is heading
+  panel.classList.remove("dragging");
+  panel.style.height = "";
+  const exploring = document.body.classList.contains("exploring");
+  const stops = [["min", 0], ["normal", innerHeight * (exploring ? 0.38 : 0.62)], ["tall", innerHeight - 76]];
+  const [name] = stops.reduce((best, s) => (Math.abs(s[1] - aim) < Math.abs(best[1] - aim) ? s : best));
+  if (name !== "tall") document.activeElement?.blur?.();   // the keyboard goes too
+  if (name === "min") { setTall(false); setMin(true, { focus: false }); return; }
+  setMin(false, { focus: false });
+  setTall(name === "tall");
+}
+sheetToggle.addEventListener("pointerup", endDrag);
+sheetToggle.addEventListener("pointercancel", endDrag);
 function sizeSheet() {
   // The map's corner controls (and its attribution) sit just above whatever covers it.
   document.documentElement.style.setProperty("--sheet", isPhone() ? `${Math.round(innerHeight - cover().getBoundingClientRect().top)}px` : "0px");
@@ -188,11 +229,21 @@ function setMin(min, { focus = true } = {}) {
   if (focus) (min ? peek : panelMin).focus({ preventScroll: true });
 }
 panelMin.addEventListener("click", () => setMin(true));
-peek.addEventListener("click", () => {
+function openFromPeek(tall = false) {
   const trip = state.plan?.options?.[state.selected];
   setMin(false, { focus: !trip });
+  if (tall) setTall(true);
   if (!trip) toInput.focus();            // "Where to?": straight to the search
+}
+// Swiping the bar up opens the panel (a long swipe, tall); a tap does too.
+let peekFrom = null, peekSwiped = false;
+peek.addEventListener("pointerdown", (e) => { peekFrom = e.clientY; });
+peek.addEventListener("pointerup", (e) => {
+  const up = peekFrom == null ? 0 : peekFrom - e.clientY;
+  peekFrom = null;
+  if (up > 24) { peekSwiped = true; setTimeout(() => { peekSwiped = false; }, 400); openFromPeek(up > 200); }
 });
+peek.addEventListener("click", () => { if (!peekSwiped) openFromPeek(); });
 
 function updatePeek() {
   const opt = state.plan?.options?.[state.selected];
@@ -212,6 +263,8 @@ window.dmvPanel = {
   // More map (Explore, a new trip): a minimized panel stays minimized.
   lower: () => isPhone() && setTall(false),
   show: () => setMin(false, { focus: false }),
+  // Explore on a phone: the panel folds to its bar so the map is clear.
+  minimize: () => isPhone() && setMin(true, { focus: false }),
   // Typing to the assistant (chat.js): the whole screen on a phone, until focus leaves.
   fullscreen: (on) => setFullscreen(on),
 };
@@ -510,36 +563,65 @@ function onKey(e) {
   } else if (e.key === "Escape") { hideSuggestions(); }
 }
 
-let pressing = null;
 for (const f of [fromInput, toInput]) {
   f.addEventListener("input", () => onType(f));
-  // Tapped: go full-screen once the tap is over (its click), so the layout doesn't move
-  // under the finger. Tabbed to, or focused by the page: right away.
-  f.addEventListener("pointerdown", () => { pressing = f; });
-  f.addEventListener("pointercancel", () => { pressing = null; });
-  f.addEventListener("click", () => { pressing = null; setFullscreen(true); });
   f.addEventListener("focus", () => {
-    if (pressing !== f) setFullscreen(true);
     if (f === fromInput && f.value === "My location") f.select();
     const chosen = f === fromInput ? state.from : state.to;
     if (!chosen || chosen.label !== f.value) onType(f);   // don't re-search a chosen place
   });
   f.addEventListener("keydown", onKey);
-  f.addEventListener("blur", () => setTimeout(() => {
-    hideSuggestions();
-    // Left the search without picking a place: back to the usual tall panel.
-    if (!$("whereForm").contains(document.activeElement)) document.body.classList.remove("fullscreen");
-  }, 120));
+  f.addEventListener("blur", () => setTimeout(hideSuggestions, 120));
 }
 
-// Searching or chatting on a phone: the panel takes the whole screen (the fields or the
-// conversation, with room for the keyboard). Picking a place starts the trip and brings
-// the map back (newBlock lowers the panel); the sheet's handle does too.
+// ------------------------------------------------------------------ full-screen typing
+// Searching or chatting on a phone: the panel takes the whole screen above the keyboard.
+// One rule decides it, from where the cursor is once focus has settled, so moving from
+// one field to another (say "Where to?" to the chat box) never flickers:
+//  - tapped into a search field or the chat box: full-screen when the tap is over (its
+//    click), so the layout doesn't move under the finger; tabbed in: right away;
+//  - the cursor left them (and isn't on a button beside them): back to the tall panel.
+const TYPING = "#fromInput, #toInput, #chatInput";
+let tapping = null, settle = null;
 function setFullscreen(on) {
-  if (!isPhone()) return;
+  if (!isPhone() || document.body.classList.contains("fullscreen") === on) return;
   if (on) { setMin(false, { focus: false }); setTall(true); }
   document.body.classList.toggle("fullscreen", on);
+  fitKeyboard();
+  window.dispatchEvent(new CustomEvent("dmv:fullscreen", { detail: { on } }));
 }
+document.addEventListener("pointerdown", (e) => { tapping = e.target.closest?.(TYPING) || null; }, true);
+document.addEventListener("click", (e) => {
+  const field = e.target.closest?.(TYPING);
+  if (field && field === tapping && document.activeElement === field) setFullscreen(true);
+  tapping = null;
+}, true);
+document.addEventListener("focusin", (e) => {
+  clearTimeout(settle);
+  if (e.target.matches?.(TYPING) && tapping !== e.target) setFullscreen(true);
+});
+document.addEventListener("focusout", () => {
+  clearTimeout(settle);
+  settle = setTimeout(() => {
+    const el = document.activeElement;
+    if (el?.matches?.(TYPING) || el?.closest?.(".where, .composer")) return;
+    setFullscreen(false);
+  }, 200);
+});
+
+// Full-screen fits the space above the keyboard (where the browser reports it), so the
+// chat box and the newest messages stay in sight while typing.
+function fitKeyboard() {
+  const vv = window.visualViewport, root = document.documentElement.style;
+  if (!vv || !document.body.classList.contains("fullscreen")) {
+    root.removeProperty("--vvh"); root.removeProperty("--vvt");
+    return;
+  }
+  root.setProperty("--vvh", `${Math.round(vv.height)}px`);
+  root.setProperty("--vvt", `${Math.round(vv.offsetTop)}px`);
+}
+window.visualViewport?.addEventListener("resize", fitKeyboard);
+window.visualViewport?.addEventListener("scroll", fitKeyboard);
 $("whereForm").addEventListener("submit", (e) => e.preventDefault());
 
 $("swapBtn").addEventListener("click", () => {
@@ -1048,7 +1130,7 @@ $("installLink").addEventListener("click", async (e) => {
 addEventListener("appinstalled", () => { $("installWrap").hidden = true; track("app_installed"); });
 
 initMap();
-if (state.to) planTrip(); else toInput.focus();
+if (state.to) planTrip(); else if (!isPhone()) toInput.focus();
 
 // ------------------------------------------------------------------ follow on the map
 // A trip one step at a time: the step card at the bottom (Back / Next), the map zoomed to

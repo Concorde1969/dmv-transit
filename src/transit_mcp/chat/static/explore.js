@@ -332,7 +332,7 @@ function setOn(on) {
   btn.setAttribute("aria-pressed", String(on));
   card.hidden = !on;
   document.body.classList.toggle("exploring", on);
-  if (!on) popup?.remove();
+  if (!on) { popup?.remove(); setLayers(false); if (isPhone()) window.dmvPanel?.show(); }
   if (map?.getSource("explore-routes")) applyFilters(map);
 }
 
@@ -344,6 +344,10 @@ async function open() {
   opened = true;
   setOn(true);
   track("explore_opened");
+  // On a phone the map gets the screen: the panel folds to its bar and Explore is one
+  // small button (Layers opens the choices).
+  if (isPhone()) { setLayers(false); window.dmvPanel?.minimize(); }
+  card.classList.add("busy");
   $("exploreStatus").textContent = "Loading every stop and route…";
   try {
     await load();
@@ -354,11 +358,19 @@ async function open() {
     applyFilters(map);
     $("exploreStatus").textContent = `${state.data.routes.features.length.toLocaleString()} routes, ${state.data.stops.features.length.toLocaleString()} stops. Zoom in for bus stops; tap a stop or route for details.`;
     if (map.getZoom() > 11.5 && !window.dmvTrip?.screen()) map.easeTo({ zoom: 11, duration: reduceMotion ? 0 : 700 });
-    window.dmvPanel?.lower();
+    if (!isPhone()) window.dmvPanel?.lower();
+    card.classList.remove("busy");
   } catch (_) {
     $("exploreStatus").textContent = "Couldn't load the network. Please try again.";
   }
 }
+
+// Phones: the layers and agencies fold away behind "Layers" so they don't cover the map.
+function setLayers(open) {
+  card.classList.toggle("open", open);
+  $("exploreLayers").setAttribute("aria-expanded", String(open));
+}
+$("exploreLayers").addEventListener("click", () => setLayers(!card.classList.contains("open")));
 
 btn.addEventListener("click", () => (state.on ? setOn(false) : open()));
 $("exploreClose").addEventListener("click", () => { setOn(false); btn.focus(); });

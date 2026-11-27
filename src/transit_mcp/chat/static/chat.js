@@ -108,6 +108,9 @@ function renderTrace(turn) {
 async function send(text) {
   text = (text || "").trim();
   if (streaming || !text) return;
+  // Typed by the rider (rather than a suggestion tapped): the cursor stays in the chat box
+  // afterwards. On a phone a suggestion shouldn't bring up the keyboard.
+  const typed = document.activeElement === input || !matchMedia("(max-width: 720px)").matches;
   streaming = true; sendBtn.disabled = true;
   input.value = ""; autosize();
   window.dmvPanel?.expand();
@@ -178,7 +181,7 @@ async function send(text) {
   renderTrace(turn);
   announce("The assistant answered.");
   streaming = false; sendBtn.disabled = false;
-  if (document.activeElement !== input) {
+  if (typed && document.activeElement !== input) {
     quietFocus = true; input.focus({ preventScroll: true });
     setTimeout(() => { quietFocus = false; }, 0);
   }
@@ -212,23 +215,14 @@ function focusComposer() {
   setTimeout(() => input.focus(), 50);
 }
 
-// Typing to the assistant on a phone: the panel takes the whole screen (as the search
-// fields do) and shows the newest exchange once. A tap goes full-screen when it's over,
-// so the layout doesn't move under the finger.
-let pressing = false, quietFocus = false;
-function chatFocus() {
-  if (quietFocus) { quietFocus = false; return; }   // send() handing focus back
-  window.dmvPanel?.fullscreen(true);
-  if (!isEmpty()) showLatest();
-}
-input.addEventListener("pointerdown", () => { pressing = true; });
-input.addEventListener("pointercancel", () => { pressing = false; });
-input.addEventListener("click", () => { if (pressing) { pressing = false; chatFocus(); } });
-input.addEventListener("focus", () => { if (!pressing) chatFocus(); });
-input.addEventListener("blur", () => setTimeout(() => {
-  // Still in the composer (e.g. on Send): stay. Elsewhere: the usual tall panel again.
-  if (!document.activeElement?.closest(".composer") && !streaming) window.dmvPanel?.fullscreen(false);
-}, 150));
+// Typing to the assistant on a phone: the panel goes full-screen (app.js decides, the
+// same way as for the search fields), and the newest exchange is shown once.
+let quietFocus = false;
+window.addEventListener("dmv:fullscreen", (e) => {
+  if (e.detail.on && document.activeElement === input && !quietFocus && !isEmpty()) showLatest();
+});
+// Send keeps the cursor (and the keyboard) in the chat box, as messaging apps do.
+sendBtn.addEventListener("pointerdown", (e) => e.preventDefault());
 
 input.addEventListener("input", autosize);
 input.addEventListener("keydown", (e) => {
