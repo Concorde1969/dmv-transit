@@ -213,6 +213,8 @@ def run_checks(settings: Settings | None = None, *, check_planner: bool = True) 
     ))
 
     if check_planner:
+        checks.append(check_walking(settings))
+
         from transit_mcp.planning import get_planner
 
         engine = settings.planner_engine
@@ -233,6 +235,69 @@ def run_checks(settings: Settings | None = None, *, check_planner: bool = True) 
             ))
 
     return checks
+
+
+# A short test walk (Metro Center to the National Portrait Gallery, about 400 m).
+TEST_WALK = ((38.89838, -77.02815), (38.89784, -77.02297))
+
+
+def check_walking(settings: Settings, http=None) -> Check:
+    """Walking directions (openrouteservice): one real request, not from the cache, so a
+    rejected key, a moved service or a spent quota shows up here instead of as straight
+    lines on the map."""
+    import httpx
+
+    from transit_mcp.walking import ORS_URL, parse
+
+    name = "Walking directions"
+    if not settings.ors_api_key:
+        return Check(name, WARN, "ORS_API_KEY is empty — walks are drawn as straight lines",
+                     "Get a free key at https://account.heigit.org/ and put it in .env")
+    (alat, alon), (blat, blon) = TEST_WALK
+    client = http or httpx.Client(timeout=15)
+    try:
+        r = client.post(ORS_URL, headers={"Authorization": settings.ors_api_key,
+                                          "Accept": "application/geo+json"},
+                        json={"coordinates": [[alon, alat], [blon, blat]],
+                              "instructions": True, "units": "m", "language": "en"})
+    except httpx.HTTPError as exc:
+        return Check(name, WARN, f"openrouteservice unreachable ({type(exc).__name__}) — "
+                     "walks are drawn as straight lines until it's back",
+                     "Try again in a few minutes; if it persists, check the "
+                     "openrouteservice forum at https://ask.openrouteservice.org/.")
+    finally:
+        if http is None:
+            client.close()
+
+    left = r.headers.get("x-ratelimit-remaining")
+    quota = f"; {left} requests left today" if left is not None else ""
+    if r.status_code == 200:
+        try:
+            walk = parse(r.json())
+        except (KeyError, IndexError, TypeError, ValueError):
+            return Check(name, FAIL, "openrouteservice answered in an unexpected format — "
+                         "walks are drawn as straight lines",
+                         "The API may have changed: compare walking.parse() with the "
+                         "openrouteservice docs.")
+        return Check(name, OK, f"working (test walk {walk['distance_m']:.0f} m, "
+                     f"{len(walk['steps'])} steps){quota}")
+    if r.status_code in (401, 403):
+        return Check(name, FAIL, f"openrouteservice rejected the key ({r.status_code}) — "
+                     "walks are drawn as straight lines",
+                     "Check ORS_API_KEY in .env against https://account.heigit.org/, then "
+                     "run push-env.ps1.")
+    if r.status_code in (404, 410):
+        return Check(name, FAIL, f"openrouteservice's address answers {r.status_code} — the "
+                     "service has moved and walks are drawn as straight lines",
+                     f"Update ORS_URL in walking.py (now {ORS_URL}); see "
+                     "https://ask.openrouteservice.org/ for the new address.")
+    if r.status_code == 429:
+        return Check(name, WARN, "over today's openrouteservice quota — walks are drawn as "
+                     "straight lines until it resets",
+                     "Lower ORS_DAILY_LIMIT, or raise the plan at https://account.heigit.org/.")
+    return Check(name, FAIL, f"openrouteservice answered {r.status_code} — walks are drawn "
+                 "as straight lines",
+                 "See the server log for 'walking:' lines.")
 
 
 def format_checks(checks: list[Check]) -> str:
