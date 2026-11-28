@@ -255,7 +255,8 @@ function updatePeek() {
   const opt = state.plan?.options?.[state.selected];
   if (opt && state.to) {
     $("peekTitle").textContent = `Leave by ${clock(opt.leave_at)}, arrive ${clock(opt.arrive_at)}`;
-    $("peekSub").textContent = `${rides(opt).map(routeLabel).join(", then ")} to ${state.to.label}`;
+    $("peekSub").textContent = opt.walk_only ? `Walk to ${state.to.label}`
+      : `${rides(opt).map(routeLabel).join(", then ")} to ${state.to.label}`;
   } else {
     $("peekTitle").textContent = "Where to?";
     $("peekSub").textContent = "Plan a trip or ask a question";
@@ -430,7 +431,8 @@ function applyWalk(opt, i, w, attribution) {
   const delta = w.duration_s - leg.duration_s;
   leg.duration_s = w.duration_s;
   opt.walk_s += delta;
-  if (i === 0) { opt.leave_at -= delta; opt.wait_s -= delta; }
+  if (opt.walk_only) opt.arrive_at += delta;
+  else if (i === 0) { opt.leave_at -= delta; opt.wait_s -= delta; }
   else if (leg.transfer) leg.wait_s -= delta;
   else opt.arrive_at += delta;
   opt.duration_s = opt.arrive_at - Math.max(opt.leave_at, nowS());
@@ -898,6 +900,7 @@ async function planTrip() {
 function render() {
   const plan = state.plan;
   if (!plan) return;
+  freshenWalk(plan);
   if (!plan.options?.length) {
     showNotice(plan.notice || "No trips found.");
     return;
@@ -935,6 +938,7 @@ function saveButton() {
 }
 
 function countdown(opt) {
+  if (opt.walk_only) return { cls: "walk", n: `${mins(opt.walk_s)}`, u: "min walk" };
   const m = Math.round((opt.leave_at - nowS()) / 60);
   if (m <= 0) return { cls: "now", n: "Now", u: "Leave now" };
   return { cls: "", n: `${m}`, u: `min, leave by ${clock(opt.leave_at)}` };
@@ -963,6 +967,7 @@ function airportStep(leg, next) {
 }
 
 function optionCard(opt, i) {
+  if (opt.walk_only) return walkCard(opt, i);
   const c = countdown(opt);
   const rs = rides(opt);
   const pills = rs.map(pill).join(ICONS.chev);
@@ -987,6 +992,28 @@ function optionCard(opt, i) {
   </button>`;
 }
 
+// Walking the whole way (a short trip): leave whenever, no fare.
+function walkCard(opt, i) {
+  const c = countdown(opt);
+  const far = opt.legs[0].walk?.routed ? ` (${distance(opt.legs[0].walk.distance_m)})` : "";
+  return `<button class="option walk-option" type="button" data-i="${i}" aria-pressed="${i === state.selected}"
+      aria-label="Option ${i + 1}: walk ${mins(opt.walk_s)} minutes. Arrive ${clock(opt.arrive_at)}.">
+    <div class="count ${c.cls}" data-leave="${opt.leave_at}"><span class="n">${esc(c.n)}</span><span class="u">${esc(c.u)}</span></div>
+    <div class="pills"><span class="walk-mins">${ICONS.walk}Walk${esc(far)}</span></div>
+    <div class="meta">Arrive <strong>${clock(opt.arrive_at)}</strong> if you leave now. No bus or train needed.<br>Free</div>
+  </button>`;
+}
+
+// A walk-only option has no departure: its times run from now.
+function freshenWalk(plan) {
+  for (const o of plan?.options || []) {
+    if (!o.walk_only) continue;
+    o.leave_at = o.depart_at = nowS();
+    o.arrive_at = o.leave_at + o.walk_s;
+    o.duration_s = o.walk_s;
+  }
+}
+
 // A trip's steps in order: one per leg (walk, ride, airport shuttle), then "Arrive". The
 // trip card's list, the numbered pins on the map and "Follow on the map" all use these.
 function tripSteps(opt) {
@@ -998,7 +1025,7 @@ function tripSteps(opt) {
       const next = legs[idx + 1];
       if (leg.airport) {
         steps.push(airportStep(leg, next));
-      } else if (idx === 0) {
+      } else if (idx === 0 && next) {
         steps.push({ cls: "walk", title: walkTitle(leg, leg.to.name), html: true,
           sub: (next ? `Your ${isRail(next) ? "train" : "bus"} leaves at <span class="time">${clock(next.board.expected)}</span>` : "") + walkDetails(leg) });
       } else if (leg.transfer) {
@@ -1038,7 +1065,7 @@ function renderDetail(opt) {
       <p class="report-fine">Shared by riders on this site, not checked by any transit agency.</p>
     </section>` : ""}
     <div class="detail-actions">
-      <button class="btn quiet" id="askTrip" type="button">Ask about this trip</button>
+      ${rides(opt).length ? '<button class="btn quiet" id="askTrip" type="button">Ask about this trip</button>' : ""}
       <button class="btn quiet" id="reportTrip" type="button">Report a problem</button>
     </div>
   </div>`;
@@ -1049,7 +1076,7 @@ function renderDetail(opt) {
     track("report_from_trip", { search_id: state.searchId, option_index: state.selected });
     window.dmvReports?.open();
   });
-  $("askTrip").addEventListener("click", () => {
+  $("askTrip")?.addEventListener("click", () => {
     track("ask_about_trip", { search_id: state.searchId, option_index: state.selected });
     const desc = rides(opt).map((l) => `${l.agency_name} ${routeLabel(l)} from ${l.board.name} to ${l.alight.name}`).join(", then ");
     window.dmvChat?.ask(`I'm about to take ${desc}. How do I pay, and is there anything I should know?`);
@@ -1074,6 +1101,7 @@ async function refreshLive() {
   const opt = state.plan?.options?.[state.selected];
   if (!opt || document.hidden) return;
   const legs = rides(opt);
+  if (!legs.length) return;                 // walking: nothing to update
   try {
     const r = await fetch("/api/trip/live", {
       method: "POST", headers: { "Content-Type": "application/json" },

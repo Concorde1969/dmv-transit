@@ -30,7 +30,9 @@ from transit_mcp.ingest.gtfs.clusters import haversine_m
 
 log = logging.getLogger("transit_mcp.walking")
 
-ORS_URL = "https://api.openrouteservice.org/v2/directions/foot-walking/geojson"
+# HeiGIT moved openrouteservice to api.heigit.org; api.openrouteservice.org answers 410
+# Gone since 2026-11-24. Same keys, same requests and answers.
+ORS_URL = "https://api.heigit.org/openrouteservice/v2/directions/foot-walking/geojson"
 ATTRIBUTION = ("Walking directions © openrouteservice.org by HeiGIT, "
                "map data © OpenStreetMap contributors")
 CACHE_DAYS = 30
@@ -130,7 +132,7 @@ class WalkRouter:
             log.warning("walking: openrouteservice unreachable: %s", exc)
             self.paused_until = time.time() + 60
             return None
-        if r.status_code in (401, 403, 429):     # bad key or quota: back off a while
+        if r.status_code in (401, 403, 410, 429):   # bad key, moved, or quota: back off
             log.warning("walking: openrouteservice said %s", r.status_code)
             self.paused_until = time.time() + (60 if r.status_code == 429 else 3600)
             return None

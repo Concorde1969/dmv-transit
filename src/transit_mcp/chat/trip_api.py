@@ -14,6 +14,7 @@ budget (``api_budget.py``).
 from __future__ import annotations
 
 import logging
+import math
 import time
 import uuid
 from datetime import datetime
@@ -37,6 +38,7 @@ from transit_mcp.geocode import (
     PlaceSearch,
     in_region,
 )
+from transit_mcp.ingest.gtfs.clusters import haversine_m
 from transit_mcp.ingest.http import HttpClient
 from transit_mcp.ingest.transitland import _secret, atlas_file_for, feed_record
 from transit_mcp.planning.live import LivePlanner, LiveSettings, Point
@@ -191,6 +193,41 @@ class TripService:
                                          self.agencies)}
 
 
+# Walking the whole way is offered when it takes this long or less, and listed first when
+# it arrives no more than WALK_FIRST_S after the quickest bus or train.
+WALK_ONLY_MAX_S = 20 * 60
+WALK_FIRST_S = 3 * 60
+
+
+def add_walk_option(result: dict, origin: Point, dest: Point, cfg: LiveSettings,
+                    now: int | None = None) -> None:
+    """A "just walk" option for a short trip: one walk leg, routed over real streets by
+    the page (loadWalks) like any other walk. First when it's about as quick as riding."""
+    meters = haversine_m(origin.lat, origin.lon, dest.lat, dest.lon)
+    walk_s = int(math.ceil(meters * cfg.detour / cfg.walk_m_per_min * 60))
+    if walk_s > WALK_ONLY_MAX_S:
+        return
+    now = int(time.time()) if now is None else now
+    option = {
+        "id": "walk", "walk_only": True,
+        "leave_at": now, "depart_at": now, "arrive_at": now + walk_s,
+        "duration_s": walk_s, "wait_s": 0, "walk_s": walk_s, "transfers": 0,
+        "live": False, "fare_estimate": None,
+        "legs": [{"mode": "walk", "duration_s": walk_s}],
+    }
+    # A bus or train that leaves the rider walking at least as far as walking there (one
+    # that rides away from the destination, say) isn't worth offering.
+    options = [o for o in result.get("options") or [] if o.get("walk_s", 0) < walk_s]
+    result["options"] = options
+    quickest = min((o["arrive_at"] for o in options), default=None)
+    if quickest is None or option["arrive_at"] <= quickest + WALK_FIRST_S:
+        options.insert(0, option)
+    else:
+        options.append(option)
+    if len(options) == 1:
+        result["notice"] = None      # "no trips found" no longer applies: walk there
+
+
 def _service(request: Request) -> TripService:
     st = request.app.state
     if getattr(st, "trips", None) is None:
@@ -320,6 +357,9 @@ def trip(request: Request, body: TripRequestBody) -> JSONResponse:
     latency = int((time.monotonic() - started) * 1000)
     log_search(result.get("outcome") or ("ok" if result["options"] else "no_trips"),
                result, ends, latency)
+    add_walk_option(result, Point(body.from_.lat, body.from_.lon, body.from_.label),
+                    Point(body.to.lat, body.to.lon, body.to.label),
+                    LiveSettings.from_settings(svc.settings))
     result["search_id"] = search_id
     return JSONResponse(result)
 

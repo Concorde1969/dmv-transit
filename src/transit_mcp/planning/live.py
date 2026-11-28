@@ -950,25 +950,68 @@ class LivePlanner:
             (ride.feed, ride.shape_id)).fetchone()
         if not row:
             return None
-        pts = decode(row["polyline"])
-        if len(pts) < 2:
-            return None
-
-        def nearest(lat, lon, start=0):
-            best, idx = float("inf"), start
-            for i in range(start, len(pts)):
-                d = (pts[i][0] - lat) ** 2 + (pts[i][1] - lon) ** 2
-                if d < best:
-                    best, idx = d, i
-            return idx
-        a = nearest(stops[0]["lat"], stops[0]["lon"])
-        b = nearest(stops[-1]["lat"], stops[-1]["lon"], a)
-        if b <= a:
-            return None
-        return [[lon, lat] for lat, lon in pts[a:b + 1]]
+        return slice_shape(decode(row["polyline"]),
+                           [(s["lat"], s["lon"]) for s in stops if s["lat"] is not None])
 
 
 # -- helpers ---------------------------------------------------------------------------------
+# A stop further than this from the route's shape: the shape isn't this ride's path.
+SHAPE_OFF_M = 150
+
+
+def slice_shape(pts: list[tuple[float, float]],
+                stops: list[tuple[float, float]]) -> list[list[float]] | None:
+    """The part of a route's shape ([(lat, lon), ...]) a ride covers, from its first stop
+    to its last, as [[lon, lat], ...] for the map; None when it doesn't fit.
+
+    Shapes are stored simplified, so a long straight street keeps only its corners: each
+    stop is placed on the nearest point of the line (not the nearest corner, which can be
+    hundreds of meters away), and the stops are followed in order so a route that passes
+    the same place twice is cut at the right pass.
+    """
+    if len(pts) < 2 or len(stops) < 2:
+        return None
+    k = math.cos(math.radians(stops[0][0]))      # degrees of longitude are shorter
+    m_per_deg = 111_320.0
+
+    def place(lat: float, lon: float, seg0: int, t0: float) -> tuple[int, float, float]:
+        """(segment, fraction along it, meters off) of the nearest point at or after
+        (seg0, t0)."""
+        best = (seg0, t0, float("inf"))
+        for i in range(seg0, len(pts) - 1):
+            (y1, x1), (y2, x2) = pts[i], pts[i + 1]
+            ax, ay, bx, by = x1 * k, y1, x2 * k, y2
+            px, py = lon * k, lat
+            dx, dy = bx - ax, by - ay
+            L = dx * dx + dy * dy
+            t = 0.0 if L == 0 else max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / L))
+            if i == seg0:
+                t = max(t, t0)
+            qx, qy = ax + t * dx, ay + t * dy
+            d = math.hypot(px - qx, py - qy) * m_per_deg
+            if d < best[2]:
+                best = (i, t, d)
+        return best
+
+    seg, t = 0, 0.0
+    placed = []
+    for lat, lon in stops:
+        seg, t, off = place(lat, lon, seg, t)
+        placed.append((seg, t, off))
+    (a_seg, a_t, a_off), (b_seg, b_t, b_off) = placed[0], placed[-1]
+    if a_off > SHAPE_OFF_M or b_off > SHAPE_OFF_M or (b_seg, b_t) <= (a_seg, a_t):
+        return None
+
+    def at(i: int, t: float) -> list[float]:
+        (y1, x1), (y2, x2) = pts[i], pts[i + 1]
+        return [round(x1 + t * (x2 - x1), 6), round(y1 + t * (y2 - y1), 6)]
+
+    line = [at(a_seg, a_t)]
+    line += [[lon, lat] for lat, lon in pts[a_seg + 1:b_seg + 1]]
+    line.append(at(b_seg, b_t))
+    return line
+
+
 def _span(seconds: int) -> str:
     minutes = seconds // 60
     if minutes >= 120 and minutes % 60 == 0:
